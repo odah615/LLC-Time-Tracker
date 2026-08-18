@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { User, UserRole, Designation } from '../../types';
 import { DESIGNATION_LIST } from '../../data/initialData';
-import { Users, X, Check, Lock, KeyRound, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { Users, X, Check, Lock, KeyRound, Eye, EyeOff, RefreshCw, Calendar } from 'lucide-react';
 import { ConfirmationModal } from './ConfirmationModal';
 
 interface EmployeeCrudModalProps {
@@ -28,6 +28,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
   const [geoCity, setGeoCity] = useState('Manila, Philippines');
   const [geoTimezone, setGeoTimezone] = useState('Asia/Manila');
   const [employeeCode, setEmployeeCode] = useState('0002');
+  const [joinDate, setJoinDate] = useState(new Date().toISOString().split('T')[0]);
   const [teamLeaderId, setTeamLeaderId] = useState<string>('');
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
   const [avatar, setAvatar] = useState(
@@ -57,6 +58,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
       setGeoCity(editingUser.geoCity);
       setGeoTimezone(editingUser.geoTimezone);
       setEmployeeCode(editingUser.employeeCode);
+      setJoinDate(editingUser.joinDate || new Date().toISOString().split('T')[0]);
       setTeamLeaderId(editingUser.teamLeaderId || '');
       setStatus(editingUser.status || 'active');
       setAvatar(editingUser.avatar);
@@ -70,6 +72,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
       setGeoCity('Manila, Philippines');
       setGeoTimezone('Asia/Manila');
       setEmployeeCode(`00${Math.floor(10 + Math.random() * 90)}`);
+      setJoinDate(new Date().toISOString().split('T')[0]);
       setTeamLeaderId(teamLeaders[0]?.id || '');
       setStatus('active');
       setAvatar(
@@ -85,6 +88,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
   const executeSave = () => {
     const mRate = Number(monthlyRate) || 23000;
     const calcHourly = mRate / 160;
+    const finalJoinDate = joinDate.trim() || new Date().toISOString().split('T')[0];
 
     if (editingUser) {
       updateUser(editingUser.id, {
@@ -98,6 +102,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
         geoCity,
         geoTimezone,
         employeeCode,
+        joinDate: finalJoinDate,
         teamLeaderId: teamLeaderId || undefined,
         status,
         avatar,
@@ -111,7 +116,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
         targetEmployeeName: name,
         fromValue: editingUser.role,
         toValue: role,
-        details: `Updated employee record for ${name} (${employeeCode}). Credentials/role synchronized.`,
+        details: `Updated employee record for ${name} (${employeeCode}). Hired: ${finalJoinDate}. Credentials/role synchronized.`,
       });
     } else {
       const initialPass = password.trim() || 'Password123!';
@@ -130,7 +135,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
         teamLeaderId: teamLeaderId || undefined,
         status,
         avatar,
-        joinDate: new Date().toISOString().split('T')[0],
+        joinDate: finalJoinDate,
         department: designation.includes('Sales')
           ? 'Sales & Outreach'
           : designation.includes('QA')
@@ -149,7 +154,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
         targetEmployeeName: name,
         fromValue: 'Unregistered',
         toValue: `${role.toUpperCase()} (${designation})`,
-        details: `Registered new employee ${name} (${employeeCode}) as ${designation}. Assigned initial credentials.`,
+        details: `Registered new employee ${name} (${employeeCode}) as ${designation}. Date Hired: ${finalJoinDate}. Assigned initial credentials.`,
       });
     }
 
@@ -306,9 +311,9 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Monthly Rate (₱ PHP)</label>
+              <label className="block text-slate-700 font-semibold mb-1">Monthly Rate (₱)</label>
               <input
                 type="number"
                 step="500"
@@ -324,6 +329,18 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
                 type="text"
                 value={employeeCode}
                 onChange={(e) => setEmployeeCode(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-mono font-medium"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-blue-600" /> Date Hired
+              </label>
+              <input
+                type="date"
+                value={joinDate}
+                onChange={(e) => setJoinDate(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-mono font-medium"
                 required
               />

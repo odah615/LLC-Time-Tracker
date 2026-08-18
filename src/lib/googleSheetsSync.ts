@@ -142,6 +142,7 @@ export const SPREADSHEET_SCHEMA = [
       'Work Email',
       'System Role',
       'Designation',
+      'Date Hired',
       'Monthly Rate (₱)',
       'Hourly Rate (₱)',
       'Assigned Supervisor',
@@ -591,17 +592,19 @@ function doPost(e) {
       var empSheet = ss.getSheetByName('Employee_Directory');
       if (empSheet && users.length > 0) {
         empSheet.clear();
-        empSheet.appendRow(['Employee Code', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)']);
-        empSheet.getRange(1, 1, 1, 12).setFontWeight('bold').setBackground('#0369a1').setFontColor('#ffffff');
+        empSheet.appendRow(['Employee Code', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Date Hired', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)']);
+        empSheet.getRange(1, 1, 1, 13).setFontWeight('bold').setBackground('#0369a1').setFontColor('#ffffff');
         empSheet.setFrozenRows(1);
         users.forEach(function(u) {
           var maskedPass = maskPassword(u.password || 'Password123!');
+          var hireDate = u.joinDate || Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
           empSheet.appendRow([
             u.employeeCode || 'N/A',
             u.name,
             u.email,
             u.role,
             u.designation || 'Sales Agent',
+            hireDate,
             u.monthlyRate || (u.hourlyRate ? u.hourlyRate * 160 : 23000),
             u.hourlyRate || (u.monthlyRate ? u.monthlyRate / 160 : 143.75),
             u.teamLeaderId || 'Direct Supervisor',
@@ -681,7 +684,7 @@ function doGet(e) {
     var empSheet = ss.getSheetByName('Employee_Directory');
     var employees = [];
     if (empSheet && empSheet.getLastRow() > 1) {
-      var data = empSheet.getRange(2, 1, empSheet.getLastRow() - 1, 12).getValues();
+      var data = empSheet.getRange(2, 1, empSheet.getLastRow() - 1, 13).getValues();
       data.forEach(function(row) {
         var code = String(row[0] || '').trim();
         var name = String(row[1] || '').trim();
@@ -692,12 +695,13 @@ function doGet(e) {
           email: String(row[2] || '').trim(),
           role: String(row[3] || 'employee').toLowerCase().trim(),
           designation: String(row[4] || 'Sales Agent').trim(),
-          monthlyRate: Number(String(row[5]).replace(/[^0-9.]/g, '')) || 23000,
-          hourlyRate: Number(String(row[6]).replace(/[^0-9.]/g, '')) || 143.75,
-          teamLeaderId: String(row[7] || '').trim(),
-          screenshotMonitored: String(row[8]).toUpperCase() === 'YES' || row[8] === true,
-          activityMonitored: String(row[9]).toUpperCase() === 'YES' || row[9] === true,
-          status: String(row[10] || 'active').toLowerCase().trim()
+          joinDate: String(row[5] || '').trim() || Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd'),
+          monthlyRate: Number(String(row[6]).replace(/[^0-9.]/g, '')) || 23000,
+          hourlyRate: Number(String(row[7]).replace(/[^0-9.]/g, '')) || 143.75,
+          teamLeaderId: String(row[8] || '').trim(),
+          screenshotMonitored: String(row[9]).toUpperCase() === 'YES' || row[9] === true,
+          activityMonitored: String(row[10]).toUpperCase() === 'YES' || row[10] === true,
+          status: String(row[11] || 'active').toLowerCase().trim()
         });
       });
     }
@@ -865,12 +869,13 @@ export const fetchEmployeesFromGoogleSheets = async (
       const email = (row[2] || '').trim();
       const roleStr = (row[3] || 'employee').toLowerCase().trim();
       const designation = (row[4] || 'Sales Agent').trim();
-      const monthlyRateStr = (row[5] || '').replace(/[^0-9.]/g, '');
-      const hourlyRateStr = (row[6] || '').replace(/[^0-9.]/g, '');
-      const supervisor = (row[7] || '').trim();
-      const scrMonitored = (row[8] || '').toUpperCase() === 'YES';
-      const actMonitored = (row[9] || '').toUpperCase() === 'YES';
-      const statusStr = (row[10] || 'active').toLowerCase().trim();
+      const joinDateStr = (row[5] || '').trim();
+      const monthlyRateStr = (row[6] || '').replace(/[^0-9.]/g, '');
+      const hourlyRateStr = (row[7] || '').replace(/[^0-9.]/g, '');
+      const supervisor = (row[8] || '').trim();
+      const scrMonitored = (row[9] || '').toUpperCase() === 'YES';
+      const actMonitored = (row[10] || '').toUpperCase() === 'YES';
+      const statusStr = (row[11] || 'active').toLowerCase().trim();
 
       if (!code && !name) continue;
 
@@ -898,7 +903,7 @@ export const fetchEmployeesFromGoogleSheets = async (
         avatar: existing?.avatar || `https://images.unsplash.com/photo-${1534528741775 + i * 1000}?auto=format&fit=crop&q=80&w=250`,
         geoTimezone: existing?.geoTimezone || 'Asia/Manila',
         geoCity: existing?.geoCity || 'Manila, Philippines',
-        joinDate: existing?.joinDate || new Date().toISOString().split('T')[0],
+        joinDate: joinDateStr || existing?.joinDate || new Date().toISOString().split('T')[0],
         department: existing?.department || (validRole === 'admin' ? 'Executive Management' : 'Operations'),
         password: existing?.password || (isSuperAdmin ? 'AdminpassW0rd123!' : 'Password123!'),
         mustChangePassword: existing?.mustChangePassword !== undefined ? existing.mustChangePassword : (isSuperAdmin ? false : true),
