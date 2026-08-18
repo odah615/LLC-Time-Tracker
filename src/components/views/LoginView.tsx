@@ -115,14 +115,14 @@ export const LoginView: React.FC = () => {
       if (
         alphaNumericQuery === 'superadmin' ||
         query === 'superadmin' ||
-        query === 'red' ||
-        query.includes('red.mchad@gmail.com') ||
-        query.includes('lein.odahcam@gmail.com')
+        query === 'admin' ||
+        query === 'admin@llc.com' ||
+        query === 'admin@llctimetracker.com'
       ) {
         foundUser = {
           id: 'usr-superadmin-red',
-          name: 'Red',
-          email: 'red.mchad@gmail.com',
+          name: 'Admin',
+          email: 'admin@llc.com',
           role: 'admin',
           designation: 'Admin',
           avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250',
@@ -137,6 +137,8 @@ export const LoginView: React.FC = () => {
           department: 'Executive Management',
           password: 'AdminpassW0rd123!',
           mustChangePassword: false,
+          screenshotMonitored: false,
+          activityMonitored: false,
         };
       }
     }
@@ -149,9 +151,7 @@ export const LoginView: React.FC = () => {
     const isRootAdmin =
       foundUser.employeeCode.toLowerCase() === 'superadmin' ||
       foundUser.id === 'usr-superadmin-red' ||
-      foundUser.id === 'usr-superadmin-chad' ||
-      foundUser.email === 'red.mchad@gmail.com' ||
-      foundUser.email === 'lein.odahcam@gmail.com';
+      foundUser.email === 'admin@llc.com';
     const inputPass = password.trim();
 
     let isValidPassword = false;

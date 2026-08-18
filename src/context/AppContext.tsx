@@ -171,23 +171,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isSuperAdmin =
       u.employeeCode.toLowerCase() === 'superadmin' ||
       u.id === 'usr-superadmin-red' ||
-      u.id === 'usr-superadmin-chad' ||
-      u.email === 'red.mchad@gmail.com' ||
-      u.email === 'lein.odahcam@gmail.com' ||
-      u.name.toLowerCase().includes('chad');
+      u.id === 'usr-superadmin-root' ||
+      u.email === 'admin@llc.com';
 
     if (isSuperAdmin) {
       return {
         ...u,
         id: 'usr-superadmin-red',
-        name: 'Red',
-        email: 'red.mchad@gmail.com',
+        name: 'Admin',
+        email: 'admin@llc.com',
         employeeCode: 'SuperAdmin',
         role: 'admin' as const,
         designation: 'Admin',
         department: 'Executive Management',
         password: u.password || 'AdminpassW0rd123!',
         mustChangePassword: false,
+        screenshotMonitored: false,
+        activityMonitored: false,
       };
     }
     return u;
@@ -218,7 +218,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (u) =>
         u.employeeCode.toLowerCase() === 'superadmin' ||
         u.id === 'usr-superadmin-red' ||
-        u.email === 'red.mchad@gmail.com'
+        u.email === 'admin@llc.com'
     );
     if (rootUser) {
       return normalizeSuperAdmin(rootUser);

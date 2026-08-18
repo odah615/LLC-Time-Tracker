@@ -211,7 +211,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   };
 
   const handleToggleScreenshotPrompt = (usr: User, currentVal?: boolean) => {
-    const isCurrentlyOn = currentVal ?? true;
+    const isCurrentlyOn = currentVal === true;
     const fromVal = isCurrentlyOn ? 'Screenshot Monitoring ON' : 'Screenshot Monitoring OFF';
     const toVal = !isCurrentlyOn ? 'Screenshot Monitoring ON' : 'Screenshot Monitoring OFF';
 
@@ -243,7 +243,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   };
 
   const handleToggleActivityPrompt = (usr: User, currentVal?: boolean) => {
-    const isCurrentlyOn = currentVal ?? true;
+    const isCurrentlyOn = currentVal === true;
     const fromVal = isCurrentlyOn ? 'Activity Monitoring ON' : 'Activity Monitoring OFF';
     const toVal = !isCurrentlyOn ? 'Activity Monitoring ON' : 'Activity Monitoring OFF';
 
@@ -1086,8 +1086,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 const teamLeadsAndTrainers = users.filter(
                   (u) => u.role === 'team_lead' || u.role === 'trainer' || u.role === 'admin'
                 );
-                const isScreenshotOn = usr.screenshotMonitored ?? usr.stealthMonitored ?? true;
-                const isActivityOn = usr.activityMonitored ?? usr.stealthMonitored ?? true;
+                const isScreenshotOn = usr.screenshotMonitored === true;
+                const isActivityOn = usr.activityMonitored === true;
+                const isSuperAdminUsr =
+                  usr.employeeCode.toLowerCase() === 'superadmin' ||
+                  usr.id === 'usr-superadmin-red' ||
+                  usr.id === 'usr-superadmin-root' ||
+                  usr.email === 'admin@llc.com';
 
                 return (
                   <tr key={usr.id} className="hover:bg-slate-50/80 transition-colors">
@@ -1113,7 +1118,15 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
                     {/* Role & Designation */}
                     <td className="py-3.5 px-4">
-                      {currentUser.role === 'admin' ? (
+                      {isSuperAdminUsr ? (
+                        <div
+                          className="flex items-center gap-1.5 bg-slate-100/90 border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold text-slate-600 select-none cursor-not-allowed max-w-[155px]"
+                          title="SuperAdmin role is locked by system security"
+                        >
+                          <Lock className="w-3 h-3 text-amber-600" />
+                          <span>Main Admin</span>
+                        </div>
+                      ) : currentUser.role === 'admin' ? (
                         <select
                           value={usr.role}
                           onChange={(e) => handleRoleChangePrompt(usr, e.target.value)}
@@ -1145,18 +1158,24 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
                     {/* Assigned Team Lead */}
                     <td className="py-3.5 px-4">
-                      <select
-                        value={usr.teamLeaderId || ''}
-                        onChange={(e) => handleReassignSupervisorPrompt(usr, e.target.value)}
-                        className="bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-2 py-1 font-semibold text-xs focus:ring-2 focus:ring-blue-500 w-full max-w-[170px]"
-                      >
-                        <option value="">None / Direct</option>
-                        {teamLeadsAndTrainers.map((tl) => (
-                          <option key={tl.id} value={tl.id}>
-                            {tl.name} ({tl.designation})
-                          </option>
-                        ))}
-                      </select>
+                      {isSuperAdminUsr ? (
+                        <div className="text-xs font-semibold text-slate-400 italic bg-slate-100/70 border border-slate-200 rounded-lg px-2.5 py-1 max-w-[170px]">
+                          Executive Board
+                        </div>
+                      ) : (
+                        <select
+                          value={usr.teamLeaderId || ''}
+                          onChange={(e) => handleReassignSupervisorPrompt(usr, e.target.value)}
+                          className="bg-slate-50 border border-slate-200 text-slate-800 rounded-lg px-2 py-1 font-semibold text-xs focus:ring-2 focus:ring-blue-500 w-full max-w-[170px]"
+                        >
+                          <option value="">None / Direct</option>
+                          {teamLeadsAndTrainers.map((tl) => (
+                            <option key={tl.id} value={tl.id}>
+                              {tl.name} ({tl.designation})
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </td>
 
                     {/* Date Hired */}
@@ -1218,13 +1237,22 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                       >
                         <Edit className="w-3.5 h-3.5" />
                       </button>
-                      <button
-                        onClick={() => handleDeleteUserPrompt(usr)}
-                        className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200"
-                        title="Delete employee"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {isSuperAdminUsr ? (
+                        <span
+                          className="p-1.5 rounded-lg bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed inline-block"
+                          title="SuperAdmin account is protected and cannot be deleted"
+                        >
+                          <Lock className="w-3.5 h-3.5 text-slate-400" />
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleDeleteUserPrompt(usr)}
+                          className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200"
+                          title="Delete employee"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

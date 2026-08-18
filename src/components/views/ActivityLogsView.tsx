@@ -82,7 +82,7 @@ export const ActivityLogsView: React.FC = () => {
   }>({ isOpen: false });
 
   const handleToggleScreenshotPrompt = (usr: User, currentVal?: boolean) => {
-    const isCurrentlyOn = currentVal ?? true;
+    const isCurrentlyOn = currentVal === true;
     const fromVal = isCurrentlyOn ? 'Screenshot Monitoring ON' : 'Screenshot Monitoring OFF';
     const toVal = !isCurrentlyOn ? 'Screenshot Monitoring ON' : 'Screenshot Monitoring OFF';
 
@@ -103,7 +103,7 @@ export const ActivityLogsView: React.FC = () => {
   };
 
   const handleToggleActivityPrompt = (usr: User, currentVal?: boolean) => {
-    const isCurrentlyOn = currentVal ?? true;
+    const isCurrentlyOn = currentVal === true;
     const fromVal = isCurrentlyOn ? 'Activity Monitoring ON' : 'Activity Monitoring OFF';
     const toVal = !isCurrentlyOn ? 'Activity Monitoring ON' : 'Activity Monitoring OFF';
 
@@ -413,8 +413,8 @@ export const ActivityLogsView: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-200 text-slate-800">
                 {paginatedSurveillanceUsers.map((usr) => {
-                  const isScreenshotOn = usr.screenshotMonitored !== false;
-                  const isActivityOn = usr.activityMonitored !== false;
+                  const isScreenshotOn = usr.screenshotMonitored === true;
+                  const isActivityOn = usr.activityMonitored === true;
 
                   return (
                     <tr key={usr.id} className="hover:bg-slate-50/80 transition-colors">

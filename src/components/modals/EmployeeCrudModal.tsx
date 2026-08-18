@@ -81,29 +81,40 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
     }
   }, [editingUser, isOpen]);
 
+  const isEditingSuperAdmin = editingUser
+    ? editingUser.employeeCode?.toLowerCase() === 'superadmin' ||
+      editingUser.id === 'usr-superadmin-red' ||
+      editingUser.id === 'usr-superadmin-root' ||
+      editingUser.email === 'admin@llc.com' ||
+      (editingUser.role === 'admin' && editingUser.employeeCode === 'SuperAdmin')
+    : false;
+
   const [showConfirm, setShowConfirm] = useState(false);
 
   if (!isOpen) return null;
 
   const executeSave = () => {
-    const mRate = Number(monthlyRate) || 23000;
+    const mRate = Number(monthlyRate) || (isEditingSuperAdmin ? 60000 : 23000);
     const calcHourly = mRate / 160;
     const finalJoinDate = joinDate.trim() || new Date().toISOString().split('T')[0];
+    const finalRole = isEditingSuperAdmin ? 'admin' : role;
+    const finalDesignation = isEditingSuperAdmin ? 'Admin' : designation;
+    const finalEmployeeCode = isEditingSuperAdmin ? 'SuperAdmin' : employeeCode;
 
     if (editingUser) {
       updateUser(editingUser.id, {
         name,
         email,
         password: password.trim() || editingUser.password || 'Password123!',
-        role,
-        designation,
+        role: finalRole,
+        designation: finalDesignation,
         monthlyRate: mRate,
         hourlyRate: Number(calcHourly.toFixed(2)),
         geoCity,
         geoTimezone,
-        employeeCode,
+        employeeCode: finalEmployeeCode,
         joinDate: finalJoinDate,
-        teamLeaderId: teamLeaderId || undefined,
+        teamLeaderId: isEditingSuperAdmin ? undefined : teamLeaderId || undefined,
         status,
         avatar,
       });
@@ -115,8 +126,8 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
         targetEmployeeId: editingUser.id,
         targetEmployeeName: name,
         fromValue: editingUser.role,
-        toValue: role,
-        details: `Updated employee record for ${name} (${employeeCode}). Hired: ${finalJoinDate}. Credentials/role synchronized.`,
+        toValue: finalRole,
+        details: `Updated employee record for ${name} (${finalEmployeeCode}). Hired: ${finalJoinDate}. Credentials/role synchronized.`,
       });
     } else {
       const initialPass = password.trim() || 'Password123!';
@@ -125,24 +136,26 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
         email,
         password: initialPass,
         mustChangePassword: true,
-        role,
-        designation,
+        role: finalRole,
+        designation: finalDesignation,
         monthlyRate: mRate,
         hourlyRate: Number(calcHourly.toFixed(2)),
         geoCity,
         geoTimezone,
-        employeeCode,
+        employeeCode: finalEmployeeCode,
         teamLeaderId: teamLeaderId || undefined,
         status,
         avatar,
         joinDate: finalJoinDate,
-        department: designation.includes('Sales')
+        screenshotMonitored: false,
+        activityMonitored: false,
+        department: finalDesignation.includes('Sales')
           ? 'Sales & Outreach'
-          : designation.includes('QA')
+          : finalDesignation.includes('QA')
           ? 'Quality Assurance'
-          : designation.includes('HR')
+          : finalDesignation.includes('HR')
           ? 'Human Resources'
-          : designation.includes('Payroll')
+          : finalDesignation.includes('Payroll')
           ? 'Finance & Payroll'
           : 'Operations',
       });
@@ -245,9 +258,17 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">System Role</label>
+              <label className="block text-slate-700 font-semibold mb-1 flex items-center justify-between">
+                <span>System Role</span>
+                {isEditingSuperAdmin && (
+                  <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" /> Locked
+                  </span>
+                )}
+              </label>
               <select
-                value={role}
+                value={isEditingSuperAdmin ? 'admin' : role}
+                disabled={isEditingSuperAdmin}
                 onChange={(e) => {
                   const newRole = e.target.value as UserRole;
                   setRole(newRole);
@@ -257,7 +278,11 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
                   else if (newRole === 'va_admin') setDesignation('VA Operations Admin');
                   else if (newRole === 'admin') setDesignation('Admin');
                 }}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-medium"
+                className={`w-full border rounded-xl p-2.5 font-medium transition-all ${
+                  isEditingSuperAdmin
+                    ? 'bg-slate-100/90 border-slate-300 text-slate-500 cursor-not-allowed select-none shadow-none font-bold'
+                    : 'bg-slate-50 border-slate-200 text-slate-800 focus:ring-2 focus:ring-blue-500'
+                }`}
               >
                 <option value="agent">Agent</option>
                 <option value="team_lead">Team Leader</option>
@@ -265,13 +290,30 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
                 <option value="va_admin">VA Admin</option>
                 <option value="admin">Main Admin</option>
               </select>
+              {isEditingSuperAdmin && (
+                <p className="text-[10px] text-slate-400 mt-1 italic">
+                  SuperAdmin role cannot be changed.
+                </p>
+              )}
             </div>
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Designation</label>
+              <label className="block text-slate-700 font-semibold mb-1 flex items-center justify-between">
+                <span>Designation</span>
+                {isEditingSuperAdmin && (
+                  <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 flex items-center gap-1">
+                    <Lock className="w-2.5 h-2.5" /> Locked
+                  </span>
+                )}
+              </label>
               <select
-                value={designation}
+                value={isEditingSuperAdmin ? 'Admin' : designation}
+                disabled={isEditingSuperAdmin}
                 onChange={(e) => setDesignation(e.target.value as Designation)}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-medium"
+                className={`w-full border rounded-xl p-2.5 font-medium transition-all ${
+                  isEditingSuperAdmin
+                    ? 'bg-slate-100/90 border-slate-300 text-slate-500 cursor-not-allowed select-none shadow-none font-bold'
+                    : 'bg-slate-50 border-slate-200 text-slate-800 focus:ring-2 focus:ring-blue-500'
+                }`}
               >
                 {DESIGNATION_LIST.map((d) => (
                   <option key={d} value={d}>
@@ -279,6 +321,11 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
                   </option>
                 ))}
               </select>
+              {isEditingSuperAdmin && (
+                <p className="text-[10px] text-slate-400 mt-1 italic">
+                  SuperAdmin designation cannot be changed.
+                </p>
+              )}
             </div>
           </div>
 
@@ -286,16 +333,22 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
             <div>
               <label className="block text-slate-700 font-semibold mb-1">Assigned Team Leader / Supervisor</label>
               <select
-                value={teamLeaderId}
+                value={isEditingSuperAdmin ? '' : teamLeaderId}
+                disabled={isEditingSuperAdmin}
                 onChange={(e) => setTeamLeaderId(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-medium"
+                className={`w-full border rounded-xl p-2.5 font-medium transition-all ${
+                  isEditingSuperAdmin
+                    ? 'bg-slate-100 border-slate-300 text-slate-400 cursor-not-allowed select-none'
+                    : 'bg-slate-50 border-slate-200 text-slate-800 focus:ring-2 focus:ring-blue-500'
+                }`}
               >
-                <option value="">None / Independent</option>
-                {teamLeaders.map((tl) => (
-                  <option key={tl.id} value={tl.id}>
-                    {tl.name} ({tl.designation})
-                  </option>
-                ))}
+                <option value="">{isEditingSuperAdmin ? 'Top-Level Executive (No Supervisor)' : 'None / Independent'}</option>
+                {!isEditingSuperAdmin &&
+                  teamLeaders.map((tl) => (
+                    <option key={tl.id} value={tl.id}>
+                      {tl.name} ({tl.designation})
+                    </option>
+                  ))}
               </select>
             </div>
             <div>

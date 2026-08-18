@@ -126,11 +126,13 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
 
   // Toggle Screenshot & Activity Monitoring
   const handleToggleScreenshot = (userId: string, currentVal?: boolean) => {
-    updateUser(userId, { screenshotMonitored: !currentVal });
+    const isCurrentlyOn = currentVal === true;
+    updateUser(userId, { screenshotMonitored: !isCurrentlyOn });
   };
 
   const handleToggleActivity = (userId: string, currentVal?: boolean) => {
-    updateUser(userId, { activityMonitored: !currentVal });
+    const isCurrentlyOn = currentVal === true;
+    updateUser(userId, { activityMonitored: !isCurrentlyOn });
   };
 
   // Reassign supervisor / team lead
@@ -386,8 +388,8 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
                 </tr>
               ) : (
                 filteredUsers.map((usr) => {
-                  const isScreenshotOn = usr.screenshotMonitored ?? usr.stealthMonitored ?? true;
-                  const isActivityOn = usr.activityMonitored ?? usr.stealthMonitored ?? true;
+                  const isScreenshotOn = usr.screenshotMonitored === true;
+                  const isActivityOn = usr.activityMonitored === true;
 
                   return (
                     <tr key={usr.id} className="hover:bg-slate-50/80 transition-colors">

@@ -15,8 +15,8 @@ import {
 export const INITIAL_USERS: User[] = [
   {
     id: 'usr-superadmin-red',
-    name: 'Red',
-    email: 'red.mchad@gmail.com',
+    name: 'Admin',
+    email: 'admin@llc.com',
     role: 'admin',
     designation: 'Admin',
     avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250',
@@ -31,6 +31,8 @@ export const INITIAL_USERS: User[] = [
     department: 'Executive Management',
     password: 'AdminpassW0rd123!',
     mustChangePassword: false,
+    screenshotMonitored: false,
+    activityMonitored: false,
   },
 ];
 
