@@ -1,0 +1,284 @@
+export type UserRole = 'agent' | 'team_lead' | 'trainer' | 'hr' | 'payroll' | 'admin' | 'va_admin';
+
+export type Designation =
+  | 'Sales Agent'
+  | 'QA Specialist'
+  | 'Trainer'
+  | 'Team Lead'
+  | 'Admin'
+  | 'VA Operations Admin'
+  | 'Customer Support'
+  | 'Data Entry Specialist'
+  | 'HR Specialist'
+  | 'Payroll Officer';
+
+export type TaskCategory =
+  | 'Data Entry & Market Research'
+  | 'Email Reachout'
+  | 'Follow-up'
+  | 'Training'
+  | 'Team Meeting'
+  | 'Coaching'
+  | 'Escalation Resolution'
+  | 'QA Review'
+  | 'System Operations'
+  | 'HR & Recruitment'
+  | 'Payroll Audit & Processing'
+  | 'Team Supervision';
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  designation: Designation;
+  avatar: string;
+  hourlyRate: number;
+  monthlyRate?: number;
+  geoTimezone: string; // e.g. 'America/Toronto'
+  geoCity: string; // e.g. 'Toronto, Canada'
+  teamId?: string;
+  joinDate: string;
+  employeeCode: string;
+  department: string;
+  status?: 'active' | 'inactive';
+  teamLeaderId?: string; // ID of assigned Team Leader or Trainer
+  stealthMonitored?: boolean; // Combined surveillance flag
+  screenshotMonitored?: boolean; // Separate Screenshot Monitor toggle
+  activityMonitored?: boolean; // Separate Activity Monitor toggle
+  isSecretBackup?: boolean; // Hidden emergency backup admin account (does not appear in public lists)
+  password?: string; // Account password
+  mustChangePassword?: boolean; // If true, requires user to change password on first login
+}
+
+export interface WorldClockItem {
+  id: string;
+  label: string;
+  timezone: string;
+  city: string;
+  countryCode: string;
+  isAgentGeo?: boolean;
+}
+
+export interface AppUsage {
+  appName: string;
+  icon: string;
+  durationSeconds: number;
+  category: 'productive' | 'neutral' | 'unproductive';
+}
+
+export interface ActivityMetric {
+  timestamp: string; // HH:mm:ss
+  keyboardPercent: number;
+  mousePercent: number;
+  activeApp: string;
+}
+
+export interface TimeLog {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  designation: Designation;
+  task: TaskCategory;
+  startTime: string; // ISO string
+  endTime?: string; // ISO string
+  durationSeconds: number;
+  status: 'running' | 'completed' | 'paused' | 'idle';
+  geoTimezone: string;
+  geoLocalStartTime: string; // formatted time e.g. "06:12 AM"
+  mouseActivityAvg: number; // 0 - 100%
+  keyboardActivityAvg: number; // 0 - 100%
+  appsUsed: AppUsage[];
+  idleSeconds: number;
+  date: string; // YYYY-MM-DD
+  isLate?: boolean;
+  lateReason?: string;
+  notes?: string;
+}
+
+export interface ScreenshotLog {
+  id: string;
+  timeLogId: string;
+  userId: string;
+  userName: string;
+  employeeCode?: string;
+  userEmail?: string;
+  department?: string;
+  designation?: string;
+  date?: string; // YYYY-MM-DD for querying
+  timestamp: string; // Display time e.g. "11:00 AM EST"
+  capturedAtIso?: string; // ISO 8601 string for precise DB filtering
+  imageUrl: string;
+  activityPercent: number;
+  mouseActivityPercent?: number;
+  keyboardActivityPercent?: number;
+  activeApp: string;
+  flagged?: boolean;
+  isBlurred?: boolean;
+  isNew?: boolean;
+  lowActivityAlert?: boolean; // When activity is low / tired / inactive (<45%)
+  resolution?: string;
+  syncedToDatabase?: boolean;
+}
+
+export interface IdleLog {
+  id: string;
+  userId: string;
+  userName: string;
+  timestamp: string;
+  durationMinutes: number;
+  task: TaskCategory;
+  reason: string;
+  status: 'logged' | 'reviewed' | 'waived';
+  deductedFromShiftMinutes?: number;
+  requiredExtensionMinutes?: number;
+  syncedToGoogleSheets?: boolean;
+}
+
+export interface LeaveRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  type: 'Sick Leave' | 'Vacation' | 'Emergency' | 'Unpaid' | string;
+  startDate: string;
+  endDate: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requestedAt: string;
+  availableLeaveCredits?: number;
+}
+
+export interface ManualTimeRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  task: TaskCategory;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+export type AuditActionCategory =
+  | 'Role Change'
+  | 'Supervisor Reassign'
+  | 'Supervisor Assignment'
+  | 'User Management'
+  | 'Screenshot Monitor Toggle'
+  | 'Activity Monitor Toggle'
+  | 'Password Reset'
+  | 'Security'
+  | 'Employee Added'
+  | 'Employee Updated'
+  | 'Employee Deleted'
+  | 'Clock In'
+  | 'Clock Out'
+  | 'Login'
+  | 'Logout'
+  | 'Time Entry Created'
+  | 'Time Entry Edit'
+  | 'Time Entry Deleted'
+  | 'Manual Time Approved'
+  | 'Manual Time Rejected'
+  | 'Manual Time Approval'
+  | 'Manual Time Submission'
+  | 'Leave Approval'
+  | 'Leave Rejected'
+  | 'Leave Submission'
+  | 'Leave Request Approved'
+  | 'Leave Request Rejected'
+  | 'Payroll Processed'
+  | 'Payroll Update'
+  | string;
+
+export interface AuditLog {
+  id: string;
+  timestamp: string; // ISO string e.g. "2026-08-13T00:45:00.000Z"
+  dateFormatted: string; // e.g. "Aug 13, 2026 00:45:00"
+  actorId: string;
+  actorName: string;
+  actorRole: UserRole;
+  category: AuditActionCategory;
+  targetEmployeeId?: string;
+  targetEmployeeName?: string;
+  fromValue?: string;
+  toValue?: string;
+  details: string;
+}
+
+export interface PayrollRecord {
+  id: string;
+  userId: string;
+  userName: string;
+  employeeCode: string;
+  designation: Designation;
+  monthlyRate?: number;
+  dailyRate?: number;
+  hourlyRate: number;
+  totalTrackedHours: number;
+  regularHours: number;
+  overtimeHours: number;
+  missingHours?: number;
+  missingDeductions?: number;
+  lateDeductions: number;
+  grossPay: number;
+  incentiveBonus?: number;
+  netPay: number;
+  payPeriod: string;
+  status: 'pending' | 'processing' | 'paid';
+  paidDate?: string;
+  remarks?: string;
+}
+
+export interface UserPresence {
+  userId: string;
+  userName: string;
+  role: UserRole;
+  designation: Designation;
+  employeeCode: string;
+  department: string;
+  teamLeaderId?: string;
+  isOnline: boolean;
+  status: 'online' | 'idle' | 'offline';
+  currentTask?: string;
+  currentApp?: string;
+  mouseActivity?: number;
+  keyboardActivity?: number;
+  lastHeartbeat: string; // ISO string
+  loginTime?: string; // ISO string of shift start
+}
+
+export interface DailyAttendanceLog {
+  id: string;
+  userId: string;
+  userName: string;
+  employeeCode: string;
+  date: string; // YYYY-MM-DD
+  firstLoginTime: string; // e.g. "08:00:15 AM"
+  lastLogoutTime?: string; // e.g. "05:00:00 PM"
+  totalLoggedSeconds: number;
+  totalLoggedHours: number;
+  totalIdleDeductionsMinutes?: number;
+  requiredExtensionMinutes?: number;
+  status: 'present' | 'late' | 'half-day' | 'on-leave' | 'absent';
+  syncedToGoogleSheets?: boolean;
+}
+
+export interface PasswordResetRequest {
+  id: string;
+  requestedByUserId: string;
+  requestedByUserName: string;
+  requestedByUserRole: UserRole;
+  targetUserId: string;
+  targetUserName: string;
+  targetUserCode: string;
+  timestamp: string; // ISO string
+  dateFormatted: string;
+  reason?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
+
