@@ -820,7 +820,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             </div>
 
             {/* Timeframe & Date Picker Controls */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
                 <button
                   onClick={() => setChartTimeframe('daily')}
@@ -877,10 +877,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               )}
 
               {chartTimeframe === 'weekly' && (
-                <div className="flex items-center gap-1.5">
-                  <div className="relative flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-sm hover:bg-slate-100 transition-all cursor-pointer">
-                    <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0 pointer-events-none" />
-                    <span className="text-xs font-semibold text-slate-500 select-none pointer-events-none">From:</span>
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm hover:bg-slate-100/80 transition-all">
+                  <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0 pointer-events-none" />
+                  <div className="relative flex items-center gap-1 cursor-pointer">
+                    <span className="text-[11px] font-semibold text-slate-500 select-none pointer-events-none">From:</span>
                     <span className="text-xs font-bold text-slate-800 pointer-events-none font-mono">
                       {formatDateDDMMYYYY(weekStartDate)}
                     </span>
@@ -897,11 +897,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     />
                   </div>
 
-                  <span className="text-xs font-bold text-slate-400 select-none">to</span>
+                  <span className="text-xs font-bold text-slate-400 select-none px-0.5">to</span>
 
-                  <div className="relative flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-sm hover:bg-slate-100 transition-all cursor-pointer">
-                    <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0 pointer-events-none" />
-                    <span className="text-xs font-semibold text-slate-500 select-none pointer-events-none">To:</span>
+                  <div className="relative flex items-center gap-1 cursor-pointer">
+                    <span className="text-[11px] font-semibold text-slate-500 select-none pointer-events-none">To:</span>
                     <span className="text-xs font-bold text-slate-800 pointer-events-none font-mono">
                       {formatDateDDMMYYYY(weekEndDate)}
                     </span>
@@ -921,7 +920,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               )}
 
               {chartTimeframe === 'monthly' && (
-                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shadow-sm">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
                   <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                   <select
                     value={selectedMonth}
