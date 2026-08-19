@@ -282,3 +282,25 @@ export interface PasswordResetRequest {
   resolvedBy?: string;
 }
 
+export interface UserSessionLog {
+  id: string;
+  userId: string;
+  userName: string;
+  employeeCode: string;
+  userEmail?: string;
+  role: UserRole;
+  designation?: Designation;
+  platform: 'webapp' | 'software';
+  loginTimestamp: string; // ISO string
+  loginTimeFormatted: string;
+  lastActiveTimestamp: string; // ISO string
+  logoutTimestamp?: string; // ISO string
+  logoutTimeFormatted?: string;
+  sessionDurationMinutes?: number;
+  logoutReason?: 'manual' | 'session_timeout_10min' | 'browser_closed' | 'shift_ended' | 'active';
+  ipAddress?: string;
+  location?: string;
+  syncedToGoogleSheets?: boolean;
+}
+
+

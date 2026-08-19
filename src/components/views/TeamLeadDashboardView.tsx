@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { User, IdleLog, LeaveRequest } from '../../types';
 import { downloadDesktopSoftwarePackage, DesktopOS } from '../../lib/desktopDownloader';
 import { UserAvatar } from '../UserAvatar';
+import { LiveAgentTasksBoard } from '../LiveAgentTasksBoard';
 import {
   Users,
   Clock,
@@ -208,6 +209,14 @@ export const TeamLeadDashboardView: React.FC = () => {
           <p className="text-[11px] text-slate-500 mt-1">Awaiting team lead approval</p>
         </div>
       </div>
+
+      {/* Live Agent Sessions, Real-Time Task Tracker & Headcount Graphs */}
+      <LiveAgentTasksBoard
+        title="Live Supervised Agent Tasks & Real-Time Presence"
+        description="Real-time live monitoring of what your supervised agents are doing right now (Data Entry, Email Reachout, Inbound Calls, QA Review), with live agent headcount graphs and task breakdown analytics."
+        teamLeaderId={currentUser.id}
+        showAnalyticsTabs={true}
+      />
 
       {/* Main Sections Stack: Team Member Details & Team Idle Time Logs */}
       <div className="space-y-6">

@@ -124,17 +124,6 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
     setTimeout(() => setDownloadSuccess(false), 5000);
   };
 
-  // Toggle Screenshot & Activity Monitoring
-  const handleToggleScreenshot = (userId: string, currentVal?: boolean) => {
-    const isCurrentlyOn = currentVal === true;
-    updateUser(userId, { screenshotMonitored: !isCurrentlyOn });
-  };
-
-  const handleToggleActivity = (userId: string, currentVal?: boolean) => {
-    const isCurrentlyOn = currentVal === true;
-    updateUser(userId, { activityMonitored: !isCurrentlyOn });
-  };
-
   // Reassign supervisor / team lead
   const handleReassignSupervisor = (agentId: string, newLeaderId: string) => {
     updateUser(agentId, { teamLeaderId: newLeaderId });
@@ -288,13 +277,13 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-semibold text-slate-600">Activity & Screen Monitor</span>
-            <Eye className="w-4 h-4 text-purple-600" />
+            <span className="text-xs font-semibold text-slate-600">Supervised Staff</span>
+            <Users className="w-4 h-4 text-purple-600" />
           </div>
           <div className="text-2xl font-extrabold text-purple-700">
-            {manageableUsers.filter((u) => u.stealthMonitored).length} Active
+            {manageableUsers.length} Members
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">Monitored agent sessions</p>
+          <p className="text-[11px] text-slate-500 mt-1">Assigned trainees & team members</p>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
@@ -321,7 +310,7 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
               <Users className="w-5 h-5 text-indigo-600" /> Employee & Trainee Management Console
             </h3>
             <p className="text-xs text-slate-500">
-              Add new trainees, edit staff details, transfer agents to team leaders, and toggle screenshot/activity monitoring per agent.
+              Add new trainees, edit staff details, transfer agents to team leaders, and manage team member onboarding.
             </p>
           </div>
 
@@ -374,23 +363,18 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
                 <th className="py-3.5 px-4">Role & Designation</th>
                 <th className="py-3.5 px-4">Assigned Team Lead</th>
                 <th className="py-3.5 px-4">Date Hired</th>
-                <th className="py-3.5 px-4 text-center">Screenshot Monitor</th>
-                <th className="py-3.5 px-4 text-center">Activity Monitor</th>
                 <th className="py-3.5 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-400">
+                  <td colSpan={6} className="py-8 text-center text-slate-400">
                     No employees match your search filter criteria.
                   </td>
                 </tr>
               ) : (
                 filteredUsers.map((usr) => {
-                  const isScreenshotOn = usr.screenshotMonitored === true;
-                  const isActivityOn = usr.activityMonitored === true;
-
                   return (
                     <tr key={usr.id} className="hover:bg-slate-50/80 transition-colors">
                       {/* ID No. */}
@@ -440,38 +424,6 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
                       {/* Date Hired */}
                       <td className="py-3.5 px-4 font-mono text-slate-700 font-semibold whitespace-nowrap">
                         {usr.joinDate || '2024-01-15'}
-                      </td>
-
-                      {/* Screenshot Monitor */}
-                      <td className="py-3.5 px-4 text-center">
-                        <button
-                          onClick={() => handleToggleScreenshot(usr.id, isScreenshotOn)}
-                          className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-all inline-flex items-center gap-1 shadow-sm ${
-                            isScreenshotOn
-                              ? 'bg-purple-100 text-purple-800 border-purple-300 hover:bg-purple-200'
-                              : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
-                          }`}
-                          title="Toggle Screenshot Capture Monitor"
-                        >
-                          <Camera className="w-3.5 h-3.5" />
-                          <span>{isScreenshotOn ? 'ON' : 'OFF'}</span>
-                        </button>
-                      </td>
-
-                      {/* Activity Monitor */}
-                      <td className="py-3.5 px-4 text-center">
-                        <button
-                          onClick={() => handleToggleActivity(usr.id, isActivityOn)}
-                          className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-all inline-flex items-center gap-1 shadow-sm ${
-                            isActivityOn
-                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
-                              : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
-                          }`}
-                          title="Toggle Mouse & Keyboard Activity Monitor"
-                        >
-                          <Activity className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>{isActivityOn ? 'ON' : 'OFF'}</span>
-                        </button>
                       </td>
 
                       {/* Actions */}

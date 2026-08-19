@@ -91,7 +91,11 @@ export const AuditLogsView: React.FC = () => {
 
   const logoutLogs = useMemo(() => {
     return auditLogs.filter(
-      (l) => l.category === 'Logout' || l.details.toLowerCase().includes('signed out')
+      (l) =>
+        l.category === 'Logout' ||
+        l.details.toLowerCase().includes('signed out') ||
+        l.details.toLowerCase().includes('session expired') ||
+        l.details.toLowerCase().includes('inactivity')
     );
   }, [auditLogs]);
 

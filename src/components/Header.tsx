@@ -48,6 +48,11 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
     setCurrentUser,
     isDesktopDockView,
     setIsDesktopDockView,
+    loginMode,
+    webSessionRemainingSeconds,
+    isSessionWarningActive,
+    webSessionWarningCountdown,
+    refreshWebSession,
     logout,
     googleSheetsWebhookUrl,
     setGoogleSheetsWebhookUrl,
@@ -167,8 +172,8 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
             <span>My Timesheet</span>
           </button>
 
-          {/* Activity Logs (Hidden for HR) */}
-          {currentUser.role !== 'hr' && (
+          {/* Activity Logs / Screenshot Monitor (Strictly SuperAdmin Only) */}
+          {currentUser.role === 'admin' && (
             <button
               onClick={() => setActiveTab('activity')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
@@ -178,7 +183,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
               }`}
             >
               <Camera className="w-4 h-4" />
-              <span>Activity Logs</span>
+              <span>Activity Logs & Screenshots</span>
             </button>
           )}
 
@@ -241,6 +246,45 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
 
         {/* User Account & Software Controls */}
         <div className="flex items-center gap-3">
+          {/* Web Session Inactivity Auto-Logout Indicator (Web Portal only) */}
+          {loginMode === 'webapp' && (
+            <button
+              onClick={refreshWebSession}
+              title={
+                isSessionWarningActive
+                  ? `Inactivity Warning: No activity detected for 5 minutes. Web session will auto-logout in ${Math.floor(webSessionWarningCountdown / 60)}:${String(webSessionWarningCountdown % 60).padStart(2, '0')}. Click to refresh session now.`
+                  : 'Web Portal Session: Active. Auto-logout occurs after 10 minutes of complete inactivity. Click to refresh session.'
+              }
+              className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-mono transition-all ${
+                isSessionWarningActive
+                  ? 'bg-amber-950/90 border-amber-500 text-amber-300 animate-pulse shadow-lg shadow-amber-500/20'
+                  : 'bg-slate-900/90 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
+              }`}
+            >
+              <Clock
+                className={`w-3.5 h-3.5 ${
+                  isSessionWarningActive ? 'text-amber-400 animate-bounce' : 'text-emerald-400'
+                }`}
+              />
+              <span className="text-[11px] font-semibold">
+                {isSessionWarningActive ? (
+                  <span>
+                    Expiring:{' '}
+                    <span className="font-bold text-amber-300">
+                      {Math.floor(webSessionWarningCountdown / 60)}:
+                      {String(webSessionWarningCountdown % 60).padStart(2, '0')}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <span>Session: Active</span>
+                  </span>
+                )}
+              </span>
+            </button>
+          )}
+
           {/* User Profile Badge & Persona Control */}
           <div className="relative group">
             <div className="flex items-center gap-2.5 bg-slate-800/80 border border-slate-700 p-1.5 px-3 rounded-xl transition-all cursor-pointer">

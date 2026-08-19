@@ -54,6 +54,7 @@ import {
 } from 'recharts';
 import { User, Designation, UserRole } from '../../types';
 import { UserAvatar } from '../UserAvatar';
+import { LiveAgentTasksBoard } from '../LiveAgentTasksBoard';
 
 interface AdminDashboardViewProps {
   onOpenAddUserModal: () => void;
@@ -582,230 +583,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         </div>
       </div>
 
-      {/* Live Tracking Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
-          <div>
-            <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
-              <Radio className="w-5 h-5 text-emerald-600 animate-pulse" /> Live Tracking Table
-            </h3>
-            <p className="text-xs text-slate-500">
-              Real-time overview of logged-in Team Leaders, Trainers, and Agents along with their active tasks.
-            </p>
-          </div>
-          <span className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" /> Live Tracking Feed
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Sub-section 1: Team Leaders Status (Paginated 5 per page) */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3 flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Shield className="w-4 h-4 text-amber-600" /> Team Leaders ({teamLeaders.length})
-                </h4>
-                <span className="text-[10px] font-bold text-slate-500">Supervisory Status</span>
-              </div>
-
-              <div className="space-y-2.5 min-h-[200px]">
-                {teamLeaders.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center py-10 text-center text-slate-400">
-                    <Shield className="w-8 h-8 text-slate-300 mb-2" />
-                    <p className="text-xs font-semibold text-slate-600">No Team Leaders Added Yet</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Use "Add New Employee" to register a Team Leader.</p>
-                  </div>
-                ) : (
-                  paginatedTeamLeaders.map((tl) => {
-                    const userTodayLogs = timeLogs.filter((l) => l.userId === tl.id && l.date === anchorDate);
-                    const userTotalSec = userTodayLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
-                    const latestLog = userTodayLogs[0] || timeLogs.find((l) => l.userId === tl.id);
-                    const avgAct = userTodayLogs.length > 0
-                      ? Math.round(userTodayLogs.reduce((acc, l) => acc + (l.mouseActivityAvg + l.keyboardActivityAvg) / 2, 0) / userTodayLogs.length)
-                      : 0;
-
-                    return (
-                      <div
-                        key={tl.id}
-                        className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="relative">
-                            <UserAvatar
-                              name={tl.name}
-                              role={tl.role}
-                              size="lg"
-                            />
-                            <span
-                              className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-white ${userTodayLogs.length > 0 ? 'bg-emerald-500' : 'bg-slate-400'}`}
-                              title={userTodayLogs.length > 0 ? 'Active Today' : 'Offline'}
-                            />
-                          </div>
-                          <div>
-                            <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                              <span>{tl.name}</span>
-                              <span className="bg-amber-50 border border-amber-200 text-amber-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
-                                Team Lead
-                              </span>
-                            </div>
-                            <div className="text-xs text-slate-500 font-medium">
-                              Active Task: <strong className="text-slate-800">{latestLog?.task || 'No Active Task / Offline'}</strong>
-                            </div>
-                            <div className="text-[11px] text-slate-400 mt-0.5">
-                              App Window: <span className="font-mono">{latestLog?.appsUsed?.[0]?.appName || 'None'}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="text-left sm:text-right text-xs shrink-0 bg-slate-50 sm:bg-transparent p-2 sm:p-0 rounded-lg w-full sm:w-auto">
-                          <div className="text-emerald-700 font-extrabold flex items-center sm:justify-end gap-1">
-                            <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>{(userTotalSec / 3600).toFixed(1)}h Today</span>
-                          </div>
-                          <div className="text-[10px] text-slate-500 mt-0.5">
-                            Keyboard & Mouse: <strong className="text-slate-800">{avgAct}% Avg Activity</strong>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* Team Leaders Pagination Controls */}
-            {teamLeaders.length > 0 && (
-              <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 font-medium">
-                <span>
-                  Page {safeTLPage} of {totalTeamLeadPages} ({teamLeaders.length} Team Leaders)
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    disabled={safeTLPage <= 1}
-                    onClick={() => setTeamLeadersPage((p) => Math.max(1, p - 1))}
-                    className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    title="Previous Page"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    disabled={safeTLPage >= totalTeamLeadPages}
-                    onClick={() => setTeamLeadersPage((p) => Math.min(totalTeamLeadPages, p + 1))}
-                    className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    title="Next Page"
-                  >
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Sub-section 2: Agents & Staff Status (Paginated 5 per page) */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3 flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-blue-600" /> Agents & Staff ({agentsAndStaff.length})
-                </h4>
-                <span className="text-[10px] font-bold text-slate-500">Operational Activity</span>
-              </div>
-
-              <div className="space-y-2.5 min-h-[200px]">
-                {agentsAndStaff.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center py-10 text-center text-slate-400">
-                    <Users className="w-8 h-8 text-slate-300 mb-2" />
-                    <p className="text-xs font-semibold text-slate-600">No Agents or Trainers Added Yet</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Click "Add New Employee" to start onboarding team members.</p>
-                  </div>
-                ) : (
-                  paginatedAgentsStaff.map((st) => {
-                    const userTodayLogs = timeLogs.filter((l) => l.userId === st.id && l.date === anchorDate);
-                    const userTotalSec = userTodayLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
-                    const latestLog = userTodayLogs[0] || timeLogs.find((l) => l.userId === st.id);
-                    const avgAct = userTodayLogs.length > 0
-                      ? Math.round(userTodayLogs.reduce((acc, l) => acc + (l.mouseActivityAvg + l.keyboardActivityAvg) / 2, 0) / userTodayLogs.length)
-                      : 0;
-
-                    return (
-                      <div
-                        key={st.id}
-                        className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="relative">
-                            <UserAvatar
-                              name={st.name}
-                              role={st.role}
-                              size="lg"
-                            />
-                            <span
-                              className={`absolute bottom-0 right-0 w-3 h-3 rounded-full ring-2 ring-white ${userTodayLogs.length > 0 ? 'bg-emerald-500' : 'bg-slate-400'}`}
-                              title={userTodayLogs.length > 0 ? 'Active Today' : 'Offline'}
-                            />
-                          </div>
-                          <div>
-                            <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                              <span>{st.name}</span>
-                              <span className="bg-blue-50 border border-blue-200 text-blue-800 px-2 py-0.5 rounded text-[10px] font-bold uppercase">
-                                {st.role === 'trainer' ? 'Trainer' : 'Agent'}
-                              </span>
-                            </div>
-                            <div className="text-xs text-slate-500 font-medium">
-                              Active Task: <strong className="text-slate-800">{latestLog?.task || 'No Active Task / Offline'}</strong>
-                            </div>
-                            <div className="text-[11px] text-slate-400 mt-0.5">
-                              App Window: <span className="font-mono">{latestLog?.appsUsed?.[0]?.appName || 'None'}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="text-left sm:text-right text-xs shrink-0 bg-slate-50 sm:bg-transparent p-2 sm:p-0 rounded-lg w-full sm:w-auto">
-                          <div className="text-emerald-700 font-extrabold flex items-center sm:justify-end gap-1">
-                            <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>{(userTotalSec / 3600).toFixed(1)}h Today</span>
-                          </div>
-                          <div className="text-[10px] text-slate-500 mt-0.5">
-                            Keyboard & Mouse: <strong className="text-slate-800">{avgAct}% Avg Activity</strong>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* Agents & Staff Pagination Controls */}
-            {agentsAndStaff.length > 0 && (
-              <div className="pt-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 font-medium">
-                <span>
-                  Page {safeAgentsPage} of {totalAgentsPages} ({agentsAndStaff.length} Agents)
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    disabled={safeAgentsPage <= 1}
-                    onClick={() => setAgentsStaffPage((p) => Math.max(1, p - 1))}
-                    className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    title="Previous Page"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    disabled={safeAgentsPage >= totalAgentsPages}
-                    onClick={() => setAgentsStaffPage((p) => Math.min(totalAgentsPages, p + 1))}
-                    className="p-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                    title="Next Page"
-                  >
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Live Agent Sessions, Real-Time Task Tracker & Headcount Graphs */}
+      <LiveAgentTasksBoard
+        title="Live Agent Sessions & Real-Time Task Tracker"
+        description="Real-time live monitoring of what each agent is doing right now (Data Entry, Email Reachout, Inbound Calls, QA Review), with live agent headcount graphs and task breakdown analytics per day, week, and month."
+        showAnalyticsTabs={true}
+      />
 
       {/* Analytics Charts with Date Range & Timeframe Pickers */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1072,7 +855,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                 <th className="py-3 px-4">Role & Designation</th>
                 <th className="py-3 px-4">Assigned Team Lead</th>
                 <th className="py-3 px-4">Date Hired</th>
-                {currentUser.role !== 'va_admin' && (
+                {currentUser.role === 'admin' && (
                   <>
                     <th className="py-3 px-4 text-center">Screenshot Monitor</th>
                     <th className="py-3 px-4 text-center">Activity Monitor</th>
@@ -1183,7 +966,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                       {usr.joinDate || '2024-01-15'}
                     </td>
 
-                    {currentUser.role !== 'va_admin' && (
+                    {currentUser.role === 'admin' && (
                       <>
                         {/* Screenshot Monitor */}
                         <td className="py-3.5 px-4 text-center">

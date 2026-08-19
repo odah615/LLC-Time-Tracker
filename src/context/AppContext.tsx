@@ -80,7 +80,14 @@ interface AppContextType {
   loginMode: 'webapp' | 'software';
   setLoginMode: (mode: 'webapp' | 'software') => void;
   login: (user: User, mode?: 'webapp' | 'software') => void;
-  logout: () => void;
+  logout: (reason?: string) => void;
+  // Web Session Auto-Logout (10-minute Inactivity Timer for WebApp with 5-minute warning)
+  webSessionRemainingSeconds: number;
+  isSessionWarningActive: boolean;
+  webSessionWarningCountdown: number;
+  refreshWebSession: () => void;
+  sessionExpiredReason: string | null;
+  clearSessionExpiredReason: () => void;
   // Timer state
   isTracking: boolean;
   isPaused: boolean;
@@ -745,6 +752,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return localStorage.getItem('trackpulse_login_mode') === 'software';
   });
 
+  // 10-Minute Web Session Inactivity Auto-Logout Engine with 5-Minute Inactivity Warning Trigger
+  const WEB_SESSION_TOTAL_TIMEOUT_SECONDS = 600; // 10 minutes total = 600 seconds
+  const WEB_SESSION_WARNING_THRESHOLD_SECONDS = 300; // 5 minutes inactivity triggers countdown warning
+
+  const [webSessionRemainingSeconds, setWebSessionRemainingSeconds] = useState<number>(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
+  const [isSessionWarningActive, setIsSessionWarningActive] = useState<boolean>(false);
+  const [webSessionWarningCountdown, setWebSessionWarningCountdown] = useState<number>(300); // 300s -> 0s
+  const [sessionExpiredReason, setSessionExpiredReason] = useState<string | null>(() => {
+    return localStorage.getItem('trackpulse_session_expired_reason');
+  });
+  const clearSessionExpiredReason = useCallback(() => {
+    setSessionExpiredReason(null);
+    localStorage.removeItem('trackpulse_session_expired_reason');
+  }, []);
+
+  const lastWebActivityTimestampRef = useRef<number>(Date.now());
+
+  const refreshWebSession = useCallback(() => {
+    lastWebActivityTimestampRef.current = Date.now();
+    setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
+    setIsSessionWarningActive(false);
+    setWebSessionWarningCountdown(300);
+  }, []);
+
   const login = (user: User, mode: 'webapp' | 'software' = 'webapp') => {
     setCurrentUser(user);
     setIsAuthenticated(true);
@@ -752,6 +783,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsDesktopDockView(mode === 'software');
     localStorage.setItem('trackpulse_auth', 'true');
     localStorage.setItem('trackpulse_login_mode', mode);
+    localStorage.removeItem('trackpulse_session_expired_reason');
+    setSessionExpiredReason(null);
+    lastWebActivityTimestampRef.current = Date.now();
+    setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
+    setIsSessionWarningActive(false);
+    setWebSessionWarningCountdown(300);
 
     const now = new Date();
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -772,7 +809,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
   };
 
-  const logout = () => {
+  const logout = (reason?: string) => {
     if (currentUser) {
       const now = new Date();
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -785,15 +822,101 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         actorName: currentUser.name,
         actorRole: currentUser.role,
         category: 'Logout',
-        details: `User signed out of LLC Time Tracker.`,
+        details: reason ? `User signed out of LLC Time Tracker (${reason}).` : `User signed out of LLC Time Tracker.`,
       };
       const updatedAudit = [logoutLog, ...auditLogs];
       setAuditLogs(updatedAudit);
       triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
     }
     setIsAuthenticated(false);
+    setIsSessionWarningActive(false);
     localStorage.removeItem('trackpulse_auth');
   };
+
+  // WebApp Inactivity Auto-Logout Effect:
+  // - 0 to 5 minutes inactive: Normal working state
+  // - 5 to 10 minutes inactive: Triggers countdown warning (5:00 down to 0:00)
+  // - At 10 minutes inactive: Automatic logout on webapp (Desktop Software is exempt)
+  useEffect(() => {
+    if (!isAuthenticated || loginMode !== 'webapp') return;
+
+    lastWebActivityTimestampRef.current = Date.now();
+    setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
+    setIsSessionWarningActive(false);
+    setWebSessionWarningCountdown(300);
+
+    const handleWebUserActivity = () => {
+      lastWebActivityTimestampRef.current = Date.now();
+      setIsSessionWarningActive(false);
+      setWebSessionWarningCountdown(300);
+      setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
+    };
+
+    // Attach interaction listeners to reset the timer on any user action
+    window.addEventListener('mousemove', handleWebUserActivity, { passive: true });
+    window.addEventListener('mousedown', handleWebUserActivity, { passive: true });
+    window.addEventListener('keydown', handleWebUserActivity, { passive: true });
+    window.addEventListener('touchstart', handleWebUserActivity, { passive: true });
+    window.addEventListener('scroll', handleWebUserActivity, { passive: true });
+    window.addEventListener('click', handleWebUserActivity, { passive: true });
+    window.addEventListener('wheel', handleWebUserActivity, { passive: true });
+
+    const intervalId = setInterval(() => {
+      const elapsedInactiveSeconds = Math.floor((Date.now() - lastWebActivityTimestampRef.current) / 1000);
+      const remainingTotal = Math.max(0, WEB_SESSION_TOTAL_TIMEOUT_SECONDS - elapsedInactiveSeconds);
+      setWebSessionRemainingSeconds(remainingTotal);
+
+      // Check if user has reached 5 minutes of inactivity
+      if (elapsedInactiveSeconds >= WEB_SESSION_WARNING_THRESHOLD_SECONDS && remainingTotal > 0) {
+        setIsSessionWarningActive(true);
+        setWebSessionWarningCountdown(remainingTotal);
+      } else if (elapsedInactiveSeconds < WEB_SESSION_WARNING_THRESHOLD_SECONDS) {
+        setIsSessionWarningActive(false);
+        setWebSessionWarningCountdown(300);
+      }
+
+      if (remainingTotal <= 0) {
+        // Auto-logout user on Web Portal after 10 full minutes of inactivity
+        setIsSessionWarningActive(false);
+        const now = new Date();
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const dateFormatted = `${monthNames[now.getMonth()]} ${now.getDate().toString().padStart(2, '0')}, ${now.getFullYear()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+        
+        const timeoutLog: AuditLog = {
+          id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          timestamp: now.toISOString(),
+          dateFormatted,
+          actorId: currentUser.id,
+          actorName: currentUser.name,
+          actorRole: currentUser.role,
+          category: 'Logout',
+          details: `Session expired: 10-minute web inactivity timeout. ${currentUser.name} automatically signed out of LLC Web Portal.`,
+        };
+
+        setAuditLogs((prev) => {
+          const updated = [timeoutLog, ...prev];
+          triggerAutoSync(users, timeLogs, updated, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
+          return updated;
+        });
+
+        localStorage.setItem('trackpulse_session_expired_reason', 'inactivity_10min');
+        setSessionExpiredReason('inactivity_10min');
+        setIsAuthenticated(false);
+        localStorage.removeItem('trackpulse_auth');
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('mousemove', handleWebUserActivity);
+      window.removeEventListener('mousedown', handleWebUserActivity);
+      window.removeEventListener('keydown', handleWebUserActivity);
+      window.removeEventListener('touchstart', handleWebUserActivity);
+      window.removeEventListener('scroll', handleWebUserActivity);
+      window.removeEventListener('click', handleWebUserActivity);
+      window.removeEventListener('wheel', handleWebUserActivity);
+    };
+  }, [isAuthenticated, loginMode, currentUser, users, timeLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, triggerAutoSync]);
 
   // Live Activity Hardware & Window Focus Detection
   const [currentMouseActivity, setCurrentMouseActivity] = useState(0);
@@ -2056,6 +2179,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setLoginMode,
         login,
         logout,
+        webSessionRemainingSeconds,
+        isSessionWarningActive,
+        webSessionWarningCountdown,
+        refreshWebSession,
+        sessionExpiredReason,
+        clearSessionExpiredReason,
         isTracking,
         isPaused,
         currentDesignation,

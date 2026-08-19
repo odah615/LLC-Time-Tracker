@@ -321,6 +321,20 @@ export const ActivityLogsView: React.FC = () => {
     }
   }, [filteredScreenshots]);
 
+  if (currentUser.role !== 'admin') {
+    return (
+      <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center max-w-xl mx-auto my-12 shadow-sm space-y-4">
+        <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto border border-amber-200 shadow-sm">
+          <Shield className="w-8 h-8" />
+        </div>
+        <h3 className="text-xl font-bold text-slate-900">SuperAdmin Authorization Required</h3>
+        <p className="text-sm text-slate-500 leading-relaxed">
+          The Screenshot Vault and Activity Monitor Controls are strictly confidential and restricted to SuperAdmin personnel only.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div id="activity-logs-view" className="space-y-6">
       {/* Top Header */}

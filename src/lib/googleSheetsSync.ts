@@ -409,11 +409,17 @@ function doPost(e) {
         logoutSheet.setFrozenRows(1);
 
         var logoutEvents = auditLogs.filter(function(l) {
-          return l.category === 'Logout' || (l.details && l.details.toLowerCase().indexOf('signed out') !== -1);
+          return l.category === 'Logout' || (l.details && (l.details.toLowerCase().indexOf('signed out') !== -1 || l.details.toLowerCase().indexOf('session') !== -1 || l.details.toLowerCase().indexOf('inactivity') !== -1));
         });
 
         logoutEvents.forEach(function(l) {
           var matchedUser = userMap[l.actorId] || userMap[l.actorName] || {};
+          var eventType = 'Manual Sign Out (Web Portal)';
+          if (l.details && (l.details.toLowerCase().indexOf('10-minute') !== -1 || l.details.toLowerCase().indexOf('timeout') !== -1)) {
+            eventType = '10-Min Inactivity Auto-Logout (Web)';
+          } else if (l.details && l.details.toLowerCase().indexOf('desktop') !== -1) {
+            eventType = 'Desktop Software Sign Out';
+          }
           logoutSheet.appendRow([
             l.id,
             l.timestamp,
@@ -422,7 +428,7 @@ function doPost(e) {
             l.actorName,
             l.actorRole || matchedUser.role || 'agent',
             matchedUser.designation || 'Sales Agent',
-            'Manual Sign Out / Shift End',
+            eventType,
             l.details || 'User signed out of LLC Time Tracker.',
             'Logged Out (Complete)'
           ]);

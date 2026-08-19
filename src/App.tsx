@@ -15,6 +15,7 @@ import { PayrollView } from './components/views/PayrollView';
 import { LeaveRequestsView } from './components/views/LeaveRequestsView';
 import { AuditLogsView } from './components/views/AuditLogsView';
 import { TaskSwitchModal } from './components/modals/TaskSwitchModal';
+import { InactivityWarningModal } from './components/modals/InactivityWarningModal';
 import { ManualTimeModal } from './components/modals/ManualTimeModal';
 import { LeaveModal } from './components/modals/LeaveModal';
 import { EmployeeCrudModal } from './components/modals/EmployeeCrudModal';
@@ -182,7 +183,13 @@ const MainAppContent: React.FC = () => {
         {activeTab === 'my_timesheet' && (
           <TimesheetView onOpenManualModal={() => setIsManualModalOpen(true)} isPersonalOnly={true} />
         )}
-        {activeTab === 'activity' && <ActivityLogsView />}
+        {activeTab === 'activity' && (
+          currentUser.role === 'admin' ? (
+            <ActivityLogsView />
+          ) : (
+            renderDashboardByRole()
+          )
+        )}
         {activeTab === 'employees' && (
           <EmployeeDetailsView
             onOpenAddUserModal={handleOpenAddUser}
@@ -200,6 +207,7 @@ const MainAppContent: React.FC = () => {
 
       {/* Confirmation & Entry Modals */}
       <TaskSwitchModal />
+      <InactivityWarningModal />
       <ManualTimeModal
         isOpen={isManualModalOpen}
         onClose={() => setIsManualModalOpen(false)}

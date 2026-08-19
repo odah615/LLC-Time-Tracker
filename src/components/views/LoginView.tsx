@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 export const LoginView: React.FC = () => {
-  const { users, login, updateUser, addAuditLog } = useApp();
+  const { users, login, updateUser, addAuditLog, sessionExpiredReason, clearSessionExpiredReason } = useApp();
 
   // Detect if running inside the Standalone Software App (.exe / Electron) vs Web Browser
   const isSoftwareEnv = typeof window !== 'undefined' && (
@@ -412,6 +412,22 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
               </p>
             </div>
           </div>
+
+          {sessionExpiredReason === 'inactivity_10min' && (
+            <div className="mb-5 p-3.5 rounded-xl bg-amber-950/80 border border-amber-600/80 text-amber-200 text-xs font-medium flex items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Your Web Portal session expired after <strong>10 minutes of inactivity</strong>. Please sign in again to continue.</span>
+              </div>
+              <button
+                type="button"
+                onClick={clearSessionExpiredReason}
+                className="text-amber-400 hover:text-amber-200 text-[10px] font-bold underline px-1"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {errorMsg && (
             <div className="mb-5 p-3.5 rounded-xl bg-red-950/80 border border-red-700/80 text-red-200 text-xs font-medium flex items-center gap-2.5">
