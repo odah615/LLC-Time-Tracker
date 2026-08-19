@@ -19,6 +19,9 @@ import {
   AlertTriangle,
   RotateCcw,
   X,
+  WifiOff,
+  RefreshCw,
+  ShieldAlert,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -53,9 +56,21 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
     formatDuration,
     isDesktopDockView,
     setIsDesktopDockView,
+    isOffline,
+    offlineSecondsRemaining,
+    offlineStatusStage,
+    retryConnection,
+    designationList,
+    getTasksForDesignation,
   } = useApp();
 
   const isFloatingDock = isDesktopDockView && !isFullPage;
+  const isCriticalOffline = offlineStatusStage === 'critical_countdown';
+  const offlineMins = Math.floor(offlineSecondsRemaining / 60);
+  const offlineSecs = offlineSecondsRemaining % 60;
+  const offlineFormatted = `${offlineMins}m ${offlineSecs.toString().padStart(2, '0')}s`;
+
+  const availableTasks = getTasksForDesignation(currentDesignation);
 
   // Compute today's total extension / deductions for current user
   const todayStr = new Date().toISOString().split('T')[0];
@@ -110,6 +125,63 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
         </div>
       </div>
 
+      {/* Offline Internet Grace Period Alert Banner */}
+      {isOffline && (
+        <div
+          className={`mb-4 rounded-xl p-3.5 flex items-start gap-3 border shadow-sm ${
+            isCriticalOffline
+              ? 'bg-rose-950/90 border-rose-600/90 text-rose-100'
+              : 'bg-amber-950/90 border-amber-600/90 text-amber-100'
+          }`}
+        >
+          <div
+            className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+              isCriticalOffline ? 'bg-rose-600 text-white animate-pulse' : 'bg-amber-600 text-white'
+            }`}
+          >
+            {isCriticalOffline ? <ShieldAlert className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+          </div>
+          <div className="flex-1 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-bold text-white">
+                {isCriticalOffline ? '🚨 Critical Offline Limit Active' : '⚠️ Internet Disconnected'}
+              </span>
+              <span
+                className={`px-2 py-0.2 rounded-full font-mono font-bold text-[10px] border ${
+                  isCriticalOffline
+                    ? 'bg-rose-500/30 text-rose-200 border-rose-400/40 animate-pulse'
+                    : 'bg-amber-500/30 text-amber-200 border-amber-400/40'
+                }`}
+              >
+                {offlineFormatted} Remaining
+              </span>
+              {isTracking && (
+                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded text-[10px] font-bold">
+                  Tracking locally
+                </span>
+              )}
+            </div>
+            <p className={`mt-1 leading-relaxed ${isCriticalOffline ? 'text-rose-200' : 'text-amber-200/90'}`}>
+              {isCriticalOffline
+                ? `You have ${offlineFormatted} remaining before your shift is automatically stopped and logged out to prevent unverified hours. Please restore WiFi or connect to mobile hotspot now.`
+                : `Internet connection dropped. You have a 30-minute grace window (${offlineFormatted} remaining) to connect to backup WiFi or mobile hotspot. Your hours are safely tracking locally.`}
+            </p>
+          </div>
+          <button
+            onClick={() => retryConnection()}
+            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 shrink-0 shadow-sm transition-all ${
+              isCriticalOffline
+                ? 'bg-rose-600 hover:bg-rose-500 text-white'
+                : 'bg-amber-600 hover:bg-amber-500 text-white'
+            }`}
+            title="Check connection status"
+          >
+            <RefreshCw className="w-3 h-3" />
+            <span>Check</span>
+          </button>
+        </div>
+      )}
+
       {/* Idle Inactivity Alert Banner */}
       {isIdleAlertActive && (
         <div className="mb-4 bg-amber-500/15 border border-amber-500/40 rounded-xl p-3.5 flex items-start gap-3">
@@ -161,7 +233,7 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
               disabled={currentUser.role === 'agent'}
               className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-semibold disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed disabled:border-slate-200"
             >
-              {DESIGNATION_LIST.map((desig) => (
+              {designationList.map((desig) => (
                 <option key={desig} value={desig}>
                   {desig}
                 </option>
@@ -173,14 +245,14 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Select Current Task</span>
+              <span>Select Current Task ({availableTasks.length})</span>
             </label>
             <select
               value={currentTask}
               onChange={(e) => selectTaskWithPrompt(e.target.value as any)}
               className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all font-semibold"
             >
-              {TASK_LIST.map((task) => (
+              {availableTasks.map((task) => (
                 <option key={task} value={task}>
                   {task}
                 </option>
@@ -192,7 +264,7 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
         {/* Quick Task Switcher Chips */}
         <div>
           <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-            <span className="font-semibold text-slate-700">Quick Task Switcher:</span>
+            <span className="font-semibold text-slate-700">Quick Task Switcher ({currentDesignation}):</span>
             {isTracking && (
               <span className="text-[11px] text-amber-600 font-medium flex items-center gap-1 animate-pulse">
                 <Sparkles className="w-3 h-3" /> Click any task to switch
@@ -200,7 +272,7 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
             )}
           </div>
           <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
-            {TASK_LIST.map((task) => {
+            {availableTasks.map((task) => {
               const isSelected = task === currentTask;
               return (
                 <button

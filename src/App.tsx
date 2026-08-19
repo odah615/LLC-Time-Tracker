@@ -19,6 +19,7 @@ import { InactivityWarningModal } from './components/modals/InactivityWarningMod
 import { ManualTimeModal } from './components/modals/ManualTimeModal';
 import { LeaveModal } from './components/modals/LeaveModal';
 import { EmployeeCrudModal } from './components/modals/EmployeeCrudModal';
+import { OfflineBanner } from './components/OfflineBanner';
 import { User } from './types';
 import { Shield, Clock, Heart, Globe, Laptop, LogOut, Maximize2, Sparkles, ExternalLink } from 'lucide-react';
 
@@ -52,6 +53,11 @@ const MainAppContent: React.FC = () => {
   if (isDesktopDockView) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 relative font-sans">
+        {/* Offline Grace Period Alert Banner */}
+        <div className="w-full max-w-2xl mb-4">
+          <OfflineBanner />
+        </div>
+
         {/* Top Software Bar */}
         <div className="max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-2xl mb-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -170,6 +176,9 @@ const MainAppContent: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Offline Grace Period Alert Banner */}
+      <OfflineBanner />
 
       {/* Header with Navigation & World Clock Bar */}
       <Header activeTab={activeTab} setActiveTab={setActiveTab} />

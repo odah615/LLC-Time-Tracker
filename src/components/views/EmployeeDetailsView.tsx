@@ -477,7 +477,7 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
                       {/* System Role */}
                       <td className="py-3.5 px-4">
                         <span className="bg-purple-50 border border-purple-200 text-purple-800 px-2 py-0.5 rounded font-bold uppercase text-[10px]">
-                          {usr.role === 'admin' ? 'Admin' : usr.role === 'team_leader' || usr.role === 'team_lead' ? 'Team Lead' : usr.role === 'trainer' ? 'Trainer' : usr.role === 'hr' ? 'HR' : usr.role === 'payroll' ? 'Payroll' : 'Employee'}
+                          {usr.role === 'admin' ? 'Admin' : usr.role === 'team_leader' || usr.role === 'team_lead' ? 'Team Leader' : usr.role === 'trainer' ? 'Trainer' : usr.role === 'qa' ? 'QA Specialist' : usr.role === 'writer' ? 'Writer' : usr.role === 'hr' ? 'HR' : usr.role === 'payroll' ? 'Payroll Officer' : 'Agent'}
                         </span>
                       </td>
 

@@ -16,14 +16,14 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
   onClose,
   editingUser,
 }) => {
-  const { users, addUser, updateUser, currentUser, addAuditLog } = useApp();
+  const { users, addUser, updateUser, currentUser, addAuditLog, designationList } = useApp();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<UserRole>('agent');
-  const [designation, setDesignation] = useState<Designation>('Sales Agent');
+  const [designation, setDesignation] = useState<string>('Agent');
   const [monthlyRate, setMonthlyRate] = useState(23000);
   const [geoCity, setGeoCity] = useState('Manila, Philippines');
   const [geoTimezone, setGeoTimezone] = useState('Asia/Manila');
@@ -67,7 +67,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
       setEmail('');
       setPassword('Password123!');
       setRole('agent');
-      setDesignation('Sales Agent');
+      setDesignation('Agent');
       setMonthlyRate(23000);
       setGeoCity('Manila, Philippines');
       setGeoTimezone('Asia/Manila');
@@ -272,10 +272,14 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
                 onChange={(e) => {
                   const newRole = e.target.value as UserRole;
                   setRole(newRole);
-                  if (newRole === 'agent') setDesignation('Sales Agent');
-                  else if (newRole === 'team_lead') setDesignation('Team Lead');
+                  if (newRole === 'agent') setDesignation('Agent');
+                  else if (newRole === 'team_lead') setDesignation('Team Leader');
                   else if (newRole === 'trainer') setDesignation('Trainer');
-                  else if (newRole === 'va_admin') setDesignation('VA Operations Admin');
+                  else if (newRole === 'qa') setDesignation('QA Specialist');
+                  else if (newRole === 'writer') setDesignation('Writer');
+                  else if (newRole === 'hr') setDesignation('HR');
+                  else if (newRole === 'payroll') setDesignation('Payroll Officer');
+                  else if (newRole === 'va_admin') setDesignation('Admin');
                   else if (newRole === 'admin') setDesignation('Admin');
                 }}
                 className={`w-full border rounded-xl p-2.5 font-medium transition-all ${
@@ -287,6 +291,10 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
                 <option value="agent">Agent</option>
                 <option value="team_lead">Team Leader</option>
                 <option value="trainer">Trainer</option>
+                <option value="qa">QA Specialist</option>
+                <option value="writer">Writer</option>
+                <option value="hr">HR</option>
+                <option value="payroll">Payroll Officer</option>
                 <option value="va_admin">VA Admin</option>
                 <option value="admin">Main Admin</option>
               </select>
@@ -308,14 +316,14 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
               <select
                 value={isEditingSuperAdmin ? 'Admin' : designation}
                 disabled={isEditingSuperAdmin}
-                onChange={(e) => setDesignation(e.target.value as Designation)}
+                onChange={(e) => setDesignation(e.target.value)}
                 className={`w-full border rounded-xl p-2.5 font-medium transition-all ${
                   isEditingSuperAdmin
                     ? 'bg-slate-100/90 border-slate-300 text-slate-500 cursor-not-allowed select-none shadow-none font-bold'
                     : 'bg-slate-50 border-slate-200 text-slate-800 focus:ring-2 focus:ring-blue-500'
                 }`}
               >
-                {DESIGNATION_LIST.map((d) => (
+                {designationList.map((d) => (
                   <option key={d} value={d}>
                     {d}
                   </option>

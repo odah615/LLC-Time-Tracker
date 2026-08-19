@@ -1,30 +1,29 @@
-export type UserRole = 'agent' | 'team_lead' | 'trainer' | 'hr' | 'payroll' | 'admin' | 'va_admin';
+export type UserRole = 'agent' | 'team_lead' | 'trainer' | 'hr' | 'payroll' | 'admin' | 'va_admin' | 'qa' | 'writer';
 
 export type Designation =
-  | 'Sales Agent'
-  | 'QA Specialist'
+  | 'Agent'
+  | 'Team Leader'
   | 'Trainer'
-  | 'Team Lead'
   | 'Admin'
-  | 'VA Operations Admin'
-  | 'Customer Support'
-  | 'Data Entry Specialist'
-  | 'HR Specialist'
-  | 'Payroll Officer';
+  | 'QA Specialist'
+  | 'Writer'
+  | 'HR'
+  | 'Payroll Officer'
+  | string;
 
-export type TaskCategory =
-  | 'Data Entry & Market Research'
-  | 'Email Reachout'
-  | 'Follow-up'
-  | 'Training'
-  | 'Team Meeting'
-  | 'Coaching'
-  | 'Escalation Resolution'
-  | 'QA Review'
-  | 'System Operations'
-  | 'HR & Recruitment'
-  | 'Payroll Audit & Processing'
-  | 'Team Supervision';
+export type TaskCategory = string;
+
+export interface RolePermissions {
+  canEditEmployees: boolean; // CRUD create/edit/delete employee profiles
+  canAssignTeamLeader: boolean; // Assign or reassign Team Leader to team members
+  canViewActivityLogs: boolean; // View employee hardware activity timeline & window titles
+  canViewScreenshots: boolean; // View employee visual desktop screenshot captures
+  canViewTimesheets: boolean; // View, audit and approve employee timesheets
+  canViewPayroll: boolean; // View payroll calculations, rates, and compensation
+  canManageTasks: boolean; // Add/edit designations and task categories
+  canManageRoles: boolean; // Master permission control (Super Admin)
+  canSyncSheets: boolean; // Manage Google Apps Script & webhook database sync
+}
 
 export interface User {
   id: string;
@@ -49,6 +48,7 @@ export interface User {
   isSecretBackup?: boolean; // Hidden emergency backup admin account (does not appear in public lists)
   password?: string; // Account password
   mustChangePassword?: boolean; // If true, requires user to change password on first login
+  customPermissions?: Partial<RolePermissions>; // Optional user-level permission overrides
 }
 
 export interface WorldClockItem {

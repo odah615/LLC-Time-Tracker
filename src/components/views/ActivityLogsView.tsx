@@ -433,16 +433,9 @@ export const ActivityLogsView: React.FC = () => {
                   return (
                     <tr key={usr.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={usr.avatar}
-                            alt={usr.name}
-                            className="w-9 h-9 rounded-full object-cover border border-slate-200"
-                          />
-                          <div>
-                            <div className="font-bold text-slate-900">{usr.name}</div>
-                            <div className="text-[11px] text-slate-500 font-mono">{usr.employeeCode || 'LLC-0001'}</div>
-                          </div>
+                        <div>
+                          <div className="font-bold text-slate-900">{usr.name}</div>
+                          <div className="text-[11px] text-slate-500 font-mono">{usr.employeeCode || 'LLC-0001'}</div>
                         </div>
                       </td>
 

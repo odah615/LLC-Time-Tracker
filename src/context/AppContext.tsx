@@ -15,6 +15,7 @@ import {
   UserPresence,
   DailyAttendanceLog,
   PasswordResetRequest,
+  RolePermissions,
 } from '../types';
 import { doc, setDoc, deleteDoc, onSnapshot, collection } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -36,6 +37,8 @@ import {
   INITIAL_AUDIT_LOGS,
   TASK_LIST,
   DESIGNATION_LIST,
+  DEFAULT_DESIGNATION_TASKS,
+  DEFAULT_ROLE_PERMISSIONS,
 } from '../data/initialData';
 
 /**
@@ -88,6 +91,13 @@ interface AppContextType {
   refreshWebSession: () => void;
   sessionExpiredReason: string | null;
   clearSessionExpiredReason: () => void;
+  // Offline Connection Loss & 30-Minute Grace Period Engine
+  isOffline: boolean;
+  offlineSinceTimestamp: number | null;
+  offlineSecondsRemaining: number;
+  offlineStatusStage: 'online' | 'warning_5m' | 'critical_countdown' | 'timeout';
+  retryConnection: () => Promise<boolean>;
+  simulateOfflineToggle: () => void;
   // Timer state
   isTracking: boolean;
   isPaused: boolean;
@@ -163,6 +173,19 @@ interface AppContextType {
   addWorldClock: (clock: Omit<WorldClockItem, 'id'>) => void;
   deleteWorldClock: (id: string) => void;
   resetDatabaseToFreshState: () => Promise<void>;
+  // Designation & Task Management (Super Admin & Admin)
+  designationTasks: Record<string, string[]>;
+  designationList: string[];
+  getTasksForDesignation: (designation?: string) => string[];
+  addDesignation: (name: string, initialTasks?: string[]) => void;
+  deleteDesignation: (name: string) => void;
+  addTaskToDesignation: (designation: string, taskName: string) => void;
+  removeTaskFromDesignation: (designation: string, taskName: string) => void;
+  // Role & View Access Permissions (Super Admin & Admin)
+  rolePermissions: Record<string, RolePermissions>;
+  updateRolePermission: (roleKey: string, permissionKey: keyof RolePermissions, value: boolean) => void;
+  updateUserCustomPermission: (userId: string, permissionKey: keyof RolePermissions, value: boolean) => void;
+  hasPermission: (permissionKey: keyof RolePermissions, targetUser?: User) => boolean;
   // Helpers
   formatDuration: (totalSec: number) => string;
 }
@@ -349,6 +372,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : INITIAL_WORLD_CLOCKS;
   });
 
+  // Custom Designation & Tasks Management State
+  const [designationTasks, setDesignationTasks] = useState<Record<string, string[]>>(() => {
+    const saved = localStorage.getItem('trackpulse_designation_tasks');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          return { ...DEFAULT_DESIGNATION_TASKS, ...parsed };
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
+    return DEFAULT_DESIGNATION_TASKS;
+  });
+
+  // Granular Role & Designation Access Permissions State
+  const [rolePermissions, setRolePermissions] = useState<Record<string, RolePermissions>>(() => {
+    const saved = localStorage.getItem('trackpulse_role_permissions');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          return { ...DEFAULT_ROLE_PERMISSIONS, ...parsed };
+        }
+      } catch (e) {
+        // fallback
+      }
+    }
+    return DEFAULT_ROLE_PERMISSIONS;
+  });
+
   const [saveToast, setSaveToast] = useState<string | null>(null);
 
   const [googleSheetsWebhookUrl, setGoogleSheetsWebhookUrlState] = useState<string>(() => {
@@ -377,7 +432,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedPayroll = payrollRecords,
       updatedAttendance = dailyAttendanceLogs,
       updatedIdle = idleLogs,
-      updatedLeaves = leaveRequests
+      updatedLeaves = leaveRequests,
+      updatedDesignationTasks = designationTasks
     ) => {
       const activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
       if (activeUrl && activeUrl.trim()) {
@@ -389,11 +445,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           updatedPayroll,
           updatedAttendance,
           updatedIdle,
-          updatedLeaves
+          updatedLeaves,
+          updatedDesignationTasks
         ).catch((err) => console.warn('Auto-sync to Google Sheets warning:', err));
       }
     },
-    [googleSheetsWebhookUrl, users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests]
+    [googleSheetsWebhookUrl, users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks]
   );
 
   const triggerGoogleSheetsSync = async (overrideUrl?: string): Promise<{ success: boolean; message: string }> => {
@@ -411,10 +468,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       payrollRecords,
       dailyAttendanceLogs,
       idleLogs,
-      leaveRequests
+      leaveRequests,
+      designationTasks
     );
     if (res.success) {
-      setSaveToast(`✓ Synced all 8 Sheets to Google Sheets Database successfully!`);
+      setSaveToast(`✓ Synced all Database Tabs (including Designation Tasks) to Google Sheets!`);
     } else {
       setSaveToast(`⚠️ Google Sheets Sync: ${res.message}`);
     }
@@ -735,12 +793,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Active Timer state
   const [isTracking, setIsTracking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [currentDesignation, setCurrentDesignation] = useState<Designation>(currentUser.designation || 'Sales Agent');
+  const [currentDesignation, setCurrentDesignation] = useState<Designation>(currentUser.designation || 'Agent');
 
   // Automatically sync currentDesignation with active currentUser profile
   useEffect(() => {
     if (currentUser) {
-      setCurrentDesignation(currentUser.designation || 'Sales Agent');
+      setCurrentDesignation(currentUser.designation || 'Agent');
     }
   }, [currentUser]);
   const [currentTask, setCurrentTask] = useState<TaskCategory>('Email Reachout');
@@ -1408,6 +1466,159 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSessionIdleDeductionSeconds(0);
     setCurrentInactivitySeconds(0);
   };
+
+  // 30-Minute Offline Connection Loss & Grace Period Engine
+  const TOTAL_OFFLINE_LIMIT_SECONDS = 1800; // 30 minutes total leeway = 1800s
+  const STAGE1_WARNING_SECONDS = 300; // 5 minutes = 300s
+
+  const [isOffline, setIsOffline] = useState<boolean>(() => {
+    if (typeof navigator !== 'undefined') {
+      return !navigator.onLine;
+    }
+    return false;
+  });
+  const [offlineSinceTimestamp, setOfflineSinceTimestamp] = useState<number | null>(null);
+  const [offlineSecondsRemaining, setOfflineSecondsRemaining] = useState<number>(TOTAL_OFFLINE_LIMIT_SECONDS);
+  const [offlineStatusStage, setOfflineStatusStage] = useState<'online' | 'warning_5m' | 'critical_countdown' | 'timeout'>('online');
+
+  // Manual Retry / Re-test Connection
+  const retryConnection = useCallback(async (): Promise<boolean> => {
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      setIsOffline(false);
+      setOfflineSinceTimestamp(null);
+      setOfflineSecondsRemaining(TOTAL_OFFLINE_LIMIT_SECONDS);
+      setOfflineStatusStage('online');
+      setSaveToast('✓ Internet Connection Restored! Live sync active.');
+      triggerAutoSync(users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
+      return true;
+    }
+    try {
+      await fetch('/api/health', { method: 'HEAD', cache: 'no-store' });
+      setIsOffline(false);
+      setOfflineSinceTimestamp(null);
+      setOfflineSecondsRemaining(TOTAL_OFFLINE_LIMIT_SECONDS);
+      setOfflineStatusStage('online');
+      setSaveToast('✓ Internet Connection Restored! Live sync active.');
+      triggerAutoSync(users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
+      return true;
+    } catch {
+      setIsOffline(true);
+      return false;
+    }
+  }, [users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, triggerAutoSync]);
+
+  // Dev simulation tool to test offline flow
+  const simulateOfflineToggle = useCallback(() => {
+    setIsOffline((prev) => {
+      const next = !prev;
+      if (next) {
+        setOfflineSinceTimestamp(Date.now());
+        setOfflineStatusStage('warning_5m');
+      } else {
+        setOfflineSinceTimestamp(null);
+        setOfflineSecondsRemaining(TOTAL_OFFLINE_LIMIT_SECONDS);
+        setOfflineStatusStage('online');
+        setSaveToast('✓ Internet Connection Restored (Simulated)');
+      }
+      return next;
+    });
+  }, []);
+
+  // Window network online / offline listeners
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      setOfflineSinceTimestamp(null);
+      setOfflineSecondsRemaining(TOTAL_OFFLINE_LIMIT_SECONDS);
+      setOfflineStatusStage('online');
+      setSaveToast('✓ Internet Connection Restored! Live sync active.');
+      triggerAutoSync(users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
+    };
+
+    const handleOffline = () => {
+      setIsOffline(true);
+      setOfflineSinceTimestamp((prev) => prev || Date.now());
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, triggerAutoSync]);
+
+  // Offline Grace Period Ticker (30 minutes total leeway)
+  useEffect(() => {
+    if (!isAuthenticated || !isTracking) {
+      if (!isOffline) {
+        setOfflineSinceTimestamp(null);
+        setOfflineSecondsRemaining(TOTAL_OFFLINE_LIMIT_SECONDS);
+        setOfflineStatusStage('online');
+      }
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const currentNetworkOffline = typeof navigator !== 'undefined' ? !navigator.onLine : false;
+      const effectiveOffline = isOffline || currentNetworkOffline;
+
+      if (effectiveOffline) {
+        if (!isOffline) setIsOffline(true);
+        const startTs = offlineSinceTimestamp || Date.now();
+        if (!offlineSinceTimestamp) {
+          setOfflineSinceTimestamp(startTs);
+        }
+
+        const elapsedOfflineSec = Math.floor((Date.now() - startTs) / 1000);
+        const remaining = Math.max(0, TOTAL_OFFLINE_LIMIT_SECONDS - elapsedOfflineSec);
+        setOfflineSecondsRemaining(remaining);
+
+        if (elapsedOfflineSec < STAGE1_WARNING_SECONDS) {
+          setOfflineStatusStage('warning_5m');
+        } else if (remaining > 0) {
+          setOfflineStatusStage('critical_countdown');
+        } else {
+          // Timeout reached (30 minutes continuous offline)
+          setOfflineStatusStage('timeout');
+          clearInterval(interval);
+
+          // Finalize tracking safely
+          stopTracking();
+
+          // Record audit log
+          const now = new Date();
+          const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const dateFormatted = `${monthNames[now.getMonth()]} ${now.getDate().toString().padStart(2, '0')}, ${now.getFullYear()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+          const timeoutAudit: AuditLog = {
+            id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            timestamp: now.toISOString(),
+            dateFormatted,
+            actorId: currentUser?.id || 'system',
+            actorName: currentUser?.name || 'System',
+            actorRole: currentUser?.role || 'agent',
+            category: 'Logout',
+            details: `Shift automatically stopped and user logged out: Internet connection lost for >30 minutes (${currentUser?.name}). 30 minutes of tracked work preserved locally.`,
+          };
+          setAuditLogs((prev) => [timeoutAudit, ...prev]);
+
+          localStorage.setItem('trackpulse_session_expired_reason', 'offline_30min');
+          setSessionExpiredReason('offline_30min');
+          setIsAuthenticated(false);
+          localStorage.removeItem('trackpulse_auth');
+        }
+      } else {
+        setOfflineStatusStage('online');
+        setOfflineSecondsRemaining(TOTAL_OFFLINE_LIMIT_SECONDS);
+        if (offlineSinceTimestamp !== null) {
+          setOfflineSinceTimestamp(null);
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, isTracking, isOffline, offlineSinceTimestamp, currentUser]);
 
   // Designation selection
   const selectDesignation = (desig: Designation) => {
@@ -2158,6 +2369,317 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setWorldClocks((prev) => prev.filter((c) => c.id !== id));
   };
 
+  // Designation & Task Management System (Admin / Super Admin)
+  const designationList = Object.keys(designationTasks);
+
+  const getTasksForDesignation = useCallback(
+    (designation?: string): string[] => {
+      const target = designation || currentDesignation || currentUser?.designation || 'Agent';
+      if (designationTasks[target] && designationTasks[target].length > 0) {
+        return designationTasks[target];
+      }
+      const matchedKey = Object.keys(designationTasks).find(
+        (k) => k.toLowerCase() === target.toLowerCase()
+      );
+      if (matchedKey && designationTasks[matchedKey].length > 0) {
+        return designationTasks[matchedKey];
+      }
+      return designationTasks['Agent'] || [
+        'Data Entry & Market Research',
+        'Email Reachout',
+        'Follow-up',
+        'Training',
+        'Team Meeting',
+        'Coaching',
+      ];
+    },
+    [designationTasks, currentDesignation, currentUser]
+  );
+
+  const addDesignation = (name: string, initialTasks: string[] = ['On Shift', 'Team Meeting']) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const updated = {
+      ...designationTasks,
+      [trimmed]: initialTasks.length > 0 ? initialTasks : ['On Shift', 'Team Meeting'],
+    };
+    setDesignationTasks(updated);
+    localStorage.setItem('trackpulse_designation_tasks', JSON.stringify(updated));
+    safeSetDoc(doc(db, 'system_state', 'designationtasks'), { data: updated }).catch((err) =>
+      console.warn('Designation tasks sync error:', err)
+    );
+    addAuditLog({
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      category: 'Designation Added',
+      targetEmployeeName: trimmed,
+      details: `Created new designation "${trimmed}" with ${updated[trimmed].length} default tasks.`,
+    });
+    setSaveToast(`✓ Created designation "${trimmed}"!`);
+    setTimeout(() => setSaveToast(null), 5000);
+  };
+
+  const deleteDesignation = (name: string) => {
+    const updated = { ...designationTasks };
+    delete updated[name];
+    setDesignationTasks(updated);
+    localStorage.setItem('trackpulse_designation_tasks', JSON.stringify(updated));
+    safeSetDoc(doc(db, 'system_state', 'designationtasks'), { data: updated }).catch((err) =>
+      console.warn('Designation tasks sync error:', err)
+    );
+    addAuditLog({
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      category: 'Designation Deleted',
+      targetEmployeeName: name,
+      details: `Deleted designation "${name}" and its associated tasks.`,
+    });
+    setSaveToast(`✓ Deleted designation "${name}"!`);
+    setTimeout(() => setSaveToast(null), 5000);
+  };
+
+  const addTaskToDesignation = (designation: string, taskName: string) => {
+    const trimmed = taskName.trim();
+    if (!trimmed) return;
+    const existing = designationTasks[designation] || [];
+    if (existing.includes(trimmed)) return;
+    const updated = {
+      ...designationTasks,
+      [designation]: [...existing, trimmed],
+    };
+    setDesignationTasks(updated);
+    localStorage.setItem('trackpulse_designation_tasks', JSON.stringify(updated));
+    safeSetDoc(doc(db, 'system_state', 'designationtasks'), { data: updated }).catch((err) =>
+      console.warn('Designation tasks sync error:', err)
+    );
+    addAuditLog({
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      category: 'Task Category Added',
+      targetEmployeeName: designation,
+      details: `Added task "${trimmed}" to designation "${designation}".`,
+    });
+    setSaveToast(`✓ Added task "${trimmed}" to ${designation}!`);
+    setTimeout(() => setSaveToast(null), 5000);
+  };
+
+  const removeTaskFromDesignation = (designation: string, taskName: string) => {
+    const existing = designationTasks[designation] || [];
+    const updated = {
+      ...designationTasks,
+      [designation]: existing.filter((t) => t !== taskName),
+    };
+    setDesignationTasks(updated);
+    localStorage.setItem('trackpulse_designation_tasks', JSON.stringify(updated));
+    safeSetDoc(doc(db, 'system_state', 'designationtasks'), { data: updated }).catch((err) =>
+      console.warn('Designation tasks sync error:', err)
+    );
+    addAuditLog({
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      category: 'Task Category Removed',
+      targetEmployeeName: designation,
+      details: `Removed task "${taskName}" from designation "${designation}".`,
+    });
+    setSaveToast(`✓ Removed task "${taskName}" from ${designation}!`);
+    setTimeout(() => setSaveToast(null), 5000);
+  };
+
+  // Granular Access Permissions Manager (Super Admin)
+  const updateRolePermission = (roleKey: string, permissionKey: keyof RolePermissions, value: boolean) => {
+    const current = rolePermissions[roleKey] || DEFAULT_ROLE_PERMISSIONS[roleKey] || {
+      canEditEmployees: false,
+      canAssignTeamLeader: false,
+      canViewActivityLogs: false,
+      canViewScreenshots: false,
+      canViewTimesheets: false,
+      canViewPayroll: false,
+      canManageTasks: false,
+      canManageRoles: false,
+      canSyncSheets: false,
+    };
+    const updated = {
+      ...rolePermissions,
+      [roleKey]: {
+        ...current,
+        [permissionKey]: value,
+      },
+    };
+    setRolePermissions(updated);
+    localStorage.setItem('trackpulse_role_permissions', JSON.stringify(updated));
+    safeSetDoc(doc(db, 'system_state', 'rolepermissions'), { data: updated }).catch((err) =>
+      console.warn('Role permissions sync error:', err)
+    );
+    addAuditLog({
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      category: 'Permissions Updated',
+      targetEmployeeName: roleKey,
+      details: `Super Admin updated permission [${permissionKey} = ${value ? 'GRANTED' : 'REVOKED'}] for role/designation "${roleKey}".`,
+    });
+    setSaveToast(`✓ Updated permission [${permissionKey}] for "${roleKey}"!`);
+    setTimeout(() => setSaveToast(null), 5000);
+  };
+
+  const updateUserCustomPermission = (userId: string, permissionKey: keyof RolePermissions, value: boolean) => {
+    const target = users.find((u) => u.id === userId);
+    const updatedUsers = users.map((u) => {
+      if (u.id === userId) {
+        return {
+          ...u,
+          customPermissions: {
+            ...(u.customPermissions || {}),
+            [permissionKey]: value,
+          },
+        };
+      }
+      return u;
+    });
+    setUsers(updatedUsers);
+    localStorage.setItem('trackpulse_users', JSON.stringify(updatedUsers));
+    safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
+      console.warn('User custom permissions sync error:', err)
+    );
+    addAuditLog({
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      category: 'User Custom Permission Set',
+      targetEmployeeId: userId,
+      targetEmployeeName: target?.name || userId,
+      details: `Set individual permission override [${permissionKey} = ${value ? 'GRANTED' : 'REVOKED'}] for ${target?.name || userId}.`,
+    });
+    setSaveToast(`✓ Updated custom permission for ${target?.name || 'user'}!`);
+    setTimeout(() => setSaveToast(null), 5000);
+  };
+
+  const resetUserCustomPermissions = (userId: string) => {
+    const target = users.find((u) => u.id === userId);
+    const updatedUsers = users.map((u) => {
+      if (u.id === userId) {
+        const copy = { ...u };
+        delete copy.customPermissions;
+        return copy;
+      }
+      return u;
+    });
+    setUsers(updatedUsers);
+    localStorage.setItem('trackpulse_users', JSON.stringify(updatedUsers));
+    safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
+      console.warn('User custom permissions reset sync error:', err)
+    );
+    addAuditLog({
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      category: 'User Custom Permission Reset',
+      targetEmployeeId: userId,
+      targetEmployeeName: target?.name || userId,
+      details: `Reset individual permissions for ${target?.name || userId} back to designation defaults.`,
+    });
+    setSaveToast(`✓ Reset permissions for ${target?.name || 'user'} to standard designation defaults!`);
+    setTimeout(() => setSaveToast(null), 5000);
+  };
+
+  const addRoleCategory = (roleKey: string, initialPermissions?: Partial<RolePermissions>) => {
+    const trimmedKey = roleKey.trim();
+    if (!trimmedKey) return;
+    const defaultPerms: RolePermissions = {
+      canEditEmployees: false,
+      canAssignTeamLeader: false,
+      canViewActivityLogs: false,
+      canViewScreenshots: false,
+      canViewTimesheets: false,
+      canViewPayroll: false,
+      canManageTasks: false,
+      canManageRoles: false,
+      canSyncSheets: false,
+      ...(initialPermissions || {}),
+    };
+    const updated = {
+      ...rolePermissions,
+      [trimmedKey]: defaultPerms,
+    };
+    setRolePermissions(updated);
+    localStorage.setItem('trackpulse_role_permissions', JSON.stringify(updated));
+    safeSetDoc(doc(db, 'system_state', 'rolepermissions'), { data: updated }).catch((err) =>
+      console.warn('Role permissions sync error:', err)
+    );
+    addAuditLog({
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      category: 'Permissions Updated',
+      targetEmployeeName: trimmedKey,
+      details: `Created new Role / Category permission matrix for "${trimmedKey}".`,
+    });
+    setSaveToast(`✓ Created Role / Category "${trimmedKey}"!`);
+    setTimeout(() => setSaveToast(null), 5000);
+  };
+
+  const deleteRoleCategory = (roleKey: string) => {
+    const updated = { ...rolePermissions };
+    delete updated[roleKey];
+    setRolePermissions(updated);
+    localStorage.setItem('trackpulse_role_permissions', JSON.stringify(updated));
+    safeSetDoc(doc(db, 'system_state', 'rolepermissions'), { data: updated }).catch((err) =>
+      console.warn('Role permissions sync error:', err)
+    );
+    addAuditLog({
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      category: 'Permissions Updated',
+      targetEmployeeName: roleKey,
+      details: `Deleted custom Role / Category permission matrix for "${roleKey}".`,
+    });
+    setSaveToast(`✓ Removed custom category "${roleKey}"!`);
+    setTimeout(() => setSaveToast(null), 5000);
+  };
+
+  const hasPermission = useCallback(
+    (permissionKey: keyof RolePermissions, targetUser?: User): boolean => {
+      const u = targetUser || currentUser;
+      if (!u) return false;
+
+      // Super Admin always has full access
+      const isSuper =
+        u.employeeCode?.toLowerCase() === 'superadmin' ||
+        u.id === 'usr-superadmin-red' ||
+        u.id === 'usr-superadmin-root' ||
+        u.email === 'admin@llc.com';
+      if (isSuper) return true;
+
+      // Check User-level custom override
+      if (u.customPermissions && u.customPermissions[permissionKey] !== undefined) {
+        return Boolean(u.customPermissions[permissionKey]);
+      }
+
+      // Check Role-level permissions (e.g., 'trainer', 'team_lead', 'admin', 'qa', 'hr', 'payroll', 'agent')
+      const roleKey = u.role?.toLowerCase();
+      if (rolePermissions[roleKey] && rolePermissions[roleKey][permissionKey] !== undefined) {
+        return Boolean(rolePermissions[roleKey][permissionKey]);
+      }
+
+      // Check Designation-level permissions (e.g., 'Trainer', 'Team Leader', 'QA', 'Writer', 'HR', 'Payroll')
+      const desigKey = u.designation;
+      if (rolePermissions[desigKey] && rolePermissions[desigKey][permissionKey] !== undefined) {
+        return Boolean(rolePermissions[desigKey][permissionKey]);
+      }
+
+      // Admin role default fallback
+      if (u.role === 'admin' && permissionKey !== 'canManageRoles') return true;
+
+      return false;
+    },
+    [currentUser, rolePermissions]
+  );
+
   // Format total seconds into HH:MM:SS
   const formatDuration = (totalSec: number) => {
     const hrs = Math.floor(totalSec / 3600);
@@ -2185,6 +2707,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         refreshWebSession,
         sessionExpiredReason,
         clearSessionExpiredReason,
+        isOffline,
+        offlineSinceTimestamp,
+        offlineSecondsRemaining,
+        offlineStatusStage,
+        retryConnection,
+        simulateOfflineToggle,
         isTracking,
         isPaused,
         currentDesignation,
@@ -2252,6 +2780,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addWorldClock,
         deleteWorldClock,
         resetDatabaseToFreshState,
+        designationTasks,
+        designationList,
+        getTasksForDesignation,
+        addDesignation,
+        deleteDesignation,
+        addTaskToDesignation,
+        removeTaskFromDesignation,
+        rolePermissions,
+        updateRolePermission,
+        updateUserCustomPermission,
+        resetUserCustomPermissions,
+        addRoleCategory,
+        deleteRoleCategory,
+        hasPermission,
         formatDuration,
       }}
     >

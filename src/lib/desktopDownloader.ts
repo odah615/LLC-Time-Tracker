@@ -13,7 +13,7 @@ export interface DesktopPackageInfo {
 export const DESKTOP_PACKAGES: Record<DesktopOS, DesktopPackageInfo> = {
   windows: {
     os: 'windows',
-    label: 'Windows PC',
+    label: 'Windows OS',
     badge: '.exe / .bat',
     filename: 'Build_LLC_Time_Tracker_Windows.bat',
     outputFormat: 'LLC Time Tracker.exe',
@@ -27,7 +27,7 @@ export const DESKTOP_PACKAGES: Record<DesktopOS, DesktopPackageInfo> = {
     filename: 'Build_LLC_Time_Tracker_Mac.sh',
     outputFormat: 'LLC Time Tracker.app',
     icon: '🍎',
-    description: 'Universal application bundle for Apple Silicon (M1/M2/M3) and Intel Macs.',
+    description: 'Universal application bundle for Apple Silicon (M1/M2/M3/M4) and Intel Macs.',
   },
   linux: {
     os: 'linux',
@@ -36,7 +36,7 @@ export const DESKTOP_PACKAGES: Record<DesktopOS, DesktopPackageInfo> = {
     filename: 'Build_LLC_Time_Tracker_Linux.sh',
     outputFormat: 'LLC Time Tracker (Binary)',
     icon: '🐧',
-    description: 'Standalone executable for Ubuntu, Debian, Fedora, and other Linux distributions.',
+    description: 'Standalone executable for Ubuntu, Debian, Fedora, Arch, and other Linux distributions.',
   },
 };
 
@@ -57,7 +57,7 @@ cd /d "%~dp0"
 title LLC Time Tracker Standalone Software Builder
 cls
 echo ========================================================
-echo   LLC Time Tracker - Standalone Desktop Software Builder
+echo   LLC Time Tracker - Standalone Windows Desktop Builder
 echo ========================================================
 echo Working Directory: %cd%
 echo.
@@ -139,7 +139,10 @@ cd "$(dirname "$0")"
 echo "========================================================"
 echo "  LLC Time Tracker - macOS (.app) Software Builder"
 echo "========================================================"
+echo "Working directory: $(pwd)"
+echo ""
 
+echo "[1/4] Writing package.json..."
 cat << 'EOF' > package.json
 {
   "name": "llc-time-tracker-desktop",
@@ -158,6 +161,7 @@ cat << 'EOF' > package.json
 }
 EOF
 
+echo "[2/4] Writing main.js..."
 cat << 'EOF' > main.js
 const { app, BrowserWindow } = require('electron');
 
@@ -181,16 +185,34 @@ app.whenReady().then(createWindow);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 EOF
 
-echo "Installing Electron..."
+echo "[3/4] Installing Electron dependencies..."
 npm install --no-audit
 
-echo "Building macOS Standalone App..."
+echo "[4/4] Building macOS Standalone App Bundle..."
 npm run build
 
+# Also create an instant launch script for macOS users
+cat << 'EOF' > Launch_LLC_Time_Tracker.command
+#!/bin/bash
+cd "$(dirname "$0")"
+if [ -d "dist/LLC Time Tracker-darwin-arm64/LLC Time Tracker.app" ]; then
+  open "dist/LLC Time Tracker-darwin-arm64/LLC Time Tracker.app"
+elif [ -d "dist/LLC Time Tracker-darwin-x64/LLC Time Tracker.app" ]; then
+  open "dist/LLC Time Tracker-darwin-x64/LLC Time Tracker.app"
+else
+  npx electron .
+fi
+EOF
+chmod +x Launch_LLC_Time_Tracker.command
+
+echo ""
 echo "========================================================"
 echo "SUCCESS! Your macOS Application is built!"
-echo "Look inside folder: $(pwd)/dist/LLC Time Tracker-darwin-x64/"
-echo "or /dist/LLC Time Tracker-darwin-arm64/ for 'LLC Time Tracker.app'"
+echo "Look inside folder:"
+echo "  $(pwd)/dist/LLC Time Tracker-darwin-arm64/LLC Time Tracker.app"
+echo "  or $(pwd)/dist/LLC Time Tracker-darwin-x64/LLC Time Tracker.app"
+echo ""
+echo "You can also double-click 'Launch_LLC_Time_Tracker.command' to start immediately!"
 echo "========================================================"
 `;
     const element = document.createElement('a');
@@ -206,7 +228,10 @@ cd "$(dirname "$0")"
 echo "========================================================"
 echo "  LLC Time Tracker - Linux Software Builder"
 echo "========================================================"
+echo "Working directory: $(pwd)"
+echo ""
 
+echo "[1/4] Writing package.json..."
 cat << 'EOF' > package.json
 {
   "name": "llc-time-tracker-desktop",
@@ -225,6 +250,7 @@ cat << 'EOF' > package.json
 }
 EOF
 
+echo "[2/4] Writing main.js..."
 cat << 'EOF' > main.js
 const { app, BrowserWindow } = require('electron');
 
@@ -248,16 +274,28 @@ app.whenReady().then(createWindow);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 EOF
 
-echo "Installing Electron..."
+echo "[3/4] Installing Electron dependencies..."
 npm install --no-audit
 
-echo "Building Linux Executable..."
+echo "[4/4] Building Linux Executable..."
 npm run build
 
+cat << 'EOF' > Launch_LLC_Time_Tracker.sh
+#!/bin/bash
+cd "$(dirname "$0")"
+if [ -f "dist/LLC Time Tracker-linux-x64/LLC Time Tracker" ]; then
+  "./dist/LLC Time Tracker-linux-x64/LLC Time Tracker"
+else
+  npx electron .
+fi
+EOF
+chmod +x Launch_LLC_Time_Tracker.sh
+
+echo ""
 echo "========================================================"
 echo "SUCCESS! Your Linux Application is built!"
 echo "Look inside folder: $(pwd)/dist/LLC Time Tracker-linux-x64/"
-echo "Run './LLC Time Tracker' to launch!"
+echo "Run './Launch_LLC_Time_Tracker.sh' to launch!"
 echo "========================================================"
 `;
     const element = document.createElement('a');

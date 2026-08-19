@@ -22,6 +22,7 @@ import {
   Check,
   X,
   Sparkles,
+  WifiOff,
 } from 'lucide-react';
 
 export const LoginView: React.FC = () => {
@@ -429,6 +430,25 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
             </div>
           )}
 
+          {sessionExpiredReason === 'offline_30min' && (
+            <div className="mb-5 p-3.5 rounded-xl bg-rose-950/80 border border-rose-600/80 text-rose-200 text-xs font-medium flex items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2.5">
+                <WifiOff className="w-4 h-4 text-rose-400 shrink-0" />
+                <div>
+                  <strong className="block text-white">Shift Safely Saved & Session Ended</strong>
+                  <span>Your tracking session was automatically stopped and safely saved after remaining disconnected from the internet for <strong>30 minutes</strong>. Once your internet connection is restored, please log back in to resume your shift.</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={clearSessionExpiredReason}
+                className="text-rose-400 hover:text-rose-200 text-[10px] font-bold underline px-1 shrink-0"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="mb-5 p-3.5 rounded-xl bg-red-950/80 border border-red-700/80 text-red-200 text-xs font-medium flex items-center gap-2.5">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
@@ -589,7 +609,7 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                🖥️ Windows PC (.exe / .bat)
+                🖥️ Windows OS (.exe / .bat)
               </button>
               <button
                 onClick={() => setDownloadOS('mac')}
@@ -715,12 +735,7 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
             </div>
 
             {/* User Profile Overview */}
-            <div className="flex items-center gap-3.5 bg-slate-50 border border-slate-200 p-3.5 rounded-2xl">
-              <img
-                src={pendingPasswordChangeUser.avatar}
-                alt={pendingPasswordChangeUser.name}
-                className="w-12 h-12 rounded-full object-cover ring-2 ring-white shadow-sm shrink-0"
-              />
+            <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <h4 className="font-bold text-slate-900 text-sm truncate">

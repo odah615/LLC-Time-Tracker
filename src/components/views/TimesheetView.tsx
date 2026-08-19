@@ -456,25 +456,18 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
       {isPersonalOnly ? (
         <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 border border-slate-700 rounded-2xl p-6 text-white shadow-lg space-y-5">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-700/80">
-            <div className="flex items-center gap-3.5">
-              <img
-                src={currentUser.avatar}
-                alt={currentUser.name}
-                className="w-12 h-12 rounded-full object-cover ring-2 ring-emerald-500 shadow-md"
-              />
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-lg text-white">
-                    {currentUser.name} — Personal Timesheet
-                  </h3>
-                  <span className="bg-emerald-500 text-slate-950 text-[10px] px-2.5 py-0.5 rounded-full font-extrabold flex items-center gap-1 uppercase">
-                    <ShieldCheck className="w-3 h-3" /> {currentUser.role.replace('_', ' ')}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-300">
-                  {currentUser.employeeCode || 'LLC-0001'} • {currentUser.designation} • {currentUser.department || 'Operations'}
-                </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-lg text-white">
+                  {currentUser.name} — Personal Timesheet
+                </h3>
+                <span className="bg-emerald-500 text-slate-950 text-[10px] px-2.5 py-0.5 rounded-full font-extrabold flex items-center gap-1 uppercase">
+                  <ShieldCheck className="w-3 h-3" /> {currentUser.role.replace('_', ' ')}
+                </span>
               </div>
+              <p className="text-xs text-slate-300 mt-0.5">
+                {currentUser.employeeCode || 'LLC-0001'} • {currentUser.designation} • {currentUser.department || 'Operations'}
+              </p>
             </div>
 
             <span className="text-xs font-mono font-bold bg-slate-800/80 border border-slate-700 text-emerald-400 px-3 py-1.5 rounded-xl flex items-center gap-2">

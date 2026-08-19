@@ -185,6 +185,36 @@ export const SPREADSHEET_SCHEMA = [
       'Payment Status',
     ],
   },
+  {
+    tabName: 'Designation_Tasks',
+    description: 'Master record of all active organizational designations and their corresponding allowed shift tracking tasks.',
+    headers: [
+      'Designation Name',
+      'Allowed Tracking Tasks (Comma Separated)',
+      'Total Tasks Count',
+      'Last Updated (ISO)',
+    ],
+  },
+  {
+    tabName: 'Designations_Permissions',
+    description: 'Master matrix of all standard roles & custom categories, their assigned capabilities (CRUD, supervisors, screenshots, timesheets, payroll, webhooks), and current roster count.',
+    headers: [
+      'Role / Category Key',
+      'Display Name',
+      'Category Type',
+      'Employee Directory CRUD',
+      'Team Leader Assignment',
+      'Activity Monitors',
+      'Screenshot Captures',
+      'Timesheets & Approvals',
+      'Payroll & Rates',
+      'Designation & Task Manager',
+      'Google Sheets & Webhooks',
+      'Assigned Staff Count',
+      'Assigned Employees Roster',
+      'Last Updated (ISO)',
+    ],
+  },
 ];
 
 /**
@@ -311,6 +341,31 @@ function setupSheetsSchema() {
       tab: 'Payroll_Summary',
       color: '#16a34a', // Green
       headers: ['Pay Period', 'Employee Code', 'Employee Name', 'Designation', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Total Tracked Hours', 'Missing Hours', 'Missing Deductions (₱)', 'Gross Pay (₱)', 'Incentive Bonus (₱)', 'Net Pay (₱)', 'Payment Status']
+    },
+    {
+      tab: 'Designation_Tasks',
+      color: '#6366f1', // Indigo
+      headers: ['Designation Name', 'Allowed Tracking Tasks (Comma Separated)', 'Total Tasks Count', 'Last Updated (ISO)']
+    },
+    {
+      tab: 'Designations_Permissions',
+      color: '#8b5cf6', // Violet
+      headers: [
+        'Role / Category Key',
+        'Display Name',
+        'Category Type',
+        'Employee Directory CRUD',
+        'Team Leader Assignment',
+        'Activity Monitors',
+        'Screenshot Captures',
+        'Timesheets & Approvals',
+        'Payroll & Rates',
+        'Designation & Task Manager',
+        'Google Sheets & Webhooks',
+        'Assigned Staff Count',
+        'Assigned Employees Roster',
+        'Last Updated (ISO)'
+      ]
     }
   ];
 
@@ -389,7 +444,7 @@ function doPost(e) {
             matchedUser.employeeCode || 'N/A',
             l.actorName,
             l.actorRole || matchedUser.role || 'agent',
-            matchedUser.designation || 'Sales Agent',
+            matchedUser.designation || 'Agent',
             mode,
             (matchedUser.geoCity ? matchedUser.geoCity + ' (' + (matchedUser.geoTimezone || 'GMT+8') + ')' : 'Toronto, Canada (America/Toronto)'),
             'Authenticated (Active)',
@@ -427,7 +482,7 @@ function doPost(e) {
             matchedUser.employeeCode || 'N/A',
             l.actorName,
             l.actorRole || matchedUser.role || 'agent',
-            matchedUser.designation || 'Sales Agent',
+            matchedUser.designation || 'Agent',
             eventType,
             l.details || 'User signed out of LLC Time Tracker.',
             'Logged Out (Complete)'
@@ -485,7 +540,7 @@ function doPost(e) {
             t.id || 'N/A',
             matchedUser.employeeCode || 'N/A',
             t.userName || 'Unknown',
-            t.designation || 'Sales Agent',
+            t.designation || 'Agent',
             t.task || 'General',
             t.date || '',
             t.startTime || '',
@@ -609,7 +664,7 @@ function doPost(e) {
             u.name,
             u.email,
             u.role,
-            u.designation || 'Sales Agent',
+            u.designation || 'Agent',
             hireDate,
             u.monthlyRate || (u.hourlyRate ? u.hourlyRate * 160 : 23000),
             u.hourlyRate || (u.monthlyRate ? u.monthlyRate / 160 : 143.75),
@@ -659,7 +714,7 @@ function doPost(e) {
             p.payPeriod || 'August 1-15, 2026',
             p.employeeCode || 'LLC-0001',
             p.userName,
-            p.designation || 'Sales Agent',
+            p.designation || 'Agent',
             p.monthlyRate || 23000,
             p.hourlyRate || 143.75,
             p.totalTrackedHours || 0,
@@ -669,6 +724,96 @@ function doPost(e) {
             p.incentiveBonus || 0,
             p.netPay || 23000,
             p.status || 'pending'
+          ]);
+        });
+      }
+
+      // ==========================================
+      // 11. POPULATE DESIGNATION TASKS
+      // ==========================================
+      var desigTasks = data.designationTasks || {};
+      var desigSheet = ss.getSheetByName('Designation_Tasks');
+      if (desigSheet && Object.keys(desigTasks).length > 0) {
+        desigSheet.clear();
+        desigSheet.appendRow(['Designation Name', 'Allowed Tracking Tasks (Comma Separated)', 'Total Tasks Count', 'Last Updated (ISO)']);
+        desigSheet.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#4338ca').setFontColor('#ffffff');
+        desigSheet.setFrozenRows(1);
+        Object.keys(desigTasks).forEach(function(desigKey) {
+          var taskList = desigTasks[desigKey] || [];
+          desigSheet.appendRow([
+            desigKey,
+            taskList.join(', '),
+            taskList.length,
+            new Date().toISOString()
+          ]);
+        });
+      }
+
+      // ==========================================
+      // 12. POPULATE DESIGNATIONS & PERMISSIONS CONTROL
+      // ==========================================
+      var rPerms = data.rolePermissions || {};
+      var permSheet = ss.getSheetByName('Designations_Permissions');
+      if (permSheet && Object.keys(rPerms).length > 0) {
+        permSheet.clear();
+        permSheet.appendRow([
+          'Role / Category Key',
+          'Display Name',
+          'Category Type',
+          'Employee Directory CRUD',
+          'Team Leader Assignment',
+          'Activity Monitors',
+          'Screenshot Captures',
+          'Timesheets & Approvals',
+          'Payroll & Rates',
+          'Designation & Task Manager',
+          'Google Sheets & Webhooks',
+          'Assigned Staff Count',
+          'Assigned Employees Roster',
+          'Last Updated (ISO)'
+        ]);
+        permSheet.getRange(1, 1, 1, 14).setFontWeight('bold').setBackground('#6d28d9').setFontColor('#ffffff');
+        permSheet.setFrozenRows(1);
+
+        var standardKeys = ['admin', 'trainer', 'team_lead', 'qa', 'writer', 'hr', 'payroll', 'agent'];
+
+        Object.keys(rPerms).forEach(function(roleKey) {
+          var p = rPerms[roleKey] || {};
+          var isStd = standardKeys.indexOf(roleKey.toLowerCase()) !== -1;
+          var displayName = roleKey.charAt(0).toUpperCase() + roleKey.slice(1);
+          if (roleKey === 'team_lead') displayName = 'Team Leader';
+          if (roleKey === 'qa') displayName = 'QA Specialist';
+          if (roleKey === 'hr') displayName = 'HR';
+          if (roleKey === 'payroll') displayName = 'Payroll Officer';
+          if (roleKey === 'agent') displayName = 'Agent';
+
+          // Detect assigned employees
+          var assignedStaff = users.filter(function(u) {
+            var rMatch = (u.role || '').toLowerCase() === roleKey.toLowerCase();
+            var dMatch = (u.designation || '').toLowerCase() === displayName.toLowerCase() ||
+                         (u.designation || '').toLowerCase() === roleKey.toLowerCase();
+            return rMatch || dMatch;
+          });
+
+          var staffNames = assignedStaff.map(function(s) {
+            return (s.name || 'Staff') + ' (#' + (s.employeeCode || 'N/A') + ')';
+          }).join(', ');
+
+          permSheet.appendRow([
+            roleKey,
+            displayName,
+            isStd ? 'Standard Role' : 'Custom Category',
+            p.canEditEmployees ? 'GRANTED' : 'RESTRICTED',
+            p.canAssignTeamLeader ? 'GRANTED' : 'RESTRICTED',
+            p.canViewActivityLogs ? 'GRANTED' : 'RESTRICTED',
+            p.canViewScreenshots ? 'GRANTED' : 'RESTRICTED',
+            p.canViewTimesheets ? 'GRANTED' : 'RESTRICTED',
+            p.canViewPayroll ? 'GRANTED' : 'RESTRICTED',
+            p.canManageTasks ? 'GRANTED' : 'RESTRICTED',
+            p.canSyncSheets ? 'GRANTED' : 'RESTRICTED',
+            assignedStaff.length,
+            staffNames || 'None',
+            new Date().toISOString()
           ]);
         });
       }
@@ -700,7 +845,7 @@ function doGet(e) {
           name: name || 'Employee',
           email: String(row[2] || '').trim(),
           role: String(row[3] || 'employee').toLowerCase().trim(),
-          designation: String(row[4] || 'Sales Agent').trim(),
+          designation: String(row[4] || 'Agent').trim(),
           joinDate: String(row[5] || '').trim() || Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd'),
           monthlyRate: Number(String(row[6]).replace(/[^0-9.]/g, '')) || 23000,
           hourlyRate: Number(String(row[7]).replace(/[^0-9.]/g, '')) || 143.75,
@@ -814,7 +959,7 @@ export const fetchEmployeesFromGoogleSheets = async (
               name: rawEmp.name || existing?.name || (isSuperAdmin ? 'Red' : `Employee ${code}`),
               email: rawEmp.email || existing?.email || `${code.toLowerCase()}@llctimetracker.com`,
               role,
-              designation: rawEmp.designation || existing?.designation || (role === 'admin' ? 'Admin' : 'Sales Agent'),
+              designation: rawEmp.designation || existing?.designation || (role === 'admin' ? 'Admin' : 'Agent'),
               monthlyRate: Number(rawEmp.monthlyRate) || existing?.monthlyRate || (isSuperAdmin ? 60000 : 23000),
               hourlyRate: Number(rawEmp.hourlyRate) || existing?.hourlyRate || (isSuperAdmin ? 375 : 143.75),
               teamLeaderId: rawEmp.teamLeaderId || existing?.teamLeaderId || '',
@@ -874,7 +1019,7 @@ export const fetchEmployeesFromGoogleSheets = async (
       const name = (row[1] || '').trim();
       const email = (row[2] || '').trim();
       const roleStr = (row[3] || 'employee').toLowerCase().trim();
-      const designation = (row[4] || 'Sales Agent').trim();
+      const designation = (row[4] || 'Agent').trim();
       const joinDateStr = (row[5] || '').trim();
       const monthlyRateStr = (row[6] || '').replace(/[^0-9.]/g, '');
       const hourlyRateStr = (row[7] || '').replace(/[^0-9.]/g, '');
@@ -899,7 +1044,7 @@ export const fetchEmployeesFromGoogleSheets = async (
         name: name || existing?.name || (isSuperAdmin ? 'Admin' : `Employee ${code}`),
         email: email || existing?.email || `${code.toLowerCase()}@llctimetracker.com`,
         role: validRole,
-        designation: (designation as any) || existing?.designation || (validRole === 'admin' ? 'Admin' : 'Sales Agent'),
+        designation: (designation as any) || existing?.designation || (validRole === 'admin' ? 'Admin' : 'Agent'),
         monthlyRate: Number(monthlyRateStr) || existing?.monthlyRate || (isSuperAdmin ? 60000 : 23000),
         hourlyRate: Number(hourlyRateStr) || existing?.hourlyRate || (isSuperAdmin ? 375 : 143.75),
         teamLeaderId: supervisor || existing?.teamLeaderId || '',
@@ -949,7 +1094,9 @@ export const syncDataToGoogleSheetsWebhook = async (
   payrollRecords: PayrollRecord[],
   dailyAttendanceLogs: DailyAttendanceLog[] = [],
   idleLogs: IdleLog[] = [],
-  leaveRequests: LeaveRequest[] = []
+  leaveRequests: LeaveRequest[] = [],
+  designationTasks?: Record<string, string[]>,
+  rolePermissions?: Record<string, import('../types').RolePermissions>
 ): Promise<{ success: boolean; message: string }> => {
   if (!webhookUrl || !webhookUrl.trim()) {
     return {
@@ -971,6 +1118,8 @@ export const syncDataToGoogleSheetsWebhook = async (
       dailyAttendanceLogs,
       idleLogs,
       leaveRequests,
+      designationTasks: designationTasks || {},
+      rolePermissions: rolePermissions || {},
       syncedAt: new Date().toISOString(),
     };
 

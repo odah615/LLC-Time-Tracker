@@ -61,11 +61,23 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
-  // Combine Users with UserPresence and DailyAttendanceLog
+  // Combine Users with UserPresence and DailyAttendanceLog (Excluding Admins)
   const liveUsersData = useMemo(() => {
     const now = Date.now();
 
-    return users.map((user) => {
+    const nonAdminUsers = users.filter((u) => {
+      return !(
+        u.role === 'admin' ||
+        u.isSecretBackup === true ||
+        u.employeeCode?.toLowerCase() === 'superadmin' ||
+        u.id === 'usr-superadmin-red' ||
+        u.id === 'usr-superadmin-root' ||
+        u.email === 'admin@llctimetracker.internal' ||
+        u.email === 'admin@llc.com'
+      );
+    });
+
+    return nonAdminUsers.map((user) => {
       // Find presence in state
       const presence = userPresenceList.find((p) => p.userId === user.id);
 

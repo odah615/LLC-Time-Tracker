@@ -191,7 +191,7 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
                       : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700 border border-slate-700'
                   }`}
                 >
-                  🖥️ Windows PC (.exe / .bat)
+                  🖥️ Windows OS (.exe / .bat)
                 </button>
                 <button
                   type="button"
@@ -384,16 +384,9 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
 
                       {/* Employee */}
                       <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-2.5">
-                          <img
-                            src={usr.avatar}
-                            alt={usr.name}
-                            className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0"
-                          />
-                          <div>
-                            <div className="font-bold text-slate-900 text-sm">{usr.name}</div>
-                            <div className="text-[11px] text-slate-500">{usr.email}</div>
-                          </div>
+                        <div>
+                          <div className="font-bold text-slate-900 text-sm">{usr.name}</div>
+                          <div className="text-[11px] text-slate-500">{usr.email}</div>
                         </div>
                       </td>
 

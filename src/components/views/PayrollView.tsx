@@ -426,12 +426,9 @@ export const PayrollView: React.FC = () => {
               return (
                 <div key={usr.id} className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                    <div className="flex items-center gap-3">
-                      <img src={usr.avatar} alt={usr.name} className="w-10 h-10 rounded-full object-cover border border-slate-200" />
-                      <div>
-                        <div className="font-bold text-slate-900 text-sm">{usr.name}</div>
-                        <div className="text-[11px] text-slate-500">{usr.designation} • #{usr.employeeCode}</div>
-                      </div>
+                    <div>
+                      <div className="font-bold text-slate-900 text-sm">{usr.name}</div>
+                      <div className="text-[11px] text-slate-500">{usr.designation} • #{usr.employeeCode}</div>
                     </div>
 
                     <div className="text-right font-mono">

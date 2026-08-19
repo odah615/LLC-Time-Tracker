@@ -1,0 +1,878 @@
+import React, { useState } from 'react';
+import { useApp } from '../../context/AppContext';
+import { RolePermissions, User } from '../../types';
+import {
+  Shield,
+  ShieldCheck,
+  Check,
+  X,
+  Users,
+  UserCheck,
+  Settings,
+  Eye,
+  Camera,
+  Activity,
+  DollarSign,
+  Layers,
+  FileSpreadsheet,
+  Zap,
+  Info,
+  Sparkles,
+  Search,
+  Plus,
+  Trash2,
+  AlertCircle,
+  RotateCcw,
+  ArrowRight,
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+
+interface RolePermissionsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+interface PermissionDefinition {
+  key: keyof RolePermissions;
+  label: string;
+  description: string;
+  icon: any;
+  color: string;
+}
+
+const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
+  {
+    key: 'canEditEmployees',
+    label: 'Employee Directory CRUD',
+    description: 'Add new employees, edit personal info, credentials, and delete profiles',
+    icon: Users,
+    color: 'text-blue-600 bg-blue-50 border-blue-200',
+  },
+  {
+    key: 'canAssignTeamLeader',
+    label: 'Team Leader Assignment',
+    description: 'Assign or reassign team leaders and trainers to agents',
+    icon: UserCheck,
+    color: 'text-indigo-600 bg-indigo-50 border-indigo-200',
+  },
+  {
+    key: 'canViewActivityLogs',
+    label: 'Activity Monitors',
+    description: 'View real-time hardware activity, mouse/keyboard metrics, and active window titles',
+    icon: Activity,
+    color: 'text-amber-600 bg-amber-50 border-amber-200',
+  },
+  {
+    key: 'canViewScreenshots',
+    label: 'Screenshot Captures',
+    description: 'View automated desktop screenshot timelines and blurred screen captures',
+    icon: Camera,
+    color: 'text-purple-600 bg-purple-50 border-purple-200',
+  },
+  {
+    key: 'canViewTimesheets',
+    label: 'Timesheets & Approvals',
+    description: 'View team time logs, audit shifts, and approve manual time & leave requests',
+    icon: Eye,
+    color: 'text-emerald-600 bg-emerald-50 border-emerald-200',
+  },
+  {
+    key: 'canViewPayroll',
+    label: 'Payroll & Rates',
+    description: 'Access payroll calculations, hourly rates, deductions, and payouts',
+    icon: DollarSign,
+    color: 'text-teal-600 bg-teal-50 border-teal-200',
+  },
+  {
+    key: 'canManageTasks',
+    label: 'Designation & Task Manager',
+    description: 'Create and edit designations and configure custom task options',
+    icon: Layers,
+    color: 'text-cyan-600 bg-cyan-50 border-cyan-200',
+  },
+  {
+    key: 'canSyncSheets',
+    label: 'Google Sheets & Webhooks',
+    description: 'Configure central Google Apps Script integration and trigger sync',
+    icon: FileSpreadsheet,
+    color: 'text-rose-600 bg-rose-50 border-rose-200',
+  },
+];
+
+interface StandardRole {
+  id: string;
+  label: string;
+  badge: string;
+  isCustom?: boolean;
+}
+
+const BASE_ROLES: StandardRole[] = [
+  { id: 'trainer', label: 'Trainer', badge: 'Manager Rights' },
+  { id: 'team_lead', label: 'Team Leader', badge: 'Supervisor' },
+  { id: 'admin', label: 'Admin', badge: 'Full Admin' },
+  { id: 'qa', label: 'QA Specialist', badge: 'Audit & Reviews' },
+  { id: 'writer', label: 'Writer', badge: 'Content Staff' },
+  { id: 'hr', label: 'HR', badge: 'Personnel' },
+  { id: 'payroll', label: 'Payroll Officer', badge: 'Finance' },
+  { id: 'agent', label: 'Agent', badge: 'Standard User' },
+];
+
+export const RolePermissionsModal: React.FC<RolePermissionsModalProps> = ({ isOpen, onClose }) => {
+  const {
+    currentUser,
+    users,
+    rolePermissions,
+    updateRolePermission,
+    updateUserCustomPermission,
+    resetUserCustomPermissions,
+    addRoleCategory,
+    deleteRoleCategory,
+    hasPermission,
+  } = useApp();
+
+  const [activeTab, setActiveTab] = useState<'roles' | 'users'>('roles');
+  const [selectedRole, setSelectedRole] = useState<string>('trainer');
+  const [selectedUserId, setSelectedUserId] = useState<string>(
+    users.find((u) => u.role === 'trainer')?.id || users[0]?.id || ''
+  );
+  const [searchUserQuery, setSearchUserQuery] = useState<string>('');
+
+  // Add Custom Role / Category Modal State
+  const [showAddRoleModal, setShowAddRoleModal] = useState(false);
+  const [newRoleName, setNewRoleName] = useState('');
+  const [newRoleBadge, setNewRoleBadge] = useState('Custom Role');
+  const [newRoleTemplate, setNewRoleTemplate] = useState<string>('agent');
+
+  if (!isOpen) return null;
+
+  // Super Admin Check (Red / superadmin account)
+  const isSuperAdmin =
+    currentUser.employeeCode?.toLowerCase() === 'superadmin' ||
+    currentUser.id === 'usr-superadmin-red' ||
+    currentUser.id === 'usr-superadmin-root' ||
+    currentUser.email === 'admin@llc.com';
+
+  // If not super admin, restrict access
+  if (!isSuperAdmin) {
+    return (
+      <div
+        id="role-permissions-modal"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200"
+      >
+        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mx-auto mb-3">
+            <Shield className="w-6 h-6" />
+          </div>
+          <h3 className="font-bold text-base text-slate-900">Super Admin Access Only</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            Designation and Permissions Control is restricted exclusively to the Super Admin (Red).
+          </p>
+          <button
+            onClick={onClose}
+            className="mt-5 w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Combine Base Roles + Any Custom Categories in rolePermissions
+  const allRoles: StandardRole[] = [
+    ...BASE_ROLES,
+    ...Object.keys(rolePermissions)
+      .filter((k) => !BASE_ROLES.some((br) => br.id.toLowerCase() === k.toLowerCase()))
+      .map((k) => ({
+        id: k,
+        label: k.charAt(0).toUpperCase() + k.slice(1),
+        badge: 'Custom Category',
+        isCustom: true,
+      })),
+  ];
+
+  const currentRoleObj = allRoles.find((r) => r.id === selectedRole) || {
+    id: selectedRole,
+    label: selectedRole,
+    badge: 'Role',
+  };
+
+  // Detect which employees currently belong to the selected role/category
+  const assignedEmployeesForRole = users.filter((u) => {
+    const roleMatch = u.role?.toLowerCase() === selectedRole.toLowerCase();
+    const desigMatch = u.designation?.toLowerCase() === currentRoleObj.label.toLowerCase() ||
+      u.designation?.toLowerCase() === selectedRole.toLowerCase();
+    return roleMatch || desigMatch;
+  });
+
+  const selectedUser = users.find((u) => u.id === selectedUserId);
+
+  const filteredUsers = users.filter(
+    (u) =>
+      u.name.toLowerCase().includes(searchUserQuery.toLowerCase()) ||
+      u.employeeCode.toLowerCase().includes(searchUserQuery.toLowerCase()) ||
+      u.designation.toLowerCase().includes(searchUserQuery.toLowerCase()) ||
+      u.role.toLowerCase().includes(searchUserQuery.toLowerCase())
+  );
+
+  // One-click preset: Grant Trainer full management rights
+  const handleGrantTrainerPreset = () => {
+    updateRolePermission('trainer', 'canEditEmployees', true);
+    updateRolePermission('trainer', 'canAssignTeamLeader', true);
+    updateRolePermission('trainer', 'canViewActivityLogs', true);
+    updateRolePermission('trainer', 'canViewScreenshots', true);
+    updateRolePermission('trainer', 'canViewTimesheets', true);
+    updateRolePermission('trainer', 'canManageTasks', true);
+  };
+
+  const handleCreateRoleCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = newRoleName.trim();
+    if (!trimmed) return;
+    const templatePerms = rolePermissions[newRoleTemplate] || {};
+    addRoleCategory(trimmed, templatePerms);
+    setSelectedRole(trimmed);
+    setNewRoleName('');
+    setShowAddRoleModal(false);
+  };
+
+  return (
+    <div
+      id="designation-permissions-control-modal"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200"
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden text-slate-800"
+      >
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
+              <Shield className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-bold text-base text-white">
+                  Designation and Permissions Control
+                </h2>
+                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                  Super Admin Only
+                </span>
+              </div>
+              <p className="text-xs text-slate-300">
+                Configure role/category permissions matrices and manage granular individual user overrides
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-all"
+            title="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Mode Selector Tabs & Action Bar */}
+        <div className="px-6 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('roles')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'roles'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Roles & Categories ({allRoles.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'users'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Individual Employee Overrides ({users.length})</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {activeTab === 'roles' && (
+              <>
+                <button
+                  onClick={() => setShowAddRoleModal(true)}
+                  className="text-xs px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-300 font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+                >
+                  <Plus className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>+ Add Role / Category</span>
+                </button>
+
+                <button
+                  onClick={handleGrantTrainerPreset}
+                  className="text-xs px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-sm"
+                  title="Grant Trainer role full Employee CRUD, Team Leader assignment, and Screenshot/Activity monitoring rights"
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Preset: Grant Trainer Full Manager Powers</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Content Body (2 Columns) */}
+        <div className="grid grid-cols-1 md:grid-cols-12 flex-1 overflow-hidden min-h-[460px]">
+          {/* Left Column: Role or User Selector (4 cols) */}
+          <div className="md:col-span-4 border-r border-slate-200 bg-slate-50 flex flex-col p-4 space-y-3 overflow-y-auto">
+            {activeTab === 'roles' ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                    Select Role / Category
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400 bg-slate-200/70 px-2 py-0.5 rounded-full">
+                    {allRoles.length} total
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 overflow-y-auto flex-1 pr-1">
+                  {allRoles.map((r) => {
+                    const isSelected = r.id === selectedRole;
+                    // Count how many users match this role
+                    const userCount = users.filter((u) => {
+                      const roleMatch = u.role?.toLowerCase() === r.id.toLowerCase();
+                      const desigMatch = u.designation?.toLowerCase() === r.label.toLowerCase() ||
+                        u.designation?.toLowerCase() === r.id.toLowerCase();
+                      return roleMatch || desigMatch;
+                    }).length;
+
+                    return (
+                      <div
+                        key={r.id}
+                        onClick={() => setSelectedRole(r.id)}
+                        className={`p-3 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center justify-between group ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'bg-white text-slate-700 hover:bg-slate-200/70 border border-slate-200'
+                        }`}
+                      >
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold">{r.label}</span>
+                            <span
+                              className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                                isSelected ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {userCount} {userCount === 1 ? 'user' : 'users'}
+                            </span>
+                          </div>
+                          <span
+                            className={`text-[10px] ${
+                              isSelected ? 'text-indigo-200' : 'text-slate-400'
+                            }`}
+                          >
+                            key: {r.id}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                              isSelected ? 'bg-indigo-700 text-white' : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {r.badge}
+                          </span>
+                          {r.isCustom && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Delete custom role category "${r.label}"?`)) {
+                                  deleteRoleCategory(r.id);
+                                  if (selectedRole === r.id) {
+                                    setSelectedRole('trainer');
+                                  }
+                                }
+                              }}
+                              className={`p-1 rounded-lg transition-colors ${
+                                isSelected
+                                  ? 'hover:bg-red-500 text-indigo-200 hover:text-white'
+                                  : 'hover:bg-red-50 text-slate-400 hover:text-red-600'
+                              }`}
+                              title="Delete custom role category"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-indigo-600" />
+                    Select Employee ({filteredUsers.length})
+                  </span>
+                </div>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Search employee name, designation, code..."
+                    value={searchUserQuery}
+                    onChange={(e) => setSearchUserQuery(e.target.value)}
+                    className="w-full text-xs bg-white border border-slate-200 rounded-lg pl-8 pr-2.5 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  />
+                </div>
+                <div className="space-y-1 overflow-y-auto flex-1 pr-1">
+                  {filteredUsers.map((u) => {
+                    const isSelected = u.id === selectedUserId;
+                    const hasOverrides = u.customPermissions && Object.keys(u.customPermissions).length > 0;
+                    return (
+                      <div
+                        key={u.id}
+                        onClick={() => setSelectedUserId(u.id)}
+                        className={`p-2.5 rounded-xl text-xs font-semibold cursor-pointer transition-all flex items-center justify-between ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'bg-white text-slate-700 hover:bg-slate-200/70 border border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <img
+                            src={u.avatar}
+                            alt=""
+                            className="w-6 h-6 rounded-full object-cover border border-white/40 shrink-0"
+                          />
+                          <div className="truncate">
+                            <span className="font-bold truncate block">{u.name}</span>
+                            <span
+                              className={`text-[10px] block ${
+                                isSelected ? 'text-indigo-200' : 'text-slate-500'
+                              }`}
+                            >
+                              {u.designation} (#{u.employeeCode})
+                            </span>
+                          </div>
+                        </div>
+                        {hasOverrides && (
+                          <span
+                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                              isSelected ? 'bg-amber-400 text-slate-900' : 'bg-amber-100 text-amber-800 border border-amber-200'
+                            }`}
+                            title="This employee has custom permission overrides"
+                          >
+                            Override
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Right Column: Permissions Matrix & Dynamic User Roster (8 cols) */}
+          <div className="md:col-span-8 flex flex-col p-6 space-y-4 overflow-y-auto bg-white">
+            {activeTab === 'roles' ? (
+              <>
+                {/* Role Header & Dynamic Assigned Users Detection Banner */}
+                <div className="pb-3 border-b border-slate-100 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                        <span>Role Permissions Matrix:</span>
+                        <span className="text-indigo-600 font-extrabold text-base">
+                          {currentRoleObj.label}
+                        </span>
+                        <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-bold">
+                          {currentRoleObj.badge}
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        These permissions automatically apply to all employees assigned to this role or designation.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* DYNAMIC USER ROSTER: Detects and displays names of all employees in this role */}
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Assigned Employees ({assignedEmployeesForRole.length})</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        Automatically detected from system directory
+                      </span>
+                    </div>
+
+                    {assignedEmployeesForRole.length === 0 ? (
+                      <div className="p-2.5 bg-white border border-dashed border-slate-300 rounded-lg text-center text-slate-400 text-xs">
+                        <p className="italic">No employees currently assigned to this role / designation.</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          You can assign employees to "{currentRoleObj.label}" in the Employee Directory.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-1">
+                        {assignedEmployeesForRole.map((emp) => {
+                          const hasCustom = emp.customPermissions && Object.keys(emp.customPermissions).length > 0;
+                          return (
+                            <div
+                              key={emp.id}
+                              className="flex items-center gap-2 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg shadow-2xs hover:border-indigo-300 transition-colors"
+                            >
+                              <img
+                                src={emp.avatar}
+                                alt=""
+                                className="w-5 h-5 rounded-full object-cover shrink-0"
+                              />
+                              <div className="text-left">
+                                <span className="font-bold text-xs text-slate-800 block leading-tight">
+                                  {emp.name}
+                                </span>
+                                <span className="text-[10px] text-slate-400 block font-mono">
+                                  #{emp.employeeCode}
+                                </span>
+                              </div>
+                              {hasCustom && (
+                                <span className="text-[8px] bg-amber-100 text-amber-800 font-bold px-1 rounded">
+                                  Custom
+                                </span>
+                              )}
+                              <button
+                                onClick={() => {
+                                  setSelectedUserId(emp.id);
+                                  setActiveTab('users');
+                                }}
+                                className="p-1 text-slate-400 hover:text-indigo-600 rounded hover:bg-slate-100"
+                                title={`Inspect individual overrides for ${emp.name}`}
+                              >
+                                <ArrowRight className="w-3 h-3" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Permission Toggles List for Role */}
+                <div className="space-y-2.5 overflow-y-auto flex-1 pr-1">
+                  {PERMISSION_DEFINITIONS.map((perm) => {
+                    const Icon = perm.icon;
+                    const roleObj = rolePermissions[selectedRole];
+                    const isGranted = Boolean(roleObj && roleObj[perm.key]);
+
+                    return (
+                      <div
+                        key={perm.key}
+                        className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-all flex items-center justify-between gap-4"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${perm.color}`}
+                          >
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs text-slate-900">{perm.label}</span>
+                              <span
+                                className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                                  isGranted
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                    : 'bg-slate-200 text-slate-600'
+                                }`}
+                              >
+                                {isGranted ? 'GRANTED' : 'RESTRICTED'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 leading-snug mt-0.5">
+                              {perm.description}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Toggle Switch */}
+                        <button
+                          onClick={() => updateRolePermission(selectedRole, perm.key, !isGranted)}
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
+                            isGranted ? 'bg-emerald-600' : 'bg-slate-300'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                              isGranted ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Individual User Overrides View */}
+                {selectedUser ? (
+                  <>
+                    <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <img
+                          src={selectedUser.avatar}
+                          alt=""
+                          className="w-10 h-10 rounded-xl object-cover border border-slate-200"
+                        />
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-sm text-slate-900">{selectedUser.name}</h3>
+                            <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded font-bold uppercase">
+                              {selectedUser.role}
+                            </span>
+                            <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-semibold">
+                              {selectedUser.designation}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Employee #{selectedUser.employeeCode} • {selectedUser.email}
+                          </p>
+                        </div>
+                      </div>
+
+                      {selectedUser.customPermissions &&
+                        Object.keys(selectedUser.customPermissions).length > 0 && (
+                          <button
+                            onClick={() => resetUserCustomPermissions(selectedUser.id)}
+                            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all"
+                            title="Remove all custom overrides and revert to base designation defaults"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Reset to Role Defaults</span>
+                          </button>
+                        )}
+                    </div>
+
+                    <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-xs text-indigo-950">
+                      <p className="font-semibold">
+                        💡 How Individual Overrides Work:
+                      </p>
+                      <p className="text-[11px] text-indigo-900 mt-0.5 leading-relaxed">
+                        By default, all employees inherit the permissions configured for their Role/Designation.
+                        Toggling a permission below creates an individual exception specifically for <strong>{selectedUser.name}</strong> without affecting any other team members.
+                      </p>
+                    </div>
+
+                    {/* Permissions List for User */}
+                    <div className="space-y-2.5 overflow-y-auto flex-1 pr-1">
+                      {PERMISSION_DEFINITIONS.map((perm) => {
+                        const Icon = perm.icon;
+                        const isGranted = hasPermission(perm.key, selectedUser);
+                        const isOverridden =
+                          selectedUser.customPermissions &&
+                          selectedUser.customPermissions[perm.key] !== undefined;
+
+                        return (
+                          <div
+                            key={perm.key}
+                            className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-4 ${
+                              isOverridden
+                                ? 'bg-amber-50/40 border-amber-200'
+                                : 'bg-slate-50/50 hover:bg-slate-50 border-slate-200'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div
+                                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${perm.color}`}
+                              >
+                                <Icon className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-xs text-slate-900">{perm.label}</span>
+                                  <span
+                                    className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                                      isGranted
+                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                        : 'bg-slate-200 text-slate-600'
+                                    }`}
+                                  >
+                                    {isGranted ? 'GRANTED' : 'RESTRICTED'}
+                                  </span>
+                                  {isOverridden && (
+                                    <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded border border-amber-200">
+                                      Custom Override
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-slate-500 leading-snug mt-0.5">
+                                  {perm.description}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Toggle Switch */}
+                            <button
+                              onClick={() =>
+                                updateUserCustomPermission(selectedUser.id, perm.key, !isGranted)
+                              }
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
+                                isGranted ? 'bg-emerald-600' : 'bg-slate-300'
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                  isGranted ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-8 text-center text-slate-400">
+                    <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                    <p className="text-xs">Select an employee from the left column to view and edit individual overrides.</p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Bottom Insight / Super Admin note */}
+            <div className="p-3 bg-slate-100 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>
+                Changes are saved immediately and synchronized to the central database and active sessions.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+            <ShieldCheck className="w-4 h-4 text-indigo-600" />
+            <span>Role-Based Access Control (RBAC) System • Super Admin Level</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm"
+          >
+            Done
+          </button>
+        </div>
+
+        {/* Add Role / Category Sub-Modal */}
+        <AnimatePresence>
+          {showAddRoleModal && (
+            <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 text-slate-800"
+              >
+                <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                      <Plus className="w-4 h-4" />
+                    </div>
+                    <h3 className="font-bold text-sm text-slate-900">Add Role / Category</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowAddRoleModal(false)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleCreateRoleCategory} className="space-y-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Role / Category Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Operations Supervisor, Auditor, Team Assistant"
+                      value={newRoleName}
+                      onChange={(e) => setNewRoleName(e.target.value)}
+                      className="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Department / Badge Tag
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Operations, Quality, Finance, Custom"
+                      value={newRoleBadge}
+                      onChange={(e) => setNewRoleBadge(e.target.value)}
+                      className="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Initial Template Permissions Preset
+                    </label>
+                    <select
+                      value={newRoleTemplate}
+                      onChange={(e) => setNewRoleTemplate(e.target.value)}
+                      className="w-full text-xs bg-slate-50 border border-slate-300 rounded-xl p-2.5 font-medium text-slate-900 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    >
+                      <option value="agent">Clone from Agent (Restricted standard user)</option>
+                      <option value="trainer">Clone from Trainer (Manager rights, CRUD & monitoring)</option>
+                      <option value="team_lead">Clone from Team Leader (Supervisor rights)</option>
+                      <option value="qa">Clone from QA Specialist (Auditing & review)</option>
+                      <option value="hr">Clone from HR (Employee CRUD & Timesheets)</option>
+                      <option value="payroll">Clone from Payroll Officer (Payroll & Timesheets)</option>
+                      <option value="admin">Clone from Admin (Full access)</option>
+                    </select>
+                  </div>
+
+                  <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddRoleModal(false)}
+                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm"
+                    >
+                      Create Role / Category
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </div>
+  );
+};

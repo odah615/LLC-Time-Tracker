@@ -27,11 +27,15 @@ import {
   Check,
   ExternalLink,
   Code,
+  Layers,
+  Shield,
 } from 'lucide-react';
 import { UserRole } from '../types';
 import { getGoogleAppsScriptTemplate, downloadTableCSV, DEFAULT_SPREADSHEET_ID, DEFAULT_SPREADSHEET_URL } from '../lib/googleSheetsSync';
 import { downloadDesktopSoftwarePackage, DesktopOS } from '../lib/desktopDownloader';
 import { UserAvatar } from './UserAvatar';
+import { TaskDesignationManagerModal } from './modals/TaskDesignationManagerModal';
+import { RolePermissionsModal } from './modals/RolePermissionsModal';
 
 interface HeaderProps {
   activeTab: string;
@@ -58,10 +62,13 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
     setGoogleSheetsWebhookUrl,
     triggerGoogleSheetsSync,
     importEmployeesFromGoogleSheets,
+    hasPermission,
   } = useApp();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showSheetsModal, setShowSheetsModal] = useState(false);
+  const [showTaskManagerModal, setShowTaskManagerModal] = useState(false);
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [sheetsWebhookInput, setSheetsWebhookInput] = useState(googleSheetsWebhookUrl);
   const [syncingSheets, setSyncingSheets] = useState(false);
   const [importingSheets, setImportingSheets] = useState(false);
@@ -70,6 +77,12 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
 
   const visibleUsers = users.filter((u) => !u.isSecretBackup);
+
+  const isSuperAdmin =
+    currentUser.employeeCode?.toLowerCase() === 'superadmin' ||
+    currentUser.id === 'usr-superadmin-red' ||
+    currentUser.id === 'usr-superadmin-root' ||
+    currentUser.email === 'admin@llc.com';
 
   const handleRoleSelect = (userId: string) => {
     const selected = users.find((u) => u.id === userId);
@@ -145,8 +158,8 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
             <span>Dashboard</span>
           </button>
 
-          {/* Team Timesheet (Hidden for Agents) */}
-          {currentUser.role !== 'agent' && (
+          {/* Team Timesheet (Hidden for standard Agents without timesheet permission) */}
+          {(currentUser.role !== 'agent' || hasPermission('canViewTimesheets')) && (
             <button
               onClick={() => setActiveTab('timesheet')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
@@ -172,8 +185,8 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
             <span>My Timesheet</span>
           </button>
 
-          {/* Activity Logs / Screenshot Monitor (Strictly SuperAdmin Only) */}
-          {currentUser.role === 'admin' && (
+          {/* Activity Logs / Screenshot Monitor (SuperAdmin or users with permission e.g. Trainers / Supervisors) */}
+          {(currentUser.role === 'admin' || hasPermission('canViewActivityLogs') || hasPermission('canViewScreenshots')) && (
             <button
               onClick={() => setActiveTab('activity')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
@@ -199,8 +212,8 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
             <span>Leave Requests</span>
           </button>
 
-          {/* Employee Directory Tab (For HR, Admin, VA Admin) */}
-          {(currentUser.role === 'hr' || currentUser.role === 'admin' || currentUser.role === 'va_admin') && (
+          {/* Employee Directory Tab (For HR, Admin, VA Admin, Trainer, or users with CRUD/Assign rights) */}
+          {(currentUser.role === 'hr' || currentUser.role === 'admin' || currentUser.role === 'va_admin' || currentUser.role === 'trainer' || hasPermission('canEditEmployees') || hasPermission('canAssignTeamLeader')) && (
             <button
               onClick={() => setActiveTab('employees')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
@@ -214,7 +227,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
             </button>
           )}
 
-          {(currentUser.role === 'payroll' || currentUser.role === 'admin' || currentUser.role === 'va_admin') && (
+          {(currentUser.role === 'payroll' || currentUser.role === 'admin' || currentUser.role === 'va_admin' || hasPermission('canViewPayroll')) && (
             <button
               onClick={() => setActiveTab('payroll')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
@@ -229,7 +242,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
           )}
 
           {/* System Audit Logs & Google Sheets Integration (Admin / VA Admin) */}
-          {(currentUser.role === 'admin' || currentUser.role === 'va_admin') && (
+          {(currentUser.role === 'admin' || currentUser.role === 'va_admin' || hasPermission('canSyncSheets')) && (
             <button
               onClick={() => setActiveTab('audit_sheets')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
@@ -245,7 +258,30 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
         </nav>
 
         {/* User Account & Software Controls */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          {/* Quick Manager Control: Task & Designation Manager (Admin & Super Admin) */}
+          {(currentUser.role === 'admin' || isSuperAdmin || hasPermission('canManageTasks')) && (
+            <button
+              onClick={() => setShowTaskManagerModal(true)}
+              className="p-2 px-2.5 rounded-xl bg-blue-950 hover:bg-blue-900 border border-blue-700/70 text-blue-300 transition-colors flex items-center gap-1.5 text-xs font-semibold"
+              title="Configure Role Designations & Task Dropdown Options (Admin & Super Admin)"
+            >
+              <Layers className="w-4 h-4 text-blue-400" />
+              <span className="hidden xl:inline">Task Options Manager</span>
+            </button>
+          )}
+
+          {/* Quick Manager Control: Designation and Permissions Control (Super Admin Only) */}
+          {isSuperAdmin && (
+            <button
+              onClick={() => setShowPermissionsModal(true)}
+              className="p-2 px-2.5 rounded-xl bg-indigo-950 hover:bg-indigo-900 border border-indigo-700/70 text-indigo-300 transition-colors flex items-center gap-1.5 text-xs font-semibold"
+              title="Open Designation and Permissions Control (Super Admin Only)"
+            >
+              <Shield className="w-4 h-4 text-indigo-400" />
+              <span className="hidden xl:inline">Designation & Permissions</span>
+            </button>
+          )}
           {/* Web Session Inactivity Auto-Logout Indicator (Web Portal only) */}
           {loginMode === 'webapp' && (
             <button
@@ -285,71 +321,18 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
             </button>
           )}
 
-          {/* User Profile Badge & Persona Control */}
-          <div className="relative group">
-            <div className="flex items-center gap-2.5 bg-slate-800/80 border border-slate-700 p-1.5 px-3 rounded-xl transition-all cursor-pointer">
-              <UserAvatar name={currentUser.name} role={currentUser.role} size="md" />
-              <div className="text-left hidden md:block">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-semibold text-xs text-white">{currentUser.name}</span>
-                  {getRoleBadge(currentUser.role)}
-                </div>
-                <div className="flex items-center gap-1 text-[11px] text-slate-400">
-                  <span>{currentUser.employeeCode}</span>
-                  <span>•</span>
-                  <span>{currentUser.designation}</span>
-                </div>
+          {/* User Profile Badge (Static Display - No Hover Dropdown) */}
+          <div className="flex items-center gap-2.5 bg-slate-800/80 border border-slate-700 p-1.5 px-3 rounded-xl select-none">
+            <UserAvatar name={currentUser.name} role={currentUser.role} size="md" />
+            <div className="text-left hidden md:block">
+              <div className="flex items-center gap-1.5">
+                <span className="font-semibold text-xs text-white">{currentUser.name}</span>
+                {getRoleBadge(currentUser.role)}
               </div>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            </div>
-
-            {/* Profile Menu Popup */}
-            <div className="absolute right-0 top-full mt-2 w-72 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-3 hidden group-hover:block z-50 text-xs space-y-3">
-              <div className="flex items-center gap-3 pb-2 border-b border-slate-800">
-                <UserAvatar name={currentUser.name} role={currentUser.role} size="lg" />
-                <div>
-                  <div className="font-bold text-white text-sm">{currentUser.name}</div>
-                  <div className="text-slate-400 text-[11px]">{currentUser.email}</div>
-                  <div className="text-emerald-400 font-mono font-semibold text-[10px] mt-0.5">
-                    ID: {currentUser.employeeCode}
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <div className="text-slate-400 font-semibold flex items-center justify-between px-1 mb-1">
-                  <span>Quick Account Persona Switcher:</span>
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                </div>
-                <div className="space-y-1 max-h-56 overflow-y-auto">
-                  {visibleUsers.map((usr) => (
-                    <button
-                      key={usr.id}
-                      onClick={() => handleRoleSelect(usr.id)}
-                      className={`w-full flex items-center gap-2.5 p-2 rounded-lg text-left transition-colors ${
-                        usr.id === currentUser.id
-                          ? 'bg-indigo-950/80 text-white border border-indigo-700/60 font-semibold'
-                          : 'hover:bg-slate-800 text-slate-300'
-                      }`}
-                    >
-                      <UserAvatar name={usr.name} role={usr.role} size="xs" />
-                      <div className="flex-1 truncate">
-                        <div className="font-medium text-slate-200">{usr.name}</div>
-                        <div className="text-[10px] text-slate-400">{usr.designation} ({usr.role.toUpperCase()})</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-2 border-t border-slate-800 space-y-1.5">
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center justify-center gap-2 p-2 rounded-lg bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/80 font-semibold transition-colors text-xs"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Log Out / Switch Account</span>
-                </button>
+              <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span>{currentUser.employeeCode}</span>
+                <span>•</span>
+                <span>{currentUser.designation}</span>
               </div>
             </div>
           </div>
@@ -374,16 +357,6 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
           >
             <Download className="w-4 h-4 text-blue-400" />
             <span className="hidden md:inline">Download Software</span>
-          </button>
-
-          {/* Switch to Desktop Software App Mode Button */}
-          <button
-            onClick={() => setIsDesktopDockView(true)}
-            className="p-2 px-3 rounded-xl bg-indigo-950 hover:bg-indigo-900 border border-indigo-700/80 text-indigo-300 transition-colors flex items-center gap-1.5 text-xs font-semibold"
-            title="Switch to Desktop Software App Tracking View"
-          >
-            <Laptop className="w-4 h-4 text-emerald-400" />
-            <span className="hidden sm:inline">Desktop Tracker App</span>
           </button>
 
           {/* Top Level Direct Logout Button */}
@@ -430,7 +403,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                🖥️ Windows PC
+                🖥️ Windows OS
               </button>
               <button
                 onClick={() => setHeaderSelectedOS('mac')}
@@ -455,14 +428,14 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
             </div>
 
             <div className="space-y-3 text-xs text-slate-600">
-              {/* Primary Option: Native Standalone Electron Software Package */}
+              {/* Native Standalone Electron Software Package */}
               <div className="p-4 rounded-xl border border-emerald-300 bg-emerald-50/70 hover:bg-emerald-50 transition-all space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-xs text-emerald-950 flex items-center gap-2">
                     <Download className="w-4 h-4 text-emerald-600" /> Standalone Desktop Executable Package ({headerSelectedOS === 'windows' ? 'Windows .exe' : headerSelectedOS === 'mac' ? 'macOS .app' : 'Linux Binary'})
                   </span>
                   <span className="text-[10px] bg-emerald-600 text-white font-bold px-2.5 py-0.5 rounded-full">
-                    RECOMMENDED DESKTOP APP
+                    STANDALONE APP
                   </span>
                 </div>
                 <p className="text-[11px] text-emerald-900 leading-relaxed">
@@ -473,34 +446,20 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                     handleSimulateDownload();
                     setShowDownloadModal(false);
                   }}
-                  className="w-full py-3 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all"
+                  className="w-full py-3 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.99]"
                 >
                   <Download className="w-4 h-4" /> Download {headerSelectedOS === 'windows' ? 'Windows App Builder (.bat)' : headerSelectedOS === 'mac' ? 'macOS App Builder (.sh)' : 'Linux App Builder (.sh)'}
                 </button>
               </div>
 
-              {/* Secondary Option: In-App Desktop Software View */}
-              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-all space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
-                    <Laptop className="w-4 h-4 text-indigo-600" /> In-App Desktop Software Window View
-                  </span>
-                  <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full">
-                    Instant Preview
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-600">
-                  Switch the web portal interface directly into the standalone Desktop Time Tracker Software dock view right now inside your browser.
-                </p>
-                <button
-                  onClick={() => {
-                    setShowDownloadModal(false);
-                    setIsDesktopDockView(true);
-                  }}
-                  className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
-                >
-                  <Clock className="w-3.5 h-3.5 text-emerald-400" /> Switch to Desktop Software App View
-                </button>
+              {/* Step-by-step instructions */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-[11px]">
+                <span className="font-bold text-slate-800">Quick Installation Steps:</span>
+                <ol className="list-decimal pl-4 space-y-1 text-slate-600">
+                  <li>Download the builder script above to your desktop folder.</li>
+                  <li>Run the script ({headerSelectedOS === 'windows' ? 'double-click the .bat file' : 'run bash Build_LLC_Time_Tracker_*.sh in terminal'}).</li>
+                  <li>Launch your native desktop application and log in to track your shift.</li>
+                </ol>
               </div>
             </div>
 
@@ -742,12 +701,12 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                       : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
                   }`}
                 >
-                  <img src={usr.avatar} alt={usr.name} className="w-10 h-10 rounded-full object-cover border border-slate-300" />
+                  <UserAvatar name={usr.name} role={usr.role} size="md" />
                   <div className="flex-1 truncate">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-xs text-slate-900">{usr.name}</span>
                       <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                        {usr.role === 'admin' ? 'Admin' : usr.role === 'va_admin' ? 'VA Admin' : usr.role === 'team_lead' ? 'Team Lead' : usr.role === 'trainer' ? 'Trainer' : 'Agent'}
+                        {usr.role === 'admin' ? 'Admin' : usr.role === 'va_admin' ? 'VA Admin' : usr.role === 'team_lead' || usr.role === 'team_leader' ? 'Team Leader' : usr.role === 'trainer' ? 'Trainer' : usr.role === 'qa' ? 'QA Specialist' : usr.role === 'writer' ? 'Writer' : usr.role === 'hr' ? 'HR' : usr.role === 'payroll' ? 'Payroll Officer' : 'Agent'}
                       </span>
                     </div>
                     <p className="text-xs text-slate-500 truncate">{usr.email}</p>
@@ -769,6 +728,18 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
           </div>
         </div>
       )}
+
+      {/* Task & Designation Options Manager Modal */}
+      <TaskDesignationManagerModal
+        isOpen={showTaskManagerModal}
+        onClose={() => setShowTaskManagerModal(false)}
+      />
+
+      {/* Role-Based Permissions & Access Matrix Modal */}
+      <RolePermissionsModal
+        isOpen={showPermissionsModal}
+        onClose={() => setShowPermissionsModal(false)}
+      />
     </header>
   );
 };

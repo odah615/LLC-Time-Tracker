@@ -103,12 +103,7 @@ export const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
         </div>
 
         {/* Target Employee Info Card */}
-        <div className="flex items-center gap-3.5 bg-slate-50 border border-slate-200/80 p-3.5 rounded-xl">
-          <img
-            src={targetUser.avatar}
-            alt={targetUser.name}
-            className="w-11 h-11 rounded-full object-cover ring-2 ring-white shadow-sm shrink-0"
-          />
+        <div className="bg-slate-50 border border-slate-200/80 p-3.5 rounded-xl">
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-slate-900 text-sm truncate">{targetUser.name}</h4>

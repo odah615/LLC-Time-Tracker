@@ -153,10 +153,14 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       variant: 'warning',
       action: () => {
         let newDesig = usr.designation;
-        if (newRole === 'agent') newDesig = 'Sales Agent' as any;
-        else if (newRole === 'team_lead') newDesig = 'Team Lead' as any;
+        if (newRole === 'agent') newDesig = 'Agent' as any;
+        else if (newRole === 'team_lead') newDesig = 'Team Leader' as any;
         else if (newRole === 'trainer') newDesig = 'Trainer' as any;
-        else if (newRole === 'va_admin') newDesig = 'VA Operations Admin' as any;
+        else if (newRole === 'qa') newDesig = 'QA Specialist' as any;
+        else if (newRole === 'writer') newDesig = 'Writer' as any;
+        else if (newRole === 'hr') newDesig = 'HR' as any;
+        else if (newRole === 'payroll') newDesig = 'Payroll Officer' as any;
+        else if (newRole === 'va_admin') newDesig = 'Admin' as any;
         else if (newRole === 'admin') newDesig = 'Admin' as any;
 
         updateUser(usr.id, { role: newRole as any, designation: newDesig });
@@ -310,8 +314,23 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     setTimeout(() => setDownloadSuccess(false), 5000);
   };
 
+  // Operational Staff Users (Excluding Admin & Backup Accounts)
+  const operationalStaffUsers = useMemo(() => {
+    return users.filter((u) => {
+      return !(
+        u.role === 'admin' ||
+        u.isSecretBackup === true ||
+        u.employeeCode?.toLowerCase() === 'superadmin' ||
+        u.id === 'usr-superadmin-red' ||
+        u.id === 'usr-superadmin-root' ||
+        u.email === 'admin@llctimetracker.internal' ||
+        u.email === 'admin@llc.com'
+      );
+    });
+  }, [users]);
+
   // Aggregate stats
-  const totalUsers = users.length;
+  const totalStaffCount = operationalStaffUsers.length;
   const totalLoggedSec = timeLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
   const totalLoggedHours = (totalLoggedSec / 3600).toFixed(1);
 
@@ -406,11 +425,15 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   // Filter out secret emergency backup account from employee directory
   const visibleUsers = useMemo(() => users.filter((u) => !u.isSecretBackup), [users]);
 
-  // Distinct departments count
+  // Distinct operational units count (Excludes admin / management)
   const activeDepartments = useMemo(() => {
-    const depts = new Set(users.map((u) => u.department || 'Operations'));
+    const depts = new Set(
+      operationalStaffUsers
+        .map((u) => u.department || 'Operations')
+        .filter((d) => Boolean(d && d.trim().length > 0 && d !== 'Executive Management'))
+    );
     return Array.from(depts);
-  }, [users]);
+  }, [operationalStaffUsers]);
 
   // Pagination calculations for Employee Directory
   const totalPages = Math.ceil(visibleUsers.length / pageSize) || 1;
@@ -451,7 +474,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                       : 'bg-slate-900/90 text-slate-300 hover:bg-slate-700 border border-slate-700'
                   }`}
                 >
-                  🖥️ Windows PC (.exe / .bat)
+                  🖥️ Windows OS (.exe / .bat)
                 </button>
                 <button
                   type="button"
@@ -542,11 +565,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-semibold text-slate-600">Registered Employees</span>
+            <span className="text-xs font-semibold text-slate-600">Operational Staff</span>
             <Users className="w-4 h-4 text-blue-600" />
           </div>
-          <div className="text-2xl font-extrabold text-slate-900">{totalUsers} Staff Members</div>
-          <p className="text-[11px] text-slate-500 mt-1">Agents, Team Leads, Trainers & Admin</p>
+          <div className="text-2xl font-extrabold text-slate-900">{totalStaffCount} Staff Members</div>
+          <p className="text-[11px] text-slate-500 mt-1">Supervised Agents, Team Leads & Trainers</p>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
@@ -929,10 +952,18 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                               ? 'Admin'
                               : usr.role === 'va_admin'
                               ? 'VA Admin'
-                              : usr.role === 'team_lead'
-                              ? 'Team Lead'
+                              : usr.role === 'team_lead' || usr.role === 'team_leader'
+                              ? 'Team Leader'
                               : usr.role === 'trainer'
                               ? 'Trainer'
+                              : usr.role === 'qa'
+                              ? 'QA Specialist'
+                              : usr.role === 'writer'
+                              ? 'Writer'
+                              : usr.role === 'hr'
+                              ? 'HR'
+                              : usr.role === 'payroll'
+                              ? 'Payroll Officer'
                               : 'Agent'}
                           </span>
                         </div>

@@ -216,7 +216,7 @@ export const AuditLogsView: React.FC = () => {
             usr?.employeeCode || 'N/A',
             l.actorName,
             l.actorRole,
-            usr?.designation || 'Sales Agent',
+            usr?.designation || 'Agent',
             mode,
             usr?.geoCity ? `${usr.geoCity} (${usr.geoTimezone})` : 'Toronto, Canada (America/Toronto)',
             'Authenticated (Active)',
@@ -235,7 +235,7 @@ export const AuditLogsView: React.FC = () => {
             usr?.employeeCode || 'N/A',
             l.actorName,
             l.actorRole,
-            usr?.designation || 'Sales Agent',
+            usr?.designation || 'Agent',
             'Manual Sign Out / Shift End',
             l.details,
             'Logged Out (Complete)',
@@ -340,7 +340,7 @@ export const AuditLogsView: React.FC = () => {
         usr?.employeeCode || 'N/A',
         l.actorName,
         l.actorRole,
-        usr?.designation || 'Sales Agent',
+        usr?.designation || 'Agent',
         mode,
         usr?.geoCity ? `${usr.geoCity} (${usr.geoTimezone})` : 'Toronto, Canada (America/Toronto)',
         'Authenticated (Active)',
@@ -358,7 +358,7 @@ export const AuditLogsView: React.FC = () => {
         usr?.employeeCode || 'N/A',
         l.actorName,
         l.actorRole,
-        usr?.designation || 'Sales Agent',
+        usr?.designation || 'Agent',
         'Manual Sign Out / Shift End',
         l.details,
         'Logged Out (Complete)',
@@ -994,7 +994,7 @@ export const AuditLogsView: React.FC = () => {
                             <div className="font-bold text-slate-900">{log.actorName}</div>
                             <div className="text-[10px] text-slate-500">
                               {usr?.employeeCode ? `#${usr.employeeCode} • ` : ''}
-                              <span className="capitalize font-semibold text-blue-700">{log.actorRole}</span> ({usr?.designation || 'Sales Agent'})
+                              <span className="capitalize font-semibold text-blue-700">{log.actorRole}</span> ({usr?.designation || 'Agent'})
                             </div>
                           </td>
                           <td className="py-3.5 px-4">
@@ -1095,7 +1095,7 @@ export const AuditLogsView: React.FC = () => {
                             </div>
                           </td>
                           <td className="py-3.5 px-4 font-medium text-slate-700">
-                            {usr?.designation || 'Sales Agent'}
+                            {usr?.designation || 'Agent'}
                           </td>
                           <td className="py-3.5 px-4">
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-bold text-[11px] bg-slate-100 text-slate-700 border border-slate-200">

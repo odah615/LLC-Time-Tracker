@@ -130,10 +130,23 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
-  // Filter users based on supervisor if needed
+  // Helper to identify administrative / root backup accounts
+  const isAdminAccount = (u: User) => {
+    return (
+      u.role === 'admin' ||
+      u.isSecretBackup === true ||
+      u.employeeCode?.toLowerCase() === 'superadmin' ||
+      u.id === 'usr-superadmin-red' ||
+      u.id === 'usr-superadmin-root' ||
+      u.email === 'admin@llctimetracker.internal' ||
+      u.email === 'admin@llc.com'
+    );
+  };
+
+  // Filter users based on supervisor if needed (Excluding Admin & Backup Accounts)
   const targetUsers = useMemo(() => {
     return users.filter((u) => {
-      if (u.isSecretBackup) return false;
+      if (isAdminAccount(u)) return false;
       if (teamLeaderId && u.teamLeaderId !== teamLeaderId && u.id !== teamLeaderId) {
         return false;
       }
@@ -235,6 +248,7 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
   // Graph Data 1: "How many agents are doing this task today" (Headcount per task)
   const agentsPerTaskTodayData = useMemo(() => {
     const taskHeadcountMap: Record<string, { count: number; onlineCount: number; hours: number }> = {};
+    const nonAdminUserIds = new Set(targetUsers.map((u) => u.id));
 
     // Calculate from live agents and today's logs
     liveAgents.forEach((agent) => {
@@ -249,8 +263,8 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
       taskHeadcountMap[task].hours += agent.todayTotalSec / 3600;
     });
 
-    // Also include any tasks logged today in timeLogs
-    const todayLogs = timeLogs.filter((l) => l.date === todayStr);
+    // Also include any tasks logged today in timeLogs for staff
+    const todayLogs = timeLogs.filter((l) => l.date === todayStr && nonAdminUserIds.has(l.userId));
     todayLogs.forEach((l) => {
       if (!taskHeadcountMap[l.task]) {
         taskHeadcountMap[l.task] = { count: 1, onlineCount: 0, hours: 0 };
@@ -265,7 +279,7 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
       totalHours: Number(taskHeadcountMap[task].hours.toFixed(1)),
       color: TASK_COLORS[task] || DEFAULT_COLOR,
     })).sort((a, b) => b.agentsCount - a.agentsCount);
-  }, [liveAgents, timeLogs, todayStr]);
+  }, [liveAgents, timeLogs, todayStr, targetUsers]);
 
   // Pie chart data for task distribution today
   const taskDistributionPieData = useMemo(() => {
@@ -281,7 +295,9 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
 
   // Timeframe Filtered Logs for Day / Week / Month Task Breakdown
   const timeframeLogs = useMemo(() => {
-    let logs = timeLogs;
+    const nonAdminUserIds = new Set(targetUsers.map((u) => u.id));
+    let logs = timeLogs.filter((l) => nonAdminUserIds.has(l.userId));
+
     if (teamLeaderId) {
       const teamUserIds = targetUsers.map((u) => u.id);
       logs = logs.filter((l) => teamUserIds.includes(l.userId));
