@@ -433,7 +433,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAttendance = dailyAttendanceLogs,
       updatedIdle = idleLogs,
       updatedLeaves = leaveRequests,
-      updatedDesignationTasks = designationTasks
+      updatedDesignationTasks = designationTasks,
+      updatedRolePermissions = rolePermissions
     ) => {
       const activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
       if (activeUrl && activeUrl.trim()) {
@@ -446,11 +447,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           updatedAttendance,
           updatedIdle,
           updatedLeaves,
-          updatedDesignationTasks
+          updatedDesignationTasks,
+          updatedRolePermissions
         ).catch((err) => console.warn('Auto-sync to Google Sheets warning:', err));
       }
     },
-    [googleSheetsWebhookUrl, users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks]
+    [googleSheetsWebhookUrl, users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions]
   );
 
   const triggerGoogleSheetsSync = async (overrideUrl?: string): Promise<{ success: boolean; message: string }> => {
@@ -469,10 +471,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       dailyAttendanceLogs,
       idleLogs,
       leaveRequests,
-      designationTasks
+      designationTasks,
+      rolePermissions
     );
     if (res.success) {
-      setSaveToast(`✓ Synced all Database Tabs (including Designation Tasks) to Google Sheets!`);
+      setSaveToast(`✓ Synced all Database Tabs (including Designation Tasks & Permissions) to Google Sheets!`);
     } else {
       setSaveToast(`⚠️ Google Sheets Sync: ${res.message}`);
     }
@@ -2514,15 +2517,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeSetDoc(doc(db, 'system_state', 'rolepermissions'), { data: updated }).catch((err) =>
       console.warn('Role permissions sync error:', err)
     );
-    addAuditLog({
+    const now = new Date();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dateFormatted = `${monthNames[now.getMonth()]} ${now.getDate().toString().padStart(2, '0')}, ${now.getFullYear()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    const auditEntry: AuditLog = {
+      id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      timestamp: now.toISOString(),
+      dateFormatted,
       actorId: currentUser.id,
       actorName: currentUser.name,
       actorRole: currentUser.role,
       category: 'Permissions Updated',
       targetEmployeeName: roleKey,
-      details: `Super Admin updated permission [${permissionKey} = ${value ? 'GRANTED' : 'REVOKED'}] for role/designation "${roleKey}".`,
-    });
-    setSaveToast(`✓ Updated permission [${permissionKey}] for "${roleKey}"!`);
+      details: `Super Admin updated permission [${permissionKey} = ${value ? 'GRANTED' : 'REVOKED'}] for role/designation "${roleKey}". Saved to Spreadsheet Database.`,
+    };
+    const updatedAudit = [auditEntry, ...auditLogs];
+    setAuditLogs(updatedAudit);
+    triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, updated);
+    setSaveToast(`✓ Updated permission [${permissionKey}] for "${roleKey}" and synced Database!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 
@@ -2545,16 +2557,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
       console.warn('User custom permissions sync error:', err)
     );
-    addAuditLog({
+    const now = new Date();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dateFormatted = `${monthNames[now.getMonth()]} ${now.getDate().toString().padStart(2, '0')}, ${now.getFullYear()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    const auditEntry: AuditLog = {
+      id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      timestamp: now.toISOString(),
+      dateFormatted,
       actorId: currentUser.id,
       actorName: currentUser.name,
       actorRole: currentUser.role,
       category: 'User Custom Permission Set',
       targetEmployeeId: userId,
       targetEmployeeName: target?.name || userId,
-      details: `Set individual permission override [${permissionKey} = ${value ? 'GRANTED' : 'REVOKED'}] for ${target?.name || userId}.`,
-    });
-    setSaveToast(`✓ Updated custom permission for ${target?.name || 'user'}!`);
+      details: `Set individual permission override [${permissionKey} = ${value ? 'GRANTED' : 'REVOKED'}] for ${target?.name || userId}. Saved to Spreadsheet Database.`,
+    };
+    const updatedAudit = [auditEntry, ...auditLogs];
+    setAuditLogs(updatedAudit);
+    triggerAutoSync(updatedUsers, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions);
+    setSaveToast(`✓ Updated custom permission for ${target?.name || 'user'} and synced Database!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 
@@ -2573,16 +2594,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
       console.warn('User custom permissions reset sync error:', err)
     );
-    addAuditLog({
+    const now = new Date();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dateFormatted = `${monthNames[now.getMonth()]} ${now.getDate().toString().padStart(2, '0')}, ${now.getFullYear()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    const auditEntry: AuditLog = {
+      id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      timestamp: now.toISOString(),
+      dateFormatted,
       actorId: currentUser.id,
       actorName: currentUser.name,
       actorRole: currentUser.role,
       category: 'User Custom Permission Reset',
       targetEmployeeId: userId,
       targetEmployeeName: target?.name || userId,
-      details: `Reset individual permissions for ${target?.name || userId} back to designation defaults.`,
-    });
-    setSaveToast(`✓ Reset permissions for ${target?.name || 'user'} to standard designation defaults!`);
+      details: `Reset individual permissions for ${target?.name || userId} back to designation defaults. Saved to Spreadsheet Database.`,
+    };
+    const updatedAudit = [auditEntry, ...auditLogs];
+    setAuditLogs(updatedAudit);
+    triggerAutoSync(updatedUsers, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions);
+    setSaveToast(`✓ Reset permissions for ${target?.name || 'user'} to standard designation defaults and synced Database!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 
@@ -2610,15 +2640,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeSetDoc(doc(db, 'system_state', 'rolepermissions'), { data: updated }).catch((err) =>
       console.warn('Role permissions sync error:', err)
     );
-    addAuditLog({
+    const now = new Date();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dateFormatted = `${monthNames[now.getMonth()]} ${now.getDate().toString().padStart(2, '0')}, ${now.getFullYear()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    const auditEntry: AuditLog = {
+      id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      timestamp: now.toISOString(),
+      dateFormatted,
       actorId: currentUser.id,
       actorName: currentUser.name,
       actorRole: currentUser.role,
       category: 'Permissions Updated',
       targetEmployeeName: trimmedKey,
-      details: `Created new Role / Category permission matrix for "${trimmedKey}".`,
-    });
-    setSaveToast(`✓ Created Role / Category "${trimmedKey}"!`);
+      details: `Created new Role / Category permission matrix for "${trimmedKey}". Saved to Spreadsheet Database.`,
+    };
+    const updatedAudit = [auditEntry, ...auditLogs];
+    setAuditLogs(updatedAudit);
+    triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, updated);
+    setSaveToast(`✓ Created Role / Category "${trimmedKey}" and synced to Database!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 
@@ -2630,15 +2669,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeSetDoc(doc(db, 'system_state', 'rolepermissions'), { data: updated }).catch((err) =>
       console.warn('Role permissions sync error:', err)
     );
-    addAuditLog({
+    const now = new Date();
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dateFormatted = `${monthNames[now.getMonth()]} ${now.getDate().toString().padStart(2, '0')}, ${now.getFullYear()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    const auditEntry: AuditLog = {
+      id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      timestamp: now.toISOString(),
+      dateFormatted,
       actorId: currentUser.id,
       actorName: currentUser.name,
       actorRole: currentUser.role,
       category: 'Permissions Updated',
       targetEmployeeName: roleKey,
-      details: `Deleted custom Role / Category permission matrix for "${roleKey}".`,
-    });
-    setSaveToast(`✓ Removed custom category "${roleKey}"!`);
+      details: `Deleted custom Role / Category permission matrix for "${roleKey}". Saved to Spreadsheet Database.`,
+    };
+    const updatedAudit = [auditEntry, ...auditLogs];
+    setAuditLogs(updatedAudit);
+    triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, updated);
+    setSaveToast(`✓ Removed custom category "${roleKey}" and synced Database!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 

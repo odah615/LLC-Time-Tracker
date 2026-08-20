@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { RolePermissions, User } from '../../types';
+import { UserAvatar } from '../UserAvatar';
 import {
   Shield,
   ShieldCheck,
@@ -143,6 +144,16 @@ export const RolePermissionsModal: React.FC<RolePermissionsModalProps> = ({ isOp
   const [newRoleBadge, setNewRoleBadge] = useState('Custom Role');
   const [newRoleTemplate, setNewRoleTemplate] = useState<string>('agent');
 
+  // Confirmation Prompt Modal State
+  const [confirmPrompt, setConfirmPrompt] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel: string;
+    confirmVariant?: 'danger' | 'primary' | 'warning';
+    onConfirm: () => void;
+  } | null>(null);
+
   if (!isOpen) return null;
 
   // Super Admin Check (Red / superadmin account)
@@ -217,12 +228,23 @@ export const RolePermissionsModal: React.FC<RolePermissionsModalProps> = ({ isOp
 
   // One-click preset: Grant Trainer full management rights
   const handleGrantTrainerPreset = () => {
-    updateRolePermission('trainer', 'canEditEmployees', true);
-    updateRolePermission('trainer', 'canAssignTeamLeader', true);
-    updateRolePermission('trainer', 'canViewActivityLogs', true);
-    updateRolePermission('trainer', 'canViewScreenshots', true);
-    updateRolePermission('trainer', 'canViewTimesheets', true);
-    updateRolePermission('trainer', 'canManageTasks', true);
+    setConfirmPrompt({
+      isOpen: true,
+      title: 'Apply Manager Rights Preset to Trainer?',
+      message:
+        'This will grant the Trainer role full Employee Directory CRUD, Team Leader assignment, Screenshot & Activity monitoring, Timesheet approvals, and Task management powers. This change will be logged to Audit Logs and synchronized immediately to the Google Sheets Database.',
+      confirmLabel: 'Apply Preset & Sync',
+      confirmVariant: 'primary',
+      onConfirm: () => {
+        updateRolePermission('trainer', 'canEditEmployees', true);
+        updateRolePermission('trainer', 'canAssignTeamLeader', true);
+        updateRolePermission('trainer', 'canViewActivityLogs', true);
+        updateRolePermission('trainer', 'canViewScreenshots', true);
+        updateRolePermission('trainer', 'canViewTimesheets', true);
+        updateRolePermission('trainer', 'canManageTasks', true);
+        setConfirmPrompt(null);
+      },
+    });
   };
 
   const handleCreateRoleCategory = (e: React.FormEvent) => {
@@ -234,6 +256,50 @@ export const RolePermissionsModal: React.FC<RolePermissionsModalProps> = ({ isOp
     setSelectedRole(trimmed);
     setNewRoleName('');
     setShowAddRoleModal(false);
+  };
+
+  const handleDeleteRolePrompt = (role: StandardRole) => {
+    const userCount = users.filter((u) => {
+      const roleMatch = u.role?.toLowerCase() === role.id.toLowerCase();
+      const desigMatch =
+        u.designation?.toLowerCase() === role.label.toLowerCase() ||
+        u.designation?.toLowerCase() === role.id.toLowerCase();
+      return roleMatch || desigMatch;
+    }).length;
+
+    const warningNotice =
+      userCount > 0
+        ? ` Note: There are currently ${userCount} employee(s) assigned to this role; they will continue to have standard base access.`
+        : '';
+
+    setConfirmPrompt({
+      isOpen: true,
+      title: `Delete Role / Category "${role.label}"?`,
+      message: `Are you sure you want to delete this role/category? Its permission matrix will be permanently deleted.${warningNotice} This action will be automatically recorded in Audit Logs and updated in your Google Spreadsheet Database.`,
+      confirmLabel: 'Delete Role & Sync',
+      confirmVariant: 'danger',
+      onConfirm: () => {
+        deleteRoleCategory(role.id);
+        if (selectedRole === role.id) {
+          setSelectedRole('trainer');
+        }
+        setConfirmPrompt(null);
+      },
+    });
+  };
+
+  const handleResetUserPrompt = (target: User) => {
+    setConfirmPrompt({
+      isOpen: true,
+      title: `Reset Overrides for ${target.name}?`,
+      message: `This will clear all individual custom permission overrides and restore this employee to their base designation defaults. This change will be logged in Audit Logs and synchronized to the Google Sheets Database.`,
+      confirmLabel: 'Reset to Defaults & Sync',
+      confirmVariant: 'warning',
+      onConfirm: () => {
+        resetUserCustomPermissions(target.id);
+        setConfirmPrompt(null);
+      },
+    });
   };
 
   return (
@@ -392,26 +458,39 @@ export const RolePermissionsModal: React.FC<RolePermissionsModalProps> = ({ isOp
                           >
                             {r.badge}
                           </span>
-                          {r.isCustom && (
+                          {r.isCustom ? (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (window.confirm(`Delete custom role category "${r.label}"?`)) {
-                                  deleteRoleCategory(r.id);
-                                  if (selectedRole === r.id) {
-                                    setSelectedRole('trainer');
-                                  }
-                                }
+                                handleDeleteRolePrompt(r);
                               }}
-                              className={`p-1 rounded-lg transition-colors ${
+                              className={`p-1.5 rounded-lg transition-all ${
                                 isSelected
-                                  ? 'hover:bg-red-500 text-indigo-200 hover:text-white'
-                                  : 'hover:bg-red-50 text-slate-400 hover:text-red-600'
+                                  ? 'hover:bg-red-500 text-indigo-200 hover:text-white bg-indigo-700/60'
+                                  : 'hover:bg-red-50 text-slate-400 hover:text-red-600 bg-slate-50 border border-slate-200/60'
                               }`}
-                              title="Delete custom role category"
+                              title={`Delete custom role "${r.label}"`}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
+                          ) : (
+                            // Allow Super Admin to delete / clean non-admin standard roles if customized or unused
+                            r.id !== 'admin' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteRolePrompt(r);
+                                }}
+                                className={`p-1.5 rounded-lg transition-all opacity-40 hover:opacity-100 ${
+                                  isSelected
+                                    ? 'hover:bg-red-500 text-indigo-200 hover:text-white'
+                                    : 'hover:bg-red-50 text-slate-400 hover:text-red-600'
+                                }`}
+                                title={`Delete / remove role category "${r.label}"`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )
                           )}
                         </div>
                       </div>
@@ -452,11 +531,7 @@ export const RolePermissionsModal: React.FC<RolePermissionsModalProps> = ({ isOp
                         }`}
                       >
                         <div className="flex items-center gap-2 truncate">
-                          <img
-                            src={u.avatar}
-                            alt=""
-                            className="w-6 h-6 rounded-full object-cover border border-white/40 shrink-0"
-                          />
+                          <UserAvatar name={u.name} role={u.role} size="xs" />
                           <div className="truncate">
                             <span className="font-bold truncate block">{u.name}</span>
                             <span
@@ -537,11 +612,7 @@ export const RolePermissionsModal: React.FC<RolePermissionsModalProps> = ({ isOp
                               key={emp.id}
                               className="flex items-center gap-2 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg shadow-2xs hover:border-indigo-300 transition-colors"
                             >
-                              <img
-                                src={emp.avatar}
-                                alt=""
-                                className="w-5 h-5 rounded-full object-cover shrink-0"
-                              />
+                              <UserAvatar name={emp.name} role={emp.role} size="xs" />
                               <div className="text-left">
                                 <span className="font-bold text-xs text-slate-800 block leading-tight">
                                   {emp.name}
@@ -635,11 +706,7 @@ export const RolePermissionsModal: React.FC<RolePermissionsModalProps> = ({ isOp
                   <>
                     <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <img
-                          src={selectedUser.avatar}
-                          alt=""
-                          className="w-10 h-10 rounded-xl object-cover border border-slate-200"
-                        />
+                        <UserAvatar name={selectedUser.name} role={selectedUser.role} size="lg" />
                         <div>
                           <div className="flex items-center gap-2">
                             <h3 className="font-bold text-sm text-slate-900">{selectedUser.name}</h3>
@@ -659,7 +726,7 @@ export const RolePermissionsModal: React.FC<RolePermissionsModalProps> = ({ isOp
                       {selectedUser.customPermissions &&
                         Object.keys(selectedUser.customPermissions).length > 0 && (
                           <button
-                            onClick={() => resetUserCustomPermissions(selectedUser.id)}
+                            onClick={() => handleResetUserPrompt(selectedUser)}
                             className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all"
                             title="Remove all custom overrides and revert to base designation defaults"
                           >
@@ -868,6 +935,78 @@ export const RolePermissionsModal: React.FC<RolePermissionsModalProps> = ({ isOp
                     </button>
                   </div>
                 </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Action Confirmation Prompt Modal */}
+        <AnimatePresence>
+          {confirmPrompt && confirmPrompt.isOpen && (
+            <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 text-slate-800"
+              >
+                <div className="flex items-start gap-3.5 mb-4">
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                      confirmPrompt.confirmVariant === 'danger'
+                        ? 'bg-rose-50 border-rose-200 text-rose-600'
+                        : confirmPrompt.confirmVariant === 'warning'
+                        ? 'bg-amber-50 border-amber-200 text-amber-600'
+                        : 'bg-indigo-50 border-indigo-200 text-indigo-600'
+                    }`}
+                  >
+                    {confirmPrompt.confirmVariant === 'danger' ? (
+                      <Trash2 className="w-5 h-5" />
+                    ) : confirmPrompt.confirmVariant === 'warning' ? (
+                      <AlertCircle className="w-5 h-5" />
+                    ) : (
+                      <ShieldCheck className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900 leading-snug">
+                      {confirmPrompt.title}
+                    </h3>
+                    <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                      {confirmPrompt.message}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-500 mb-4 flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    This action will be automatically recorded in Audit Logs & synchronized to the Central Database Spreadsheet.
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmPrompt(null)}
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmPrompt.onConfirm}
+                    className={`px-4 py-2 rounded-xl text-white text-xs font-bold shadow-sm transition-all ${
+                      confirmPrompt.confirmVariant === 'danger'
+                        ? 'bg-red-600 hover:bg-red-700'
+                        : confirmPrompt.confirmVariant === 'warning'
+                        ? 'bg-amber-600 hover:bg-amber-700'
+                        : 'bg-indigo-600 hover:bg-indigo-700'
+                    }`}
+                  >
+                    {confirmPrompt.confirmLabel}
+                  </button>
+                </div>
               </motion.div>
             </div>
           )}
