@@ -11,6 +11,24 @@ interface EmployeeCrudModalProps {
   editingUser: User | null;
 }
 
+export const getNextEmployeeCode = (existingUsers: User[]): string => {
+  let maxNum = 0;
+  existingUsers.forEach((u) => {
+    if (!u.employeeCode) return;
+    const clean = u.employeeCode.replace(/^#/, '').trim();
+    // Matches LLC-0001, LLC0001, 0001, LLC-1, etc.
+    const match = clean.match(/(?:LLC-?|#)?(\d+)/i);
+    if (match && match[1]) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maxNum) {
+        maxNum = num;
+      }
+    }
+  });
+  const nextNum = maxNum + 1;
+  return `LLC-${nextNum.toString().padStart(4, '0')}`;
+};
+
 export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
   isOpen,
   onClose,
@@ -24,19 +42,27 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<UserRole>('agent');
   const [designation, setDesignation] = useState<string>('Agent');
-  const [monthlyRate, setMonthlyRate] = useState(23000);
+  const [monthlyRate, setMonthlyRate] = useState<number>(0);
   const [geoCity, setGeoCity] = useState('Manila, Philippines');
   const [geoTimezone, setGeoTimezone] = useState('Asia/Manila');
-  const [employeeCode, setEmployeeCode] = useState('0002');
-  const [joinDate, setJoinDate] = useState(new Date().toISOString().split('T')[0]);
+  const [employeeCode, setEmployeeCode] = useState('LLC-0001');
+  const [joinDate, setJoinDate] = useState('2020-01-01');
   const [teamLeaderId, setTeamLeaderId] = useState<string>('');
   const [status, setStatus] = useState<'active' | 'inactive'>('active');
   const [avatar, setAvatar] = useState(
     'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250'
   );
 
-  // List available team leaders / trainers
-  const teamLeaders = users.filter((u) => !u.isSecretBackup && (u.role === 'team_lead' || u.role === 'trainer' || u.role === 'admin' || u.role === 'va_admin'));
+  // Filter only Team Leads, Admins, and Trainers for the Supervisor dropdown
+  const eligibleSupervisors = users.filter((u) => {
+    if (u.isSecretBackup) return false;
+    const r = (u.role || '').toLowerCase();
+    const d = (u.designation || '').toLowerCase();
+    const isLead = r === 'team_lead' || d.includes('team lead') || d.includes('team leader');
+    const isTrainer = r === 'trainer' || d.includes('trainer');
+    const isAdmin = r === 'admin' || r === 'va_admin' || d.includes('admin');
+    return isLead || isTrainer || isAdmin;
+  });
 
   const generateRandomPassword = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$';
@@ -54,11 +80,11 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
       setPassword(editingUser.password || 'Password123!');
       setRole(editingUser.role);
       setDesignation(editingUser.designation);
-      setMonthlyRate(editingUser.monthlyRate || (editingUser.role === 'agent' ? 23000 : 27000));
-      setGeoCity(editingUser.geoCity);
-      setGeoTimezone(editingUser.geoTimezone);
+      setMonthlyRate(editingUser.monthlyRate !== undefined ? editingUser.monthlyRate : 0);
+      setGeoCity(editingUser.geoCity || 'Manila, Philippines');
+      setGeoTimezone(editingUser.geoTimezone || 'Asia/Manila');
       setEmployeeCode(editingUser.employeeCode);
-      setJoinDate(editingUser.joinDate || new Date().toISOString().split('T')[0]);
+      setJoinDate(editingUser.joinDate || '2020-01-01');
       setTeamLeaderId(editingUser.teamLeaderId || '');
       setStatus(editingUser.status || 'active');
       setAvatar(editingUser.avatar);
@@ -68,18 +94,18 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
       setPassword('Password123!');
       setRole('agent');
       setDesignation('Agent');
-      setMonthlyRate(23000);
+      setMonthlyRate(0);
       setGeoCity('Manila, Philippines');
       setGeoTimezone('Asia/Manila');
-      setEmployeeCode(`00${Math.floor(10 + Math.random() * 90)}`);
-      setJoinDate(new Date().toISOString().split('T')[0]);
-      setTeamLeaderId(teamLeaders[0]?.id || '');
+      setEmployeeCode(getNextEmployeeCode(users));
+      setJoinDate('2020-01-01');
+      setTeamLeaderId('');
       setStatus('active');
       setAvatar(
         'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250'
       );
     }
-  }, [editingUser, isOpen]);
+  }, [editingUser, isOpen, users]);
 
   const isEditingSuperAdmin = editingUser
     ? editingUser.employeeCode?.toLowerCase() === 'superadmin' ||
@@ -94,12 +120,12 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
   if (!isOpen) return null;
 
   const executeSave = () => {
-    const mRate = Number(monthlyRate) || (isEditingSuperAdmin ? 60000 : 23000);
-    const calcHourly = mRate / 160;
-    const finalJoinDate = joinDate.trim() || new Date().toISOString().split('T')[0];
+    const mRate = isEditingSuperAdmin ? (monthlyRate > 0 ? monthlyRate : 60000) : (Number(monthlyRate) >= 0 ? Number(monthlyRate) : 0);
+    const calcHourly = mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0;
+    const finalJoinDate = joinDate.trim() || '2020-01-01';
     const finalRole = isEditingSuperAdmin ? 'admin' : role;
     const finalDesignation = isEditingSuperAdmin ? 'Admin' : designation;
-    const finalEmployeeCode = isEditingSuperAdmin ? 'SuperAdmin' : employeeCode;
+    const finalEmployeeCode = isEditingSuperAdmin ? 'SuperAdmin' : (employeeCode.trim() || getNextEmployeeCode(users));
 
     if (editingUser) {
       updateUser(editingUser.id, {
@@ -109,7 +135,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
         role: finalRole,
         designation: finalDesignation,
         monthlyRate: mRate,
-        hourlyRate: Number(calcHourly.toFixed(2)),
+        hourlyRate: calcHourly,
         geoCity,
         geoTimezone,
         employeeCode: finalEmployeeCode,
@@ -139,7 +165,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
         role: finalRole,
         designation: finalDesignation,
         monthlyRate: mRate,
-        hourlyRate: Number(calcHourly.toFixed(2)),
+        hourlyRate: calcHourly,
         geoCity,
         geoTimezone,
         employeeCode: finalEmployeeCode,
@@ -167,7 +193,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
         targetEmployeeName: name,
         fromValue: 'Unregistered',
         toValue: `${role.toUpperCase()} (${designation})`,
-        details: `Registered new employee ${name} (${employeeCode}) as ${designation}. Date Hired: ${finalJoinDate}. Assigned initial credentials.`,
+        details: `Registered new employee ${name} (${finalEmployeeCode}) as ${designation}. Date Hired: ${finalJoinDate}. Assigned initial credentials.`,
       });
     }
 
@@ -350,11 +376,11 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
                     : 'bg-slate-50 border-slate-200 text-slate-800 focus:ring-2 focus:ring-blue-500'
                 }`}
               >
-                <option value="">{isEditingSuperAdmin ? 'Top-Level Executive (No Supervisor)' : 'None / Independent'}</option>
+                <option value="">{isEditingSuperAdmin ? 'Executive Board (No Supervisor)' : 'None / Direct Executive'}</option>
                 {!isEditingSuperAdmin &&
-                  teamLeaders.map((tl) => (
+                  eligibleSupervisors.map((tl) => (
                     <option key={tl.id} value={tl.id}>
-                      {tl.name} ({tl.designation})
+                      {tl.name} ({tl.designation || (tl.role === 'admin' ? 'Admin' : tl.role === 'team_lead' ? 'Team Leader' : 'Trainer')})
                     </option>
                   ))}
               </select>
@@ -377,7 +403,8 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
               <label className="block text-slate-700 font-semibold mb-1">Monthly Rate (₱)</label>
               <input
                 type="number"
-                step="500"
+                min="0"
+                step="100"
                 value={monthlyRate}
                 onChange={(e) => setMonthlyRate(Number(e.target.value))}
                 className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-mono font-medium"
@@ -388,6 +415,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
               <label className="block text-slate-700 font-semibold mb-1">Employee Code</label>
               <input
                 type="text"
+                placeholder="e.g. LLC-0001"
                 value={employeeCode}
                 onChange={(e) => setEmployeeCode(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-mono font-medium"

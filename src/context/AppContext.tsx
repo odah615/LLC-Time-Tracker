@@ -1767,16 +1767,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedAudit = [auditEntry, ...auditLogs];
     setAuditLogs(updatedAudit);
 
+    localStorage.setItem('trackpulse_users', JSON.stringify(updatedUsers));
+    safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
+      console.warn('Users save err:', err)
+    );
+
     setSaveToast(`✓ Saved new employee "${newUser.name}" to Database & Google Sheets!`);
     setTimeout(() => setSaveToast(null), 6000);
 
-    triggerAutoSync(updatedUsers, timeLogs, updatedAudit, updatedPayroll, updatedAttendance, idleLogs, leaveRequests);
+    triggerAutoSync(
+      updatedUsers,
+      timeLogs,
+      updatedAudit,
+      updatedPayroll,
+      updatedAttendance,
+      idleLogs,
+      leaveRequests,
+      designationTasks,
+      rolePermissions
+    );
   };
 
   const updateUser = (id: string, data: Partial<User>) => {
     const targetUser = users.find((u) => u.id === id);
     const updatedUsers = users.map((u) => (u.id === id ? { ...u, ...data } : u));
     setUsers(updatedUsers);
+    localStorage.setItem('trackpulse_users', JSON.stringify(updatedUsers));
+    safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
+      console.warn('Users save err:', err)
+    );
     if (currentUser.id === id) {
       setCurrentUser((prev) => ({ ...prev, ...data }));
     }
@@ -1825,13 +1844,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSaveToast(`✓ Saved edits for "${targetUser?.name || 'Employee'}" to Database & Google Sheets!`);
     setTimeout(() => setSaveToast(null), 6000);
 
-    triggerAutoSync(updatedUsers, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
+    triggerAutoSync(
+      updatedUsers,
+      timeLogs,
+      updatedAudit,
+      payrollRecords,
+      dailyAttendanceLogs,
+      idleLogs,
+      leaveRequests,
+      designationTasks,
+      rolePermissions
+    );
   };
 
   const deleteUser = (id: string) => {
     const targetUser = users.find((u) => u.id === id);
     const updatedUsers = users.filter((u) => u.id !== id);
     setUsers(updatedUsers);
+    localStorage.setItem('trackpulse_users', JSON.stringify(updatedUsers));
+    safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
+      console.warn('Users save err:', err)
+    );
     const updatedPresence = userPresenceList.filter((p) => p.userId !== id);
     setUserPresenceList(updatedPresence);
 
@@ -1858,7 +1891,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSaveToast(`✓ Deleted employee "${targetUser?.name || id}" and synchronized Database!`);
     setTimeout(() => setSaveToast(null), 6000);
 
-    triggerAutoSync(updatedUsers, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
+    triggerAutoSync(
+      updatedUsers,
+      timeLogs,
+      updatedAudit,
+      payrollRecords,
+      dailyAttendanceLogs,
+      idleLogs,
+      leaveRequests,
+      designationTasks,
+      rolePermissions
+    );
   };
 
   const resetUserPassword = (userId: string, newPass: string, requireChangeOnNextLogin?: boolean) => {

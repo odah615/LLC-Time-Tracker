@@ -330,7 +330,7 @@ function setupSheetsSchema() {
     {
       tab: 'Employee_Directory',
       color: '#0284c7', // Sky
-      headers: ['Employee Code', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)']
+      headers: ['Employee Code', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Date Hired', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)']
     },
     {
       tab: 'Leave_Requests',
@@ -658,17 +658,24 @@ function doPost(e) {
         empSheet.setFrozenRows(1);
         users.forEach(function(u) {
           var maskedPass = maskPassword(u.password || 'Password123!');
-          var hireDate = u.joinDate || Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
+          var hireDate = u.joinDate || '2020-01-01';
+          var supervisorName = 'None / Direct Executive';
+          if (u.teamLeaderId) {
+            var sv = userMap[u.teamLeaderId];
+            supervisorName = sv ? sv.name + ' (' + (sv.designation || sv.role) + ')' : u.teamLeaderId;
+          }
+          var mRate = (u.monthlyRate !== undefined && u.monthlyRate !== null) ? Number(u.monthlyRate) : 0;
+          var hRate = (u.hourlyRate !== undefined && u.hourlyRate !== null) ? Number(u.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
           empSheet.appendRow([
             u.employeeCode || 'N/A',
-            u.name,
-            u.email,
-            u.role,
+            u.name || 'Unknown',
+            u.email || '',
+            u.role || 'agent',
             u.designation || 'Agent',
             hireDate,
-            u.monthlyRate || (u.hourlyRate ? u.hourlyRate * 160 : 23000),
-            u.hourlyRate || (u.monthlyRate ? u.monthlyRate / 160 : 143.75),
-            u.teamLeaderId || 'Direct Supervisor',
+            mRate,
+            hRate,
+            supervisorName,
             u.screenshotMonitored ? 'YES' : 'NO',
             u.activityMonitored ? 'YES' : 'NO',
             u.status || 'active',
@@ -846,9 +853,9 @@ function doGet(e) {
           email: String(row[2] || '').trim(),
           role: String(row[3] || 'employee').toLowerCase().trim(),
           designation: String(row[4] || 'Agent').trim(),
-          joinDate: String(row[5] || '').trim() || Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd'),
-          monthlyRate: Number(String(row[6]).replace(/[^0-9.]/g, '')) || 23000,
-          hourlyRate: Number(String(row[7]).replace(/[^0-9.]/g, '')) || 143.75,
+          joinDate: String(row[5] || '').trim() || '2020-01-01',
+          monthlyRate: row[6] !== '' && !isNaN(Number(String(row[6]).replace(/[^0-9.]/g, ''))) ? Number(String(row[6]).replace(/[^0-9.]/g, '')) : 0,
+          hourlyRate: row[7] !== '' && !isNaN(Number(String(row[7]).replace(/[^0-9.]/g, ''))) ? Number(String(row[7]).replace(/[^0-9.]/g, '')) : 0,
           teamLeaderId: String(row[8] || '').trim(),
           screenshotMonitored: String(row[9]).toUpperCase() === 'YES' || row[9] === true,
           activityMonitored: String(row[10]).toUpperCase() === 'YES' || row[10] === true,
