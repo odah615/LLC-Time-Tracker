@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { DESIGNATION_LIST, TASK_LIST } from '../data/initialData';
+import { getManilaDateString } from '../lib/dateUtils';
 import {
   Play,
   Pause,
@@ -22,6 +23,7 @@ import {
   WifiOff,
   RefreshCw,
   ShieldAlert,
+  EyeOff,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -73,7 +75,7 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
   const availableTasks = getTasksForDesignation(currentDesignation);
 
   // Compute today's total extension / deductions for current user
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getManilaDateString();
   const todayAttendance = dailyAttendanceLogs.find(
     (a) => a.userId === currentUser.id && a.date === todayStr
   );
@@ -366,57 +368,93 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
             <span className="flex items-center gap-1.5">
               <Activity className="w-4 h-4 text-blue-600" /> Input Activity Meter
             </span>
-            <span className="text-[10px] text-slate-500 font-mono">Realtime Background</span>
+            {currentUser.activityMonitored ? (
+              <span className="text-[10px] text-emerald-600 font-mono font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                Surveillance Active
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
+                <EyeOff className="w-3 h-3 text-slate-400" /> Monitoring OFF
+              </span>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Keyboard Meter */}
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-              <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                <span className="flex items-center gap-1">
-                  <Keyboard className="w-3.5 h-3.5 text-blue-600" /> Keyboard
-                </span>
-                <span className="font-mono font-bold text-blue-600">{isTracking ? currentKeyboardActivity : 0}%</span>
+          {currentUser.activityMonitored ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Keyboard Meter */}
+              <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                  <span className="flex items-center gap-1">
+                    <Keyboard className="w-3.5 h-3.5 text-blue-600" /> Keyboard
+                  </span>
+                  <span className="font-mono font-bold text-blue-600">{isTracking ? currentKeyboardActivity : 0}%</span>
+                </div>
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-blue-600"
+                    animate={{ width: `${isTracking ? currentKeyboardActivity : 0}%` }}
+                    transition={{ duration: 0.5 }}
+                  />
+                </div>
               </div>
-              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-blue-600"
-                  animate={{ width: `${isTracking ? currentKeyboardActivity : 0}%` }}
-                  transition={{ duration: 0.5 }}
-                />
-              </div>
-            </div>
 
-            {/* Mouse Meter */}
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-              <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                <span className="flex items-center gap-1">
-                  <MousePointer className="w-3.5 h-3.5 text-emerald-600" /> Mouse
-                </span>
-                <span className="font-mono font-bold text-emerald-600">{isTracking ? currentMouseActivity : 0}%</span>
+              {/* Mouse Meter */}
+              <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                  <span className="flex items-center gap-1">
+                    <MousePointer className="w-3.5 h-3.5 text-emerald-600" /> Mouse
+                  </span>
+                  <span className="font-mono font-bold text-emerald-600">{isTracking ? currentMouseActivity : 0}%</span>
+                </div>
+                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-emerald-500"
+                    animate={{ width: `${isTracking ? currentMouseActivity : 0}%` }}
+                    transition={{ duration: 0.5 }}
+                  />
+                </div>
               </div>
-              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-emerald-500"
-                  animate={{ width: `${isTracking ? currentMouseActivity : 0}%` }}
-                  transition={{ duration: 0.5 }}
-                />
-              </div>
-            </div>
 
-            {/* Active Application */}
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-              <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                <span className="flex items-center gap-1">
-                  <Monitor className="w-3.5 h-3.5 text-amber-600" /> Active Window
-                </span>
-                <span className="text-[10px] text-amber-600 font-mono">App Focus</span>
-              </div>
-              <div className="text-xs font-bold text-slate-800 truncate" title={currentActiveApp}>
-                {isTracking ? currentActiveApp : 'No Active App'}
+              {/* Active Application */}
+              <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                  <span className="flex items-center gap-1">
+                    <Monitor className="w-3.5 h-3.5 text-amber-600" /> Active Window
+                  </span>
+                  <span className="text-[10px] text-amber-600 font-mono">App Focus</span>
+                </div>
+                <div className="text-xs font-bold text-slate-800 truncate" title={currentActiveApp}>
+                  {isTracking ? currentActiveApp : 'No Active App'}
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Active Application */}
+              <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                  <span className="flex items-center gap-1">
+                    <Monitor className="w-3.5 h-3.5 text-amber-600" /> Active Window
+                  </span>
+                  <span className="text-[10px] text-amber-600 font-mono">App Focus</span>
+                </div>
+                <div className="text-xs font-bold text-slate-800 truncate" title={currentActiveApp}>
+                  {isTracking ? currentActiveApp : 'No Active App'}
+                </div>
+              </div>
+
+              {/* Activity Monitoring Status */}
+              <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex flex-col justify-center">
+                <div className="text-xs font-medium text-slate-600 flex items-center gap-1.5">
+                  <EyeOff className="w-4 h-4 text-slate-400" />
+                  <span>Activity Surveillance Status:</span>
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1">
+                  Keyboard & mouse tracking is currently <strong>disabled</strong> for your account.
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

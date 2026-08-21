@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { User, UserPresence, DailyAttendanceLog } from '../types';
 import { UserAvatar } from './UserAvatar';
+import { getManilaDateString, formatDurationHuman } from '../lib/dateUtils';
 import {
   Radio,
   Search,
@@ -21,6 +22,7 @@ import {
   MousePointer,
   Keyboard,
   ExternalLink,
+  EyeOff,
 } from 'lucide-react';
 
 interface LiveTrackingTableProps {
@@ -53,7 +55,7 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
   const [itemsPerPage, setItemsPerPage] = useState(5);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getManilaDateString();
 
   // Manual refresh animation trigger
   const handleRefresh = () => {
@@ -464,7 +466,13 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
 
                     {/* Keyboard & Mouse Activity Index */}
                     <td className="py-3 px-4">
-                      {isOffline ? (
+                      {!row.user.activityMonitored ? (
+                        <div className="flex items-center justify-center">
+                          <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
+                            <EyeOff className="w-2.5 h-2.5 text-slate-400" /> Surveillance Off
+                          </span>
+                        </div>
+                      ) : isOffline ? (
                         <div className="text-center text-slate-400 text-[11px] font-mono">--</div>
                       ) : (
                         <div className="space-y-1.5 max-w-[130px] mx-auto">

@@ -19,6 +19,7 @@ import {
 } from '../types';
 import { doc, setDoc, deleteDoc, onSnapshot, collection, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
+import { getManilaDateString, getManilaTimeString } from '../lib/dateUtils';
 import {
   syncDataToGoogleSheetsWebhook,
   DEFAULT_SPREADSHEET_URL,
@@ -1263,8 +1264,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsIdleAlertActive(true);
 
     const now = new Date();
-    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const todayStr = now.toISOString().split('T')[0];
+    const timeStr = getManilaTimeString(now);
+    const todayStr = getManilaDateString(now);
 
     // Create Idle Log entry
     const newIdle: IdleLog = {
@@ -1444,8 +1445,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const avgCurrentActivity = Math.round((currentMouseActivity + currentKeyboardActivity) / 2);
       const isTiredOrLowActivity = avgCurrentActivity < 45;
       const now = new Date();
-      const dateStr = now.toISOString().split('T')[0];
-      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const dateStr = getManilaDateString(now);
+      const timeStr = getManilaTimeString(now);
       const isoStr = now.toISOString();
 
       const newScreenshot: ScreenshotLog = {
@@ -1528,13 +1529,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const nowIso = new Date().toISOString();
     const startTimeStr = startTimeIso || new Date(Date.now() - elapsedSeconds * 1000).toISOString();
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getManilaDateString();
 
-    const localTimeFormatted = new Date().toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: currentUser.geoTimezone || 'America/New_York',
-    });
+    const localTimeFormatted = getManilaTimeString();
 
     const trackedSecs = Math.max(elapsedSeconds, 1);
 
@@ -1893,7 +1890,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         mouseActivityAvg: currentMouseActivity,
         keyboardActivityAvg: currentKeyboardActivity,
         idleSeconds: 0,
-        date: new Date().toISOString().split('T')[0],
+        date: getManilaDateString(),
         notes: `Task switched to ${taskSwitchPending.targetTask}`,
         appsUsed: [
           { appName: currentActiveApp, icon: 'Globe', durationSeconds: elapsedSeconds, category: 'productive' },
@@ -1944,7 +1941,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setPayrollRecords(updatedPayroll);
 
     // Seed presence and attendance
-    const today = new Date().toISOString().split('T')[0];
+    const today = getManilaDateString();
     const newAttendance: DailyAttendanceLog = {
       id: `att-${newUser.id}-${today}`,
       userId: newUser.id,

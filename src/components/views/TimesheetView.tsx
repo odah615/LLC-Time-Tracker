@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
+import { getManilaDateString } from '../../lib/dateUtils';
 import {
   Calendar,
   Trash2,
@@ -53,7 +54,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
   const [agentSearch, setAgentSearch] = useState<string>('');
 
   // Daily View Filter: Single Anchor Date
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getManilaDateString();
   const [anchorDate, setAnchorDate] = useState<string>(todayStr);
 
   // Helper: Calculate Monday and Friday of current week for a reference date
@@ -68,8 +69,8 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     friday.setDate(monday.getDate() + 4); // Mon + 4 = Friday
 
     return {
-      start: monday.toISOString().split('T')[0],
-      end: friday.toISOString().split('T')[0],
+      start: getManilaDateString(monday),
+      end: getManilaDateString(friday),
     };
   };
 

@@ -185,12 +185,25 @@ export const AgentDashboardView: React.FC<AgentDashboardViewProps> = ({
               <Activity className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-emerald-600 font-mono">
-            {Math.round((avgMouse + avgKeyboard) / 2)}%
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            Keyboard: {avgKeyboard}% • Mouse: {avgMouse}%
-          </p>
+          {currentUser.activityMonitored ? (
+            <>
+              <div className="text-2xl font-extrabold text-emerald-600 font-mono">
+                {Math.round((avgMouse + avgKeyboard) / 2)}%
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Keyboard: {avgKeyboard}% • Mouse: {avgMouse}%
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="text-sm font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg inline-block border border-slate-200">
+                Monitoring OFF
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Input tracking is disabled for your account
+              </p>
+            </>
+          )}
         </div>
 
         {/* Total Sessions Logged */}

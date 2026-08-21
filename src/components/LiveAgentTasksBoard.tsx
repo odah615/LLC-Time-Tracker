@@ -3,6 +3,12 @@ import { useApp } from '../context/AppContext';
 import { User, TaskCategory, TimeLog } from '../types';
 import { UserAvatar } from './UserAvatar';
 import {
+  getManilaDateString,
+  getManilaTimeString,
+  getManilaFormattedDate,
+  formatDurationHuman,
+} from '../lib/dateUtils';
+import {
   Radio,
   Clock,
   Search,
@@ -28,6 +34,8 @@ import {
   Shield,
   Sparkles,
   ExternalLink,
+  Activity,
+  EyeOff,
 } from 'lucide-react';
 import {
   BarChart,
@@ -87,7 +95,8 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
     currentUser,
   } = useApp();
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getManilaDateString();
+  const manilaCurrentTime = getManilaTimeString();
 
   // Search & Filter States
   const [searchTerm, setSearchTerm] = useState('');
@@ -699,18 +708,23 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
                         </div>
                       </div>
 
-                      {/* Status pill */}
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
-                          isOnline
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : isIdle
-                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                            : 'bg-slate-100 text-slate-500 border border-slate-200'
-                        }`}
-                      >
-                        {isOnline ? '🟢 Working' : isIdle ? '🟡 Inactive' : '⚪ Offline'}
-                      </span>
+                      {/* Status pill & Manila Time indicator */}
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            isOnline
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : isIdle
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : 'bg-slate-100 text-slate-500 border border-slate-200'
+                          }`}
+                        >
+                          {isOnline ? '🟢 Working' : isIdle ? '🟡 Inactive' : '⚪ Offline'}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400">
+                          {isOnline ? `PHT ${manilaCurrentTime}` : 'Manila (PHT)'}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Current Active Task Card */}
@@ -719,8 +733,9 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
                         <span className="font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                           <Briefcase className="w-3.5 h-3.5 text-blue-600" /> Current Task
                         </span>
-                        <span className="font-mono text-slate-500">
-                          Today: {formatDuration(agent.todayTotalSec)}
+                        <span className="font-medium text-slate-600 bg-white px-2 py-0.5 rounded text-[10px] flex items-center gap-1 border border-slate-200/80 shadow-2xs" title="Total accumulated work hours logged today (Manila Time)">
+                          <Clock className="w-3 h-3 text-blue-500" />
+                          Today: <strong className="text-slate-900 font-mono font-bold">{formatDurationHuman(agent.todayTotalSec)}</strong>
                         </span>
                       </div>
 
@@ -745,38 +760,51 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
                       </div>
                     </div>
 
-                    {/* Mouse & Keyboard Activity Bars */}
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
-                        <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600 mb-1">
-                          <span className="flex items-center gap-1">
-                            <MousePointer className="w-2.5 h-2.5 text-blue-500" /> Mouse
-                          </span>
-                          <span className="font-mono font-bold text-slate-900">{agent.mouseActivity}%</span>
+                    {/* Mouse & Keyboard Activity Bars (Only when Activity Monitoring is ON) */}
+                    {agent.user.activityMonitored ? (
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                          <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600 mb-1">
+                            <span className="flex items-center gap-1">
+                              <MousePointer className="w-2.5 h-2.5 text-blue-500" /> Mouse
+                            </span>
+                            <span className="font-mono font-bold text-slate-900">{agent.mouseActivity}%</span>
+                          </div>
+                          <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                            <div
+                              className="bg-blue-600 h-full rounded-full transition-all"
+                              style={{ width: `${agent.mouseActivity}%` }}
+                            />
+                          </div>
                         </div>
-                        <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                          <div
-                            className="bg-blue-600 h-full rounded-full transition-all"
-                            style={{ width: `${agent.mouseActivity}%` }}
-                          />
-                        </div>
-                      </div>
 
-                      <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
-                        <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600 mb-1">
-                          <span className="flex items-center gap-1">
-                            <Keyboard className="w-2.5 h-2.5 text-emerald-500" /> Keyboard
-                          </span>
-                          <span className="font-mono font-bold text-slate-900">{agent.keyboardActivity}%</span>
-                        </div>
-                        <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                          <div
-                            className="bg-emerald-600 h-full rounded-full transition-all"
-                            style={{ width: `${agent.keyboardActivity}%` }}
-                          />
+                        <div className="bg-slate-50 p-2 rounded-lg border border-slate-200">
+                          <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600 mb-1">
+                            <span className="flex items-center gap-1">
+                              <Keyboard className="w-2.5 h-2.5 text-emerald-500" /> Keyboard
+                            </span>
+                            <span className="font-mono font-bold text-slate-900">{agent.keyboardActivity}%</span>
+                          </div>
+                          <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                            <div
+                              className="bg-emerald-600 h-full rounded-full transition-all"
+                              style={{ width: `${agent.keyboardActivity}%` }}
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="pt-1">
+                        <div className="bg-slate-50/80 px-2.5 py-1.5 rounded-lg border border-slate-200/80 flex items-center justify-between text-[11px] text-slate-500">
+                          <span className="flex items-center gap-1 font-medium text-slate-500 text-[10px]">
+                            <EyeOff className="w-3 h-3 text-slate-400" /> Input Activity Tracker
+                          </span>
+                          <span className="font-bold text-[9px] text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200 uppercase tracking-wider">
+                            Surveillance OFF
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Bottom: Supervisor info */}

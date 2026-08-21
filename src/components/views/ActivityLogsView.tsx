@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
+import { getManilaDateString } from '../../lib/dateUtils';
 import {
   Camera,
   MousePointer,
@@ -60,7 +61,7 @@ export const ActivityLogsView: React.FC = () => {
     toggleScreenshotBlur,
   } = useApp();
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getManilaDateString();
   const [selectedImage, setSelectedImage] = useState<ScreenshotLog | null>(null);
   const [viewTab, setViewTab] = useState<ViewTabMode>('daily');
   const [anchorDate, setAnchorDate] = useState<string>(todayStr);
@@ -135,8 +136,8 @@ export const ActivityLogsView: React.FC = () => {
     friday.setDate(monday.getDate() + 4); // Mon + 4 = Friday
 
     return {
-      start: monday.toISOString().split('T')[0],
-      end: friday.toISOString().split('T')[0],
+      start: getManilaDateString(monday),
+      end: getManilaDateString(friday),
     };
   };
 
