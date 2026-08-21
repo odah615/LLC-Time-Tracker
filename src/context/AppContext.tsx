@@ -193,13 +193,10 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Check if we need to purge old demo data and reset to Super Admin only
-  const isCleanV8 = typeof window !== 'undefined' && localStorage.getItem('trackpulse_clean_v8') === 'true';
-
   // Helper to normalize Super Admin properties
   const normalizeSuperAdmin = (u: User): User => {
     const isSuperAdmin =
-      u.employeeCode.toLowerCase() === 'superadmin' ||
+      u.employeeCode?.toLowerCase() === 'superadmin' ||
       u.id === 'usr-superadmin-red' ||
       u.id === 'usr-superadmin-root' ||
       u.email === 'admin@llc.com';
@@ -225,17 +222,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Load from localStorage or defaults
   const [users, setUsers] = useState<User[]>(() => {
-    if (!isCleanV8) {
-      localStorage.setItem('trackpulse_users', JSON.stringify(INITIAL_USERS));
-      return INITIAL_USERS;
-    }
     const saved = localStorage.getItem('trackpulse_users');
     if (!saved) return INITIAL_USERS;
     try {
       const parsed: User[] = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const upgraded = parsed.map(normalizeSuperAdmin);
-        return upgraded;
+        return parsed.map(normalizeSuperAdmin);
       }
       return INITIAL_USERS;
     } catch {
@@ -246,7 +238,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<User>(() => {
     const rootUser = users.find(
       (u) =>
-        u.employeeCode.toLowerCase() === 'superadmin' ||
+        u.employeeCode?.toLowerCase() === 'superadmin' ||
         u.id === 'usr-superadmin-red' ||
         u.email === 'admin@llc.com'
     );
@@ -265,43 +257,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [timeLogs, setTimeLogs] = useState<TimeLog[]>(() => {
-    if (!isCleanV8) return [];
     const saved = localStorage.getItem('trackpulse_timelogs');
     return saved ? JSON.parse(saved) : [];
   });
 
   const [screenshots, setScreenshots] = useState<ScreenshotLog[]>(() => {
-    if (!isCleanV8) return [];
     const saved = localStorage.getItem('trackpulse_screenshots');
     return saved ? JSON.parse(saved) : [];
   });
 
   const [idleLogs, setIdleLogs] = useState<IdleLog[]>(() => {
-    if (!isCleanV8) return [];
     const saved = localStorage.getItem('trackpulse_idlelogs');
     return saved ? JSON.parse(saved) : [];
   });
 
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(() => {
-    if (!isCleanV8) return [];
     const saved = localStorage.getItem('trackpulse_leaverequests');
     return saved ? JSON.parse(saved) : [];
   });
 
   const [manualTimeRequests, setManualTimeRequests] = useState<ManualTimeRequest[]>(() => {
-    if (!isCleanV8) return [];
     const saved = localStorage.getItem('trackpulse_manualrequests');
     return saved ? JSON.parse(saved) : [];
   });
 
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>(() => {
-    if (!isCleanV8) return INITIAL_PAYROLL;
     const saved = localStorage.getItem('trackpulse_payroll');
     return saved ? JSON.parse(saved) : INITIAL_PAYROLL;
   });
 
   const [dailyAttendanceLogs, setDailyAttendanceLogs] = useState<DailyAttendanceLog[]>(() => {
-    if (!isCleanV8) return [];
     const saved = localStorage.getItem('trackpulse_attendance');
     if (saved) {
       try {
@@ -314,7 +299,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [passwordResetRequests, setPasswordResetRequests] = useState<PasswordResetRequest[]>(() => {
-    if (!isCleanV8) return [];
     const saved = localStorage.getItem('trackpulse_pwd_requests');
     if (saved) {
       try {
@@ -327,26 +311,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [userPresenceList, setUserPresenceList] = useState<UserPresence[]>(() => {
-    if (!isCleanV8) {
-      return INITIAL_USERS.map((u) => ({
-        userId: u.id,
-        userName: u.name,
-        role: u.role,
-        designation: u.designation,
-        employeeCode: u.employeeCode,
-        department: u.department || 'Executive Management',
-        teamLeaderId: u.teamLeaderId || '',
-        isOnline: false,
-        status: 'offline',
-        mouseActivity: 0,
-        keyboardActivity: 0,
-        lastHeartbeat: new Date().toISOString(),
-      }));
-    }
     const saved = localStorage.getItem('trackpulse_presence');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       } catch {
         // fallback
       }
@@ -590,6 +561,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let unsubAudit = () => {};
     let unsubScreenshots = () => {};
     let unsubPayroll = () => {};
+    let unsubAttendance = () => {};
+    let unsubPresence = () => {};
+    let unsubLeave = () => {};
+    let unsubManual = () => {};
+    let unsubPasswordReqs = () => {};
+    let unsubTasks = () => {};
+    let unsubPerms = () => {};
     let unsubConfig = () => {};
 
     try {
@@ -600,6 +578,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           localStorage.setItem('trackpulse_sheets_webhook', remoteUrl);
         }
       }, (err) => console.warn('Config listener warning:', err));
+
       unsubTimeLogs = onSnapshot(doc(db, 'system_state', 'timelogs'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
           const remoteLogs: TimeLog[] = snapshot.data().data;
@@ -621,9 +600,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const sanitizedUsers = remoteUsers.map(normalizeSuperAdmin);
             setUsers(sanitizedUsers);
             localStorage.setItem('trackpulse_users', JSON.stringify(sanitizedUsers));
-          } else if (Array.isArray(remoteUsers) && remoteUsers.length === 0) {
-            setUsers(INITIAL_USERS);
-            localStorage.setItem('trackpulse_users', JSON.stringify(INITIAL_USERS));
           }
         }
       }, (err) => console.warn('Firestore users listener warning:', err));
@@ -658,7 +634,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }, (err) => console.warn('Firestore payroll listener warning:', err));
 
-      const unsubPasswordReqs = onSnapshot(doc(db, 'system_state', 'passwordrequests'), (snapshot) => {
+      unsubAttendance = onSnapshot(doc(db, 'system_state', 'attendance'), (snapshot) => {
+        if (snapshot.exists() && snapshot.data()?.data !== undefined) {
+          const remoteAtt: DailyAttendanceLog[] = snapshot.data().data;
+          if (Array.isArray(remoteAtt)) {
+            setDailyAttendanceLogs(remoteAtt);
+            localStorage.setItem('trackpulse_attendance', JSON.stringify(remoteAtt));
+          }
+        }
+      }, (err) => console.warn('Firestore attendance listener warning:', err));
+
+      unsubPresence = onSnapshot(doc(db, 'system_state', 'presence'), (snapshot) => {
+        if (snapshot.exists() && snapshot.data()?.data !== undefined) {
+          const remotePresence: UserPresence[] = snapshot.data().data;
+          if (Array.isArray(remotePresence)) {
+            setUserPresenceList(remotePresence);
+            localStorage.setItem('trackpulse_presence', JSON.stringify(remotePresence));
+          }
+        }
+      }, (err) => console.warn('Firestore presence listener warning:', err));
+
+      unsubLeave = onSnapshot(doc(db, 'system_state', 'leaverequests'), (snapshot) => {
+        if (snapshot.exists() && snapshot.data()?.data !== undefined) {
+          const remoteLeave: LeaveRequest[] = snapshot.data().data;
+          if (Array.isArray(remoteLeave)) {
+            setLeaveRequests(remoteLeave);
+            localStorage.setItem('trackpulse_leaverequests', JSON.stringify(remoteLeave));
+          }
+        }
+      }, (err) => console.warn('Firestore leave requests listener warning:', err));
+
+      unsubManual = onSnapshot(doc(db, 'system_state', 'manualrequests'), (snapshot) => {
+        if (snapshot.exists() && snapshot.data()?.data !== undefined) {
+          const remoteManual: ManualTimeRequest[] = snapshot.data().data;
+          if (Array.isArray(remoteManual)) {
+            setManualTimeRequests(remoteManual);
+            localStorage.setItem('trackpulse_manualrequests', JSON.stringify(remoteManual));
+          }
+        }
+      }, (err) => console.warn('Firestore manual requests listener warning:', err));
+
+      unsubPasswordReqs = onSnapshot(doc(db, 'system_state', 'passwordrequests'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
           const remoteReqs: PasswordResetRequest[] = snapshot.data().data;
           if (Array.isArray(remoteReqs)) {
@@ -667,6 +683,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
       }, (err) => console.warn('Firestore password requests listener warning:', err));
+
+      unsubTasks = onSnapshot(doc(db, 'system_state', 'designationtasks'), (snapshot) => {
+        if (snapshot.exists() && snapshot.data()?.data !== undefined) {
+          const remoteTasks = snapshot.data().data;
+          if (remoteTasks && typeof remoteTasks === 'object') {
+            setDesignationTasks((prev) => ({ ...prev, ...remoteTasks }));
+            localStorage.setItem('trackpulse_designation_tasks', JSON.stringify(remoteTasks));
+          }
+        }
+      }, (err) => console.warn('Firestore designation tasks listener warning:', err));
+
+      unsubPerms = onSnapshot(doc(db, 'system_state', 'rolepermissions'), (snapshot) => {
+        if (snapshot.exists() && snapshot.data()?.data !== undefined) {
+          const remotePerms = snapshot.data().data;
+          if (remotePerms && typeof remotePerms === 'object') {
+            setRolePermissions((prev) => ({ ...prev, ...remotePerms }));
+            localStorage.setItem('trackpulse_role_permissions', JSON.stringify(remotePerms));
+          }
+        }
+      }, (err) => console.warn('Firestore role permissions listener warning:', err));
     } catch (err) {
       console.warn('Firestore setup error:', err);
       setIsFirestoreLoaded(true);
@@ -678,38 +714,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubAudit();
       unsubScreenshots();
       unsubPayroll();
+      unsubAttendance();
+      unsubPresence();
+      unsubLeave();
+      unsubManual();
+      unsubPasswordReqs();
+      unsubTasks();
+      unsubPerms();
       unsubConfig();
     };
   }, []);
 
-  // Save changes to localStorage and Firestore (only once loaded to prevent initial overwrite)
+  // Save changes to localStorage
   useEffect(() => {
     localStorage.setItem('trackpulse_users', JSON.stringify(users));
-    if (isFirestoreLoaded) {
-      safeSetDoc(doc(db, 'system_state', 'users'), { data: users }).catch((err) => console.warn('Users save err:', err));
-    }
-  }, [users, isFirestoreLoaded]);
+  }, [users]);
 
   useEffect(() => {
     localStorage.setItem('trackpulse_timelogs', JSON.stringify(timeLogs));
-    if (isFirestoreLoaded) {
-      safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: timeLogs }).catch((err) => console.warn('TimeLogs save err:', err));
-    }
-  }, [timeLogs, isFirestoreLoaded]);
+  }, [timeLogs]);
 
   useEffect(() => {
     localStorage.setItem('trackpulse_screenshots', JSON.stringify(screenshots));
-    if (isFirestoreLoaded) {
-      safeSetDoc(doc(db, 'system_state', 'screenshots'), { data: screenshots }).catch((err) => console.warn('Screenshots save err:', err));
-      // Save individual screenshot documents to /screenshots/{id} for direct indexed queries
-      screenshots.forEach((scr) => {
-        safeSetDoc(doc(db, 'screenshots', scr.id), {
-          ...scr,
-          savedToDatabaseAt: scr.capturedAtIso || new Date().toISOString(),
-        }, { merge: true }).catch((err) => console.warn('Individual screenshot save err:', err));
-      });
-    }
-  }, [screenshots, isFirestoreLoaded]);
+  }, [screenshots]);
 
   useEffect(() => {
     localStorage.setItem('trackpulse_idlelogs', JSON.stringify(idleLogs));
@@ -725,24 +752,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     localStorage.setItem('trackpulse_payroll', JSON.stringify(payrollRecords));
-    if (isFirestoreLoaded) {
-      safeSetDoc(doc(db, 'system_state', 'payroll'), { data: payrollRecords }).catch((err) => console.warn('Payroll save err:', err));
-    }
-  }, [payrollRecords, isFirestoreLoaded]);
+  }, [payrollRecords]);
 
   useEffect(() => {
     localStorage.setItem('trackpulse_attendance', JSON.stringify(dailyAttendanceLogs));
-    if (isFirestoreLoaded) {
-      safeSetDoc(doc(db, 'system_state', 'attendance'), { data: dailyAttendanceLogs }).catch((err) => console.warn('Attendance save err:', err));
-    }
-  }, [dailyAttendanceLogs, isFirestoreLoaded]);
+  }, [dailyAttendanceLogs]);
 
   useEffect(() => {
     localStorage.setItem('trackpulse_presence', JSON.stringify(userPresenceList));
-    if (isFirestoreLoaded) {
-      safeSetDoc(doc(db, 'system_state', 'presence'), { data: userPresenceList }).catch((err) => console.warn('Presence save err:', err));
-    }
-  }, [userPresenceList, isFirestoreLoaded]);
+  }, [userPresenceList]);
 
   useEffect(() => {
     localStorage.setItem('trackpulse_worldclocks', JSON.stringify(worldClocks));
@@ -750,10 +768,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     localStorage.setItem('trackpulse_auditlogs', JSON.stringify(auditLogs));
-    if (isFirestoreLoaded) {
-      safeSetDoc(doc(db, 'system_state', 'auditlogs'), { data: auditLogs }).catch((err) => console.warn('AuditLogs save err:', err));
-    }
-  }, [auditLogs, isFirestoreLoaded]);
+  }, [auditLogs]);
 
   const addAuditLog = useCallback(
     (entry: Omit<AuditLog, 'id' | 'timestamp' | 'dateFormatted'>) => {
@@ -766,7 +781,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         timestamp: now.toISOString(),
         dateFormatted,
       };
-      setAuditLogs((prev) => [newLog, ...prev]);
+      setAuditLogs((prev) => {
+        const updated = [newLog, ...prev].slice(0, 500);
+        localStorage.setItem('trackpulse_auditlogs', JSON.stringify(updated));
+        safeSetDoc(doc(db, 'system_state', 'auditlogs'), { data: updated }).catch((err) =>
+          console.warn('AuditLogs sync warning:', err)
+        );
+        return updated;
+      });
     },
     []
   );
@@ -1409,26 +1431,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTimeLogs((prev) => [newLog, ...prev]);
     setScreenshots((prev) => [newScreenshot, ...prev]);
 
+    const updatedLogs = [newLog, ...timeLogs];
+    const updatedScreenshots = [newScreenshot, ...screenshots];
+    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+    localStorage.setItem('trackpulse_screenshots', JSON.stringify(updatedScreenshots));
+    safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
+      console.warn('TimeLogs sync err:', err)
+    );
+    safeSetDoc(doc(db, 'system_state', 'screenshots'), { data: updatedScreenshots }).catch((err) =>
+      console.warn('Screenshots sync err:', err)
+    );
+
     // Recalculate payroll record for this user
-    setPayrollRecords((prev) =>
-      prev.map((rec) => {
-        if (rec.userId === currentUser.id) {
-          const additionalHours = trackedSecs / 3600;
-          const newTotal = rec.totalTrackedHours + additionalHours;
-          const reg = Math.min(newTotal, 80);
-          const ot = Math.max(0, newTotal - 80);
-          const gross = reg * rec.hourlyRate + ot * rec.hourlyRate * 1.5;
-          return {
-            ...rec,
-            totalTrackedHours: Number(newTotal.toFixed(2)),
-            regularHours: Number(reg.toFixed(2)),
-            overtimeHours: Number(ot.toFixed(2)),
-            grossPay: Number(gross.toFixed(2)),
-            netPay: Number((gross * 0.9).toFixed(2)),
-          };
-        }
-        return rec;
-      })
+    const updatedPayroll = payrollRecords.map((rec) => {
+      if (rec.userId === currentUser.id) {
+        const additionalHours = trackedSecs / 3600;
+        const newTotal = rec.totalTrackedHours + additionalHours;
+        const reg = Math.min(newTotal, 80);
+        const ot = Math.max(0, newTotal - 80);
+        const gross = reg * rec.hourlyRate + ot * rec.hourlyRate * 1.5;
+        return {
+          ...rec,
+          totalTrackedHours: Number(newTotal.toFixed(2)),
+          regularHours: Number(reg.toFixed(2)),
+          overtimeHours: Number(ot.toFixed(2)),
+          grossPay: Number(gross.toFixed(2)),
+          netPay: Number((gross * 0.9).toFixed(2)),
+        };
+      }
+      return rec;
+    });
+    setPayrollRecords(updatedPayroll);
+    localStorage.setItem('trackpulse_payroll', JSON.stringify(updatedPayroll));
+    safeSetDoc(doc(db, 'system_state', 'payroll'), { data: updatedPayroll }).catch((err) =>
+      console.warn('Payroll sync err:', err)
     );
 
     // Update daily attendance log
@@ -1445,6 +1481,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return att;
     });
     setDailyAttendanceLogs(updatedAttendance);
+    localStorage.setItem('trackpulse_attendance', JSON.stringify(updatedAttendance));
+    safeSetDoc(doc(db, 'system_state', 'attendance'), { data: updatedAttendance }).catch((err) =>
+      console.warn('Attendance sync err:', err)
+    );
 
     // Record audit log entry
     addAuditLog({
@@ -1460,7 +1500,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSaveToast(`✓ Saved to Database & Synced to Timesheets! (${currentUser.name} - ${formatDuration(trackedSecs)} on ${currentTask})`);
     setTimeout(() => setSaveToast(null), 7000);
 
-    triggerAutoSync(users, [newLog, ...timeLogs], auditLogs, payrollRecords, updatedAttendance, idleLogs, leaveRequests);
+    triggerAutoSync(users, updatedLogs, auditLogs, updatedPayroll, updatedAttendance, idleLogs, leaveRequests);
 
     setIsTracking(false);
     setIsPaused(false);
@@ -2046,6 +2086,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newLog: TimeLog = { ...logData, id: `log-${Date.now()}` };
     const updatedLogs = [newLog, ...timeLogs];
     setTimeLogs(updatedLogs);
+    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+    safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
+      console.warn('TimeLog add sync error:', err)
+    );
 
     addAuditLog({
       actorId: currentUser.id,
@@ -2067,6 +2111,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetLog = timeLogs.find((l) => l.id === id);
     const updatedLogs = timeLogs.map((l) => (l.id === id ? { ...l, ...data } : l));
     setTimeLogs(updatedLogs);
+    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+    safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
+      console.warn('TimeLog update sync error:', err)
+    );
 
     addAuditLog({
       actorId: currentUser.id,
@@ -2088,6 +2136,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetLog = timeLogs.find((l) => l.id === id);
     const updatedLogs = timeLogs.filter((l) => l.id !== id);
     setTimeLogs(updatedLogs);
+    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+    safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
+      console.warn('TimeLog delete sync error:', err)
+    );
 
     addAuditLog({
       actorId: currentUser.id,
@@ -2112,6 +2164,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const updatedRequests = manualTimeRequests.map((r) => (r.id === id ? { ...r, status: 'approved' as const } : r));
     setManualTimeRequests(updatedRequests);
+    localStorage.setItem('trackpulse_manualrequests', JSON.stringify(updatedRequests));
+    safeSetDoc(doc(db, 'system_state', 'manualrequests'), { data: updatedRequests }).catch((err) =>
+      console.warn('Manual time approve sync error:', err)
+    );
 
     // Convert to actual time log
     const targetUser = users.find((u) => u.id === req.userId) || currentUser;
@@ -2137,6 +2193,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const updatedLogs = [newLog, ...timeLogs];
     setTimeLogs(updatedLogs);
+    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+    safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
+      console.warn('Manual time to timelog sync error:', err)
+    );
 
     addAuditLog({
       actorId: currentUser.id,
@@ -2158,6 +2218,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const req = manualTimeRequests.find((r) => r.id === id);
     const updatedRequests = manualTimeRequests.map((r) => (r.id === id ? { ...r, status: 'rejected' as const } : r));
     setManualTimeRequests(updatedRequests);
+    localStorage.setItem('trackpulse_manualrequests', JSON.stringify(updatedRequests));
+    safeSetDoc(doc(db, 'system_state', 'manualrequests'), { data: updatedRequests }).catch((err) =>
+      console.warn('Manual time reject sync error:', err)
+    );
 
     if (req) {
       addAuditLog({
@@ -2181,7 +2245,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `mtr-${Date.now()}`,
       status: 'pending',
     };
-    setManualTimeRequests((prev) => [newReq, ...prev]);
+    const updated = [newReq, ...manualTimeRequests];
+    setManualTimeRequests(updated);
+    localStorage.setItem('trackpulse_manualrequests', JSON.stringify(updated));
+    safeSetDoc(doc(db, 'system_state', 'manualrequests'), { data: updated }).catch((err) =>
+      console.warn('Manual time submit sync error:', err)
+    );
 
     addAuditLog({
       actorId: currentUser.id,
@@ -2202,6 +2271,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const req = leaveRequests.find((r) => r.id === id);
     const updatedLeaves = leaveRequests.map((r) => (r.id === id ? { ...r, status: 'approved' as const } : r));
     setLeaveRequests(updatedLeaves);
+    localStorage.setItem('trackpulse_leaverequests', JSON.stringify(updatedLeaves));
+    safeSetDoc(doc(db, 'system_state', 'leaverequests'), { data: updatedLeaves }).catch((err) =>
+      console.warn('Leave approve sync error:', err)
+    );
 
     if (req) {
       addAuditLog({
@@ -2225,6 +2298,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const req = leaveRequests.find((r) => r.id === id);
     const updatedLeaves = leaveRequests.map((r) => (r.id === id ? { ...r, status: 'rejected' as const } : r));
     setLeaveRequests(updatedLeaves);
+    localStorage.setItem('trackpulse_leaverequests', JSON.stringify(updatedLeaves));
+    safeSetDoc(doc(db, 'system_state', 'leaverequests'), { data: updatedLeaves }).catch((err) =>
+      console.warn('Leave reject sync error:', err)
+    );
 
     if (req) {
       addAuditLog({
@@ -2253,6 +2330,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const updatedLeaves = [newReq, ...leaveRequests];
     setLeaveRequests(updatedLeaves);
+    localStorage.setItem('trackpulse_leaverequests', JSON.stringify(updatedLeaves));
+    safeSetDoc(doc(db, 'system_state', 'leaverequests'), { data: updatedLeaves }).catch((err) =>
+      console.warn('Leave submit sync error:', err)
+    );
 
     addAuditLog({
       actorId: currentUser.id,
@@ -2272,15 +2353,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Screenshots CRUD
   const deleteScreenshot = (id: string) => {
-    setScreenshots((prev) => prev.filter((s) => s.id !== id));
-    if (isFirestoreLoaded) {
-      deleteDoc(doc(db, 'screenshots', id)).catch((err) => console.warn('Delete screenshot doc error:', err));
-    }
+    const updated = screenshots.filter((s) => s.id !== id);
+    setScreenshots(updated);
+    localStorage.setItem('trackpulse_screenshots', JSON.stringify(updated));
+    safeSetDoc(doc(db, 'system_state', 'screenshots'), { data: updated }).catch((err) =>
+      console.warn('Delete screenshot update doc error:', err)
+    );
+    deleteDoc(doc(db, 'screenshots', id)).catch((err) => console.warn('Delete screenshot doc error:', err));
   };
 
   const toggleScreenshotBlur = (id: string) => {
-    setScreenshots((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, isBlurred: !s.isBlurred } : s))
+    const updated = screenshots.map((s) => (s.id === id ? { ...s, isBlurred: !s.isBlurred } : s));
+    setScreenshots(updated);
+    localStorage.setItem('trackpulse_screenshots', JSON.stringify(updated));
+    safeSetDoc(doc(db, 'system_state', 'screenshots'), { data: updated }).catch((err) =>
+      console.warn('Toggle screenshot blur doc error:', err)
     );
   };
 
@@ -2297,6 +2384,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         : p
     );
     setPayrollRecords(updatedPayroll);
+    localStorage.setItem('trackpulse_payroll', JSON.stringify(updatedPayroll));
+    safeSetDoc(doc(db, 'system_state', 'payroll'), { data: updatedPayroll }).catch((err) =>
+      console.warn('Payroll sync error:', err)
+    );
 
     addAuditLog({
       actorId: currentUser.id,
@@ -2313,36 +2404,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     triggerAutoSync(users, timeLogs, auditLogs, updatedPayroll, dailyAttendanceLogs, idleLogs, leaveRequests);
   };
-
-  // Purge old demo data on first load if version flag not set
-  useEffect(() => {
-    if (!isCleanV8) {
-      localStorage.setItem('trackpulse_clean_v8', 'true');
-      localStorage.setItem('trackpulse_users', JSON.stringify(INITIAL_USERS));
-      localStorage.setItem('trackpulse_timelogs', JSON.stringify([]));
-      localStorage.setItem('trackpulse_screenshots', JSON.stringify([]));
-      localStorage.setItem('trackpulse_idlelogs', JSON.stringify([]));
-      localStorage.setItem('trackpulse_leaverequests', JSON.stringify([]));
-      localStorage.setItem('trackpulse_manualrequests', JSON.stringify([]));
-      localStorage.setItem('trackpulse_payroll', JSON.stringify(INITIAL_PAYROLL));
-      localStorage.setItem('trackpulse_attendance', JSON.stringify([]));
-      localStorage.setItem('trackpulse_presence', JSON.stringify([]));
-      localStorage.setItem('trackpulse_auditlogs', JSON.stringify(INITIAL_AUDIT_LOGS));
-
-      // Overwrite Firestore collection documents with the clean Super Admin state
-      Promise.all([
-        safeSetDoc(doc(db, 'system_state', 'users'), { data: INITIAL_USERS }),
-        safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: [] }),
-        safeSetDoc(doc(db, 'system_state', 'screenshots'), { data: [] }),
-        safeSetDoc(doc(db, 'system_state', 'idlelogs'), { data: [] }),
-        safeSetDoc(doc(db, 'system_state', 'leaverequests'), { data: [] }),
-        safeSetDoc(doc(db, 'system_state', 'manualrequests'), { data: [] }),
-        safeSetDoc(doc(db, 'system_state', 'payroll'), { data: INITIAL_PAYROLL }),
-        safeSetDoc(doc(db, 'system_state', 'attendance'), { data: [] }),
-        safeSetDoc(doc(db, 'system_state', 'auditlogs'), { data: INITIAL_AUDIT_LOGS }),
-      ]).catch((err) => console.warn('Clean DB init sync warning:', err));
-    }
-  }, [isCleanV8]);
 
   // Reset database to fresh Super Admin only state
   const resetDatabaseToFreshState = async () => {

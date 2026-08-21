@@ -50,8 +50,61 @@ export const downloadDesktopSoftwarePackage = (os: DesktopOS = 'windows') => {
   
   const SOFTWARE_APP_URL = `${currentOrigin}?mode=desktop&source=software&appMode=desktop`;
 
+  const packageJsonContent = JSON.stringify(
+    {
+      name: 'llc-time-tracker-desktop',
+      version: '1.0.0',
+      description: 'LLC Time Tracker Desktop Software',
+      author: 'LLC Time Tracker',
+      main: 'main.js',
+      scripts: {
+        start: 'electron .',
+        build: 'electron-packager . "LLC Time Tracker" --platform=win32 --arch=x64 --overwrite --out=dist',
+      },
+      devDependencies: {
+        electron: '^28.2.0',
+        'electron-packager': '^17.1.2',
+      },
+    },
+    null,
+    2
+  );
+
+  const mainJsContent = `const { app, BrowserWindow } = require('electron');
+const path = require('path');
+
+function createWindow() {
+  const mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 840,
+    minWidth: 400,
+    minHeight: 600,
+    title: 'LLC Time Tracker Desktop Software',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  mainWindow.loadURL('${SOFTWARE_APP_URL}');
+}
+
+app.whenReady().then(createWindow);
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+`;
+
+  // Encode safely to Base64 to guarantee zero shell escaping issues in Windows Batch
+  const b64PackageJson = typeof btoa !== 'undefined' ? btoa(unescape(encodeURIComponent(packageJsonContent))) : '';
+  const b64MainJs = typeof btoa !== 'undefined' ? btoa(unescape(encodeURIComponent(mainJsContent))) : '';
+
   if (os === 'windows') {
     const batContent = `@echo off
+setlocal EnableDelayedExpansion
 :: Force script to switch working directory to the folder containing this .bat file
 cd /d "%~dp0"
 title LLC Time Tracker Standalone Software Builder
@@ -62,50 +115,11 @@ echo ========================================================
 echo Working Directory: %cd%
 echo.
 
-echo [1/4] Generating desktop configuration...
-(
-echo {
-echo   "name": "llc-time-tracker-desktop",
-echo   "version": "1.0.0",
-echo   "description": "LLC Time Tracker Desktop Software",
-echo   "author": "LLC Time Tracker",
-echo   "main": "main.js",
-echo   "scripts": {
-echo     "start": "electron .",
-echo     "build": "electron-packager . \\"LLC Time Tracker\\" --platform=win32 --arch=x64 --overwrite --out=dist"
-echo   },
-echo   "devDependencies": {
-echo     "electron": "^28.2.0",
-echo     "electron-packager": "^17.1.2"
-echo   }
-echo }
-) > package.json
+echo [1/4] Generating desktop configuration (package.json)...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[System.IO.File]::WriteAllBytes('package.json', [System.Convert]::FromBase64String('${b64PackageJson}'))"
 
-echo [2/4] Generating main.js in %cd% ...
-(
-echo const { app, BrowserWindow } = require('electron'^);
-echo const path = require('path'^);
-echo.
-echo function createWindow(^) {
-echo   const mainWindow = new BrowserWindow({
-echo     width: 1280,
-echo     height: 840,
-echo     minWidth: 400,
-echo     minHeight: 600,
-echo     title: 'LLC Time Tracker Desktop Software',
-echo     autoHideMenuBar: true,
-echo     webPreferences: {
-echo       nodeIntegration: false,
-echo       contextIsolation: true
-echo     }
-echo   }^);
-echo.
-echo   mainWindow.loadURL('${SOFTWARE_APP_URL}'^);
-echo }
-echo.
-echo app.whenReady(^).then(createWindow^);
-echo app.on('window-all-closed', (^) =^> { if (process.platform !== 'darwin'^) app.quit(^); }^);
-) > main.js
+echo [2/4] Generating main.js ...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[System.IO.File]::WriteAllBytes('main.js', [System.Convert]::FromBase64String('${b64MainJs}'))"
 
 echo.
 echo [3/4] Installing Electron dependencies (npm install)...
