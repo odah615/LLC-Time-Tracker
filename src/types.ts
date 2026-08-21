@@ -246,6 +246,9 @@ export interface UserPresence {
   currentApp?: string;
   mouseActivity?: number;
   keyboardActivity?: number;
+  elapsedSeconds?: number;
+  isTracking?: boolean;
+  isPaused?: boolean;
   lastHeartbeat: string; // ISO string
   loginTime?: string; // ISO string of shift start
 }

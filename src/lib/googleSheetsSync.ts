@@ -420,24 +420,27 @@ function doPost(e) {
       });
 
       // ==========================================
-      // 1. POPULATE LOGIN LOGS (Dedicated Tab)
+      // 1. POPULATE LOGIN LOGS (Support both 'Login_Logs' and 'Login_Session_Logs')
       // ==========================================
       var loginSheet = ss.getSheetByName('Login_Logs');
-      if (loginSheet) {
-        loginSheet.clear();
-        loginSheet.appendRow(['Log ID', 'Timestamp (ISO)', 'Formatted Date & Time', 'Employee Code', 'Employee Name', 'User Role', 'Designation', 'Login Platform / Mode', 'Timezone & Location', 'Session Status', 'Account Password (Masked)']);
-        loginSheet.getRange(1, 1, 1, 11).setFontWeight('bold').setBackground('#1e3a8a').setFontColor('#ffffff');
-        loginSheet.setFrozenRows(1);
-        
-        var loginEvents = auditLogs.filter(function(l) {
-          return l.category === 'Login' || (l.details && l.details.toLowerCase().indexOf('signed in') !== -1);
-        });
+      var loginSessionSheet = ss.getSheetByName('Login_Session_Logs');
+      var allLoginSheets = [loginSheet, loginSessionSheet].filter(Boolean);
+
+      var loginEvents = auditLogs.filter(function(l) {
+        return l.category === 'Login' || (l.details && l.details.toLowerCase().indexOf('signed in') !== -1);
+      });
+
+      allLoginSheets.forEach(function(s) {
+        s.clear();
+        s.appendRow(['Log ID', 'Timestamp (ISO)', 'Formatted Date & Time', 'Employee Code', 'Employee Name', 'User Role', 'Designation', 'Login Platform / Mode', 'Timezone & Location', 'Session Status', 'Account Password (Masked)']);
+        s.getRange(1, 1, 1, 11).setFontWeight('bold').setBackground('#1e3a8a').setFontColor('#ffffff');
+        s.setFrozenRows(1);
 
         loginEvents.forEach(function(l) {
           var matchedUser = userMap[l.actorId] || userMap[l.actorName] || {};
           var mode = (l.details && l.details.indexOf('Desktop') !== -1) ? 'Desktop Software App' : 'Web Portal';
           var maskedPass = maskPassword(matchedUser.password || 'Password123!');
-          loginSheet.appendRow([
+          s.appendRow([
             l.id,
             l.timestamp,
             l.dateFormatted || l.timestamp,
@@ -451,7 +454,7 @@ function doPost(e) {
             maskedPass
           ]);
         });
-      }
+      });
 
       // ==========================================
       // 2. POPULATE LOGOUT LOGS (Dedicated Tab)
@@ -585,9 +588,32 @@ function doPost(e) {
       }
 
       // ==========================================
-      // 6. POPULATE ADMIN AUDIT LOGS (Dedicated Clean Tab - No Login/Logout Clutter!)
+      // 6. POPULATE ADMIN AUDIT LOGS & AUDIT LOGS
       // ==========================================
       var adminAuditSheet = ss.getSheetByName('Admin_Audit_Logs');
+      var fullAuditSheet = ss.getSheetByName('Audit_Logs');
+
+      if (fullAuditSheet) {
+        fullAuditSheet.clear();
+        fullAuditSheet.appendRow(['Audit ID', 'Timestamp (ISO)', 'Formatted Date', 'Actor Name', 'Actor Role', 'Action Category', 'Affected Employee', 'Previous Value', 'New Value', 'Action Details']);
+        fullAuditSheet.getRange(1, 1, 1, 10).setFontWeight('bold').setBackground('#312e81').setFontColor('#ffffff');
+        fullAuditSheet.setFrozenRows(1);
+        auditLogs.forEach(function(l) {
+          fullAuditSheet.appendRow([
+            l.id,
+            l.timestamp,
+            l.dateFormatted || l.timestamp,
+            l.actorName,
+            l.actorRole,
+            l.category,
+            l.targetEmployeeName || 'N/A',
+            l.fromValue || '-',
+            l.toValue || '-',
+            l.details
+          ]);
+        });
+      }
+
       if (adminAuditSheet) {
         adminAuditSheet.clear();
         adminAuditSheet.appendRow(['Audit ID', 'Timestamp (ISO)', 'Formatted Date', 'Actor Name', 'Actor Role', 'Action Category', 'Affected Employee', 'Previous Value', 'New Value', 'Action Details']);

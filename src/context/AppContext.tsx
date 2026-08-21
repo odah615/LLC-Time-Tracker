@@ -17,7 +17,7 @@ import {
   PasswordResetRequest,
   RolePermissions,
 } from '../types';
-import { doc, setDoc, deleteDoc, onSnapshot, collection } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, onSnapshot, collection, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import {
   syncDataToGoogleSheetsWebhook,
@@ -382,9 +382,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const setGoogleSheetsWebhookUrl = (url: string) => {
-    setGoogleSheetsWebhookUrlState(url);
-    localStorage.setItem('trackpulse_sheets_webhook', url);
-    safeSetDoc(doc(db, 'system_state', 'config'), { webhookUrl: url }, { merge: true }).catch((err) =>
+    const cleanUrl = (url || '').trim();
+    setGoogleSheetsWebhookUrlState(cleanUrl);
+    localStorage.setItem('trackpulse_sheets_webhook', cleanUrl);
+    safeSetDoc(doc(db, 'system_state', 'config'), {
+      webhookUrl: cleanUrl,
+      sheetsWebhookUrl: cleanUrl,
+      lastUpdated: new Date().toISOString(),
+    }, { merge: true }).catch((err) =>
       console.warn('Webhook URL config save err:', err)
     );
   };
@@ -394,9 +399,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
   });
 
-  // Dedicated automatic sync dispatcher
+  // Dedicated automatic sync dispatcher with fallback Firestore config fetch
   const triggerAutoSync = useCallback(
-    (
+    async (
       updatedUsers = users,
       updatedLogs = timeLogs,
       updatedAudit = auditLogs,
@@ -407,7 +412,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedDesignationTasks = designationTasks,
       updatedRolePermissions = rolePermissions
     ) => {
-      const activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
+      let activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
+      if (!activeUrl || !activeUrl.trim()) {
+        try {
+          const cfgSnap = await getDoc(doc(db, 'system_state', 'config'));
+          if (cfgSnap.exists()) {
+            const cData = cfgSnap.data();
+            activeUrl = cData?.webhookUrl || cData?.sheetsWebhookUrl || '';
+            if (activeUrl && activeUrl.trim()) {
+              setGoogleSheetsWebhookUrlState(activeUrl.trim());
+              localStorage.setItem('trackpulse_sheets_webhook', activeUrl.trim());
+            }
+          }
+        } catch (e) {}
+      }
       if (activeUrl && activeUrl.trim()) {
         syncDataToGoogleSheetsWebhook(
           activeUrl.trim(),
@@ -572,10 +590,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       unsubConfig = onSnapshot(doc(db, 'system_state', 'config'), (snapshot) => {
-        if (snapshot.exists() && snapshot.data()?.webhookUrl) {
-          const remoteUrl = snapshot.data().webhookUrl;
-          setGoogleSheetsWebhookUrlState(remoteUrl);
-          localStorage.setItem('trackpulse_sheets_webhook', remoteUrl);
+        if (snapshot.exists()) {
+          const cfgData = snapshot.data();
+          const remoteUrl = cfgData?.webhookUrl || cfgData?.sheetsWebhookUrl || '';
+          if (remoteUrl && remoteUrl.trim()) {
+            setGoogleSheetsWebhookUrlState(remoteUrl.trim());
+            localStorage.setItem('trackpulse_sheets_webhook', remoteUrl.trim());
+          }
         }
       }, (err) => console.warn('Config listener warning:', err));
 
@@ -644,15 +665,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }, (err) => console.warn('Firestore attendance listener warning:', err));
 
-      unsubPresence = onSnapshot(doc(db, 'system_state', 'presence'), (snapshot) => {
-        if (snapshot.exists() && snapshot.data()?.data !== undefined) {
-          const remotePresence: UserPresence[] = snapshot.data().data;
-          if (Array.isArray(remotePresence)) {
-            setUserPresenceList(remotePresence);
-            localStorage.setItem('trackpulse_presence', JSON.stringify(remotePresence));
-          }
+      // Real-time live presence listener: Listens to collection('user_presence') across all active devices
+      unsubPresence = onSnapshot(collection(db, 'user_presence'), (snapshot) => {
+        if (!snapshot.empty) {
+          const presenceMap = new Map<string, UserPresence>();
+          snapshot.forEach((d) => {
+            const data = d.data() as UserPresence;
+            if (data && data.userId) {
+              presenceMap.set(data.userId, data);
+            }
+          });
+
+          setUserPresenceList((prev) => {
+            const updated = prev.map((p) => {
+              const live = presenceMap.get(p.userId);
+              return live ? { ...p, ...live } : p;
+            });
+            presenceMap.forEach((live, uId) => {
+              if (!updated.some((p) => p.userId === uId)) {
+                updated.push(live);
+              }
+            });
+            localStorage.setItem('trackpulse_presence', JSON.stringify(updated));
+            return updated;
+          });
         }
-      }, (err) => console.warn('Firestore presence listener warning:', err));
+      }, (err) => {
+        console.warn('Firestore user_presence collection listener warning:', err);
+        // Fallback to system_state/presence if collection read had issues
+        onSnapshot(doc(db, 'system_state', 'presence'), (snap) => {
+          if (snap.exists() && snap.data()?.data !== undefined) {
+            const remotePresence: UserPresence[] = snap.data().data;
+            if (Array.isArray(remotePresence)) {
+              setUserPresenceList(remotePresence);
+              localStorage.setItem('trackpulse_presence', JSON.stringify(remotePresence));
+            }
+          }
+        }, () => {});
+      });
 
       unsubLeave = onSnapshot(doc(db, 'system_state', 'leaverequests'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -889,6 +939,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedAudit = [loginLog, ...auditLogs];
     setAuditLogs(updatedAudit);
 
+    // Instant presence broadcast on login
+    const nowIso = now.toISOString();
+    const loginPresence: UserPresence = {
+      userId: user.id,
+      userName: user.name,
+      employeeCode: user.employeeCode || '',
+      role: user.role,
+      designation: user.designation || 'Agent',
+      department: user.department || 'Operations',
+      teamLeaderId: user.teamLeaderId || '',
+      isOnline: true,
+      status: 'online',
+      isTracking: false,
+      isPaused: false,
+      elapsedSeconds: 0,
+      mouseActivity: 0,
+      keyboardActivity: 0,
+      currentTask: 'Available / Ready',
+      currentApp: mode === 'software' ? 'LLC Time Tracker Desktop Software' : 'Web Portal',
+      lastHeartbeat: nowIso,
+      loginTime: nowIso,
+    };
+    safeSetDoc(doc(db, 'user_presence', user.id), loginPresence, { merge: true }).catch(() => {});
+
     triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
   };
 
@@ -909,6 +983,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       const updatedAudit = [logoutLog, ...auditLogs];
       setAuditLogs(updatedAudit);
+
+      // Instant offline status broadcast
+      safeSetDoc(doc(db, 'user_presence', currentUser.id), {
+        isOnline: false,
+        status: 'offline',
+        isTracking: false,
+        isPaused: false,
+        lastHeartbeat: new Date().toISOString(),
+      }, { merge: true }).catch(() => {});
+
       triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
     }
     setIsAuthenticated(false);
@@ -1089,6 +1173,82 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       window.removeEventListener('blur', handleBlur);
     };
   }, [isTracking, isPaused]);
+
+  // Dedicated Multi-Device Real-Time Presence Heartbeat Broadcaster
+  // Broadcasts active presence to Firestore user_presence collection every 5 seconds
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser) return;
+
+    const broadcastPresence = () => {
+      const nowIso = new Date().toISOString();
+      const statusValue = isPaused ? 'idle' : 'online';
+      const taskDisplay = isTracking 
+        ? (isPaused ? `Paused (${currentTask})` : currentTask)
+        : 'Available / Ready';
+
+      const presenceDoc: UserPresence = {
+        userId: currentUser.id,
+        userName: currentUser.name,
+        employeeCode: currentUser.employeeCode || '',
+        role: currentUser.role,
+        designation: currentDesignation || currentUser.designation || 'Agent',
+        department: currentUser.department || 'Operations',
+        teamLeaderId: currentUser.teamLeaderId || '',
+        isOnline: true,
+        status: statusValue,
+        isTracking: !!isTracking,
+        isPaused: !!isPaused,
+        elapsedSeconds: elapsedSeconds || 0,
+        mouseActivity: isTracking ? currentMouseActivity : 0,
+        keyboardActivity: isTracking ? currentKeyboardActivity : 0,
+        currentTask: taskDisplay,
+        currentApp: currentActiveApp || (loginMode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal'),
+        lastHeartbeat: nowIso,
+        loginTime: nowIso,
+      };
+
+      safeSetDoc(doc(db, 'user_presence', currentUser.id), presenceDoc, { merge: true }).catch((err) => {
+        console.warn('Presence broadcast warning:', err);
+      });
+    };
+
+    // Immediate initial broadcast
+    broadcastPresence();
+
+    // 5-second recurring heartbeat interval
+    const interval = setInterval(broadcastPresence, 5000);
+
+    // On window unload / close, notify immediately that user went offline
+    const handleUnload = () => {
+      const offlineDoc = {
+        isOnline: false,
+        status: 'offline',
+        isTracking: false,
+        isPaused: false,
+        lastHeartbeat: new Date().toISOString(),
+      };
+      safeSetDoc(doc(db, 'user_presence', currentUser.id), offlineDoc, { merge: true }).catch(() => {});
+    };
+
+    window.addEventListener('beforeunload', handleUnload);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleUnload);
+    };
+  }, [
+    isAuthenticated,
+    currentUser,
+    isTracking,
+    isPaused,
+    currentTask,
+    currentDesignation,
+    elapsedSeconds,
+    currentMouseActivity,
+    currentKeyboardActivity,
+    currentActiveApp,
+    loginMode,
+  ]);
 
   // Task Switch Confirmation Modal state
   const [taskSwitchPending, setTaskSwitchPending] = useState<TaskSwitchPending | null>(null);
@@ -1332,7 +1492,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsTracking(true);
     setIsPaused(false);
     setElapsedSeconds(0);
-    setStartTimeIso(new Date().toISOString());
+    const nowIso = new Date().toISOString();
+    setStartTimeIso(nowIso);
+
+    // Instant presence broadcast on tracking start
+    if (currentUser) {
+      safeSetDoc(doc(db, 'user_presence', currentUser.id), {
+        isOnline: true,
+        status: 'online',
+        isTracking: true,
+        isPaused: false,
+        elapsedSeconds: 0,
+        currentTask: currentTask,
+        currentApp: currentActiveApp || (loginMode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal'),
+        mouseActivity: 100,
+        keyboardActivity: 100,
+        lastHeartbeat: nowIso,
+      }, { merge: true }).catch(() => {});
+    }
   };
 
   // Pause tracking
@@ -1501,6 +1678,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTimeout(() => setSaveToast(null), 7000);
 
     triggerAutoSync(users, updatedLogs, auditLogs, updatedPayroll, updatedAttendance, idleLogs, leaveRequests);
+
+    // Instant presence broadcast on tracking stop
+    if (currentUser) {
+      safeSetDoc(doc(db, 'user_presence', currentUser.id), {
+        isOnline: true,
+        status: 'online',
+        isTracking: false,
+        isPaused: false,
+        elapsedSeconds: 0,
+        currentTask: 'Available / Ready',
+        lastHeartbeat: new Date().toISOString(),
+      }, { merge: true }).catch(() => {});
+    }
 
     setIsTracking(false);
     setIsPaused(false);
