@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { User } from '../../types';
 import { maskPassword } from '../../lib/googleSheetsSync';
+import { downloadWordDocInstructions } from '../../lib/docGenerator';
 import {
   Clock,
   Globe,
@@ -19,6 +20,7 @@ import {
   ShieldCheck,
   Lock,
   FileSpreadsheet,
+  FileText,
   Check,
   X,
   Sparkles,
@@ -355,14 +357,7 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowDownloadModal(true)}
-            className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-emerald-300 text-xs font-bold transition-all shadow-sm"
-          >
-            <Download className="w-4 h-4 text-emerald-400" />
-            <span>Download Software</span>
-          </button>
+          {/* Clean header without download buttons */}
         </div>
       </header>
 
@@ -526,8 +521,85 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
             </button>
           </form>
 
+          {/* Quick Demo Logins Helper */}
+          <div className="mt-6 pt-5 border-t border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Demo 1-Click Accounts & Roles</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => downloadWordDocInstructions()}
+                className="text-[11px] text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1 transition-colors"
+                title="Download instructions as Word document"
+              >
+                <FileText className="w-3 h-3 text-blue-400" />
+                <span>Download User Guide (.doc)</span>
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEmployeeCodeInput('0001');
+                  setPassword('admin123');
+                  setErrorMsg('');
+                }}
+                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-all group"
+              >
+                <div className="text-[10px] text-blue-400 font-bold uppercase">Super Admin</div>
+                <div className="text-xs font-semibold text-white group-hover:text-blue-300 truncate">Sarah Connor</div>
+                <div className="text-[10px] text-slate-500 font-mono">Code: 0001</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEmployeeCodeInput('0004');
+                  setPassword('lead123');
+                  setErrorMsg('');
+                }}
+                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-all group"
+              >
+                <div className="text-[10px] text-amber-400 font-bold uppercase">Team Lead</div>
+                <div className="text-xs font-semibold text-white group-hover:text-amber-300 truncate">Marcus Thorne</div>
+                <div className="text-[10px] text-slate-500 font-mono">Code: 0004</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEmployeeCodeInput('0003');
+                  setPassword('trainer123');
+                  setErrorMsg('');
+                }}
+                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-all group"
+              >
+                <div className="text-[10px] text-emerald-400 font-bold uppercase">Trainer</div>
+                <div className="text-xs font-semibold text-white group-hover:text-emerald-300 truncate">Elena Rostova</div>
+                <div className="text-[10px] text-slate-500 font-mono">Code: 0003</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEmployeeCodeInput('0007');
+                  setPassword('agent123');
+                  setErrorMsg('');
+                }}
+                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-all group"
+              >
+                <div className="text-[10px] text-purple-400 font-bold uppercase">VA Agent</div>
+                <div className="text-xs font-semibold text-white group-hover:text-purple-300 truncate">Alex Mercer</div>
+                <div className="text-[10px] text-slate-500 font-mono">Code: 0007</div>
+              </button>
+            </div>
+          </div>
+
           {/* Contextual Link at the Bottom */}
-          <div className="mt-6 pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
+          <div className="mt-5 pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
             {activeMode === 'software' ? (
               <>
                 <span className="text-[11px] text-slate-400">
@@ -684,15 +756,43 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
                   </div>
                 </div>
               </div>
+
+              {/* Word Doc Guide Download Box */}
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                  <div>
+                    <div className="font-bold text-slate-800 text-[11px]">User Guide & Login Demo Document</div>
+                    <div className="text-[10px] text-slate-500">Microsoft Word (.doc) with all role credentials & workflow guide</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => downloadWordDocInstructions()}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold flex items-center gap-1 shrink-0 shadow-sm transition-all"
+                  title="Download complete documentation as Microsoft Word Document (.doc)"
+                >
+                  <Download className="w-3 h-3" />
+                  <span>Download .DOC</span>
+                </button>
+              </div>
             </div>
 
             <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <button
-                onClick={() => setShowDownloadModal(false)}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  onClick={() => setShowDownloadModal(false)}
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => downloadWordDocInstructions()}
+                  className="w-full sm:w-auto px-3 py-2 rounded-xl text-blue-600 hover:bg-blue-50 text-xs font-semibold flex items-center justify-center gap-1"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Word Guide</span>
+                </button>
+              </div>
               <button
                 onClick={() => {
                   handleSimulateDownload();

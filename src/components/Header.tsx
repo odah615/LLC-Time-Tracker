@@ -33,6 +33,7 @@ import {
 import { UserRole } from '../types';
 import { getGoogleAppsScriptTemplate, downloadTableCSV, DEFAULT_SPREADSHEET_ID, DEFAULT_SPREADSHEET_URL } from '../lib/googleSheetsSync';
 import { downloadDesktopSoftwarePackage, DesktopOS } from '../lib/desktopDownloader';
+import { downloadWordDocInstructions } from '../lib/docGenerator';
 import { UserAvatar } from './UserAvatar';
 import { TaskDesignationManagerModal } from './modals/TaskDesignationManagerModal';
 import { RolePermissionsModal } from './modals/RolePermissionsModal';
@@ -461,9 +462,35 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                   <li>Launch your native desktop application and log in to track your shift.</li>
                 </ol>
               </div>
+
+              {/* Word Document User & Login Guide Download */}
+              <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                  <div>
+                    <div className="font-bold text-slate-800 text-[11px]">User Guide & Login Demo Document</div>
+                    <div className="text-[10px] text-slate-500">Microsoft Word (.doc) with all demo credentials & setup steps</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => downloadWordDocInstructions()}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold flex items-center gap-1 shrink-0 shadow-sm transition-all"
+                  title="Download complete documentation as Microsoft Word Document (.doc)"
+                >
+                  <Download className="w-3 h-3" />
+                  <span>Download .DOC</span>
+                </button>
+              </div>
             </div>
 
-            <div className="pt-2 border-t border-slate-200 flex items-center justify-end">
+            <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+              <button
+                onClick={() => downloadWordDocInstructions()}
+                className="px-3 py-1.5 rounded-xl text-blue-600 hover:bg-blue-50 text-xs font-semibold flex items-center gap-1.5"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Export Word Guide</span>
+              </button>
               <button
                 onClick={() => setShowDownloadModal(false)}
                 className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
