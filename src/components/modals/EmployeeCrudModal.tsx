@@ -238,7 +238,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
               <label className="block text-slate-700 font-semibold mb-1">Full Name</label>
               <input
                 type="text"
-                placeholder="e.g. Maria Ignacio or Red Macha"
+                placeholder="e.g. Juan David"
                 value={name}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -275,7 +275,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
                   type="button"
                   onClick={() => setUsername(generateUniqueUsername(name, users, editingUser?.id))}
                   className="text-[11px] text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1"
-                  title="Auto-format username: 1st letter of first name + 4 letters of surname (e.g. rmach). Duplicate resolved with 5th letter (mignac)."
+                  title="Auto-format username: 1st initial + 4 letters of surname (e.g. Juan David -> jdavi). Duplicates resolve with next letters (e.g. jdavid)."
                 >
                   <RefreshCw className="w-3 h-3" /> Auto
                 </button>
@@ -284,7 +284,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono font-bold text-xs">@</span>
                 <input
                   type="text"
-                  placeholder="e.g. rmach or mignac"
+                  placeholder="e.g. jdavid or jdavi"
                   value={username}
                   onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
                   className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 pl-7 focus:ring-2 focus:ring-blue-500 font-mono font-bold text-xs"
@@ -292,7 +292,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
                 />
               </div>
               <p className="text-[10px] text-slate-500 mt-1">
-                Rule: 1st initial + 4 letters of surname (e.g. <strong>rmach</strong>). Duplicate uses 5th letter (<strong>mignac</strong>).
+                Rule: 1st initial + 4 letters of surname (e.g. Juan David ➔ <strong>jdavi</strong>). Duplicates resolve with next letters (<strong>jdavid</strong>).
               </p>
             </div>
 

@@ -190,9 +190,9 @@ export function downloadWordDocInstructions(): void {
   <div class="highlight-box">
     <strong>Standard Username Rule:</strong>
     <ul>
-      <li><strong>Formula:</strong> First initial of first name + first 4 letters of last name (e.g. <strong>Red Macha</strong> &rarr; <code>rmach</code>).</li>
-      <li><strong>Automatic Collision Handling:</strong> If another agent already has the same username (e.g. <code>migna</code> for Maria Ignacio), the system automatically uses the 5th letter of the last name (&rarr; <code>mignac</code>), then the 6th letter (&rarr; <code>mignaci</code>), ensuring complete uniqueness without conflicts.</li>
-      <li><strong>Login Flexibility:</strong> Employees can sign in using either their <strong>Username</strong> (e.g. <code>rmach</code>), their <strong>Employee Code</strong> (e.g. <code>0001</code> or <code>LLC-0001</code>), or their company email.</li>
+      <li><strong>Formula:</strong> First initial of first name + first 4 letters of last name (e.g. <strong>Juan David</strong> &rarr; <code>jdavi</code>).</li>
+      <li><strong>Automatic Collision Handling:</strong> If another staff member shares the same base username (e.g. <code>jdavi</code>), the system automatically uses the 5th letter of the last name (&rarr; <code>jdavid</code>), then the 6th letter (&rarr; <code>jdavids</code>), ensuring complete uniqueness without conflicts.</li>
+      <li><strong>Login Flexibility:</strong> Employees can sign in using either their <strong>Username</strong> (e.g. <code>jdavid</code>), their <strong>Employee Code</strong> (e.g. <code>0001</code> or <code>LLC-0001</code>), or their company email.</li>
     </ul>
   </div>
 

@@ -2,9 +2,9 @@ import { User } from '../types';
 
 /**
  * Generates a standardized, unique username from an employee's full name.
- * Rule: First letter of first name + first 4 letters of last name (e.g., Red Macha -> "rmach").
- * Collision handling: If duplicate (e.g. Maria Ignacio -> "migna" already taken),
- * automatically takes the 5th letter ("mignac"), 6th letter ("mignaci"), or appends a number if exhausted.
+ * Rule: First letter of first name + first 4 letters of last name (e.g., Juan David -> "jdavi").
+ * Collision handling: If duplicate (e.g. "jdavi" already taken),
+ * automatically takes the 5th letter ("jdavid"), 6th letter, or appends a number if exhausted.
  */
 export function generateUniqueUsername(
   fullName: string,
@@ -73,7 +73,7 @@ export function generateUniqueUsername(
   }
 
   // 2. Collision resolution: Try adding 5th, 6th, etc. letters of the last name
-  // e.g. migna -> mignac -> mignaci -> mignacio
+  // e.g. jdavi -> jdavid
   for (let len = 5; len <= lastNameClean.length; len++) {
     const extendedCandidate = `${firstInitial}${lastNameClean.slice(0, len)}`;
     if (!takenUsernames.has(extendedCandidate)) {
@@ -81,7 +81,7 @@ export function generateUniqueUsername(
     }
   }
 
-  // 3. If last name length is fully exhausted (e.g. short last name like "Macha" or "Lee"), append numeric counter
+  // 3. If last name length is fully exhausted (e.g. short last name like "Tan" or "Lee"), append numeric counter
   let counter = 2;
   while (takenUsernames.has(`${primaryCandidate}${counter}`)) {
     counter++;

@@ -86,7 +86,7 @@ export const LoginView: React.FC = () => {
 
     // Search user by username, employee code, or email flexibly
     let foundUser = users.find((u) => {
-      // 0. Primary username match (e.g. "rmach", "migna", "mignac", "admin")
+      // 0. Primary username match (e.g. "jdavid", "admin")
       if (u.username && u.username.toLowerCase() === cleanUsernameQuery) return true;
 
       const uCode = (u.employeeCode || '').toLowerCase();
@@ -154,7 +154,7 @@ export const LoginView: React.FC = () => {
     }
 
     if (!foundUser) {
-      setErrorMsg(`No employee account found matching "${cleanCode}". Please enter your assigned Username (e.g. rmach) or Employee Code.`);
+      setErrorMsg(`No employee account found matching "${cleanCode}". Please enter your assigned Username (e.g. jdavid) or Employee Code.`);
       return;
     }
 
@@ -465,7 +465,7 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
                 <label className="block text-xs font-bold text-slate-300">
                   Username or Employee Code
                 </label>
-                <span className="text-[10px] text-slate-400 font-mono">e.g. rmach or 0001</span>
+                <span className="text-[10px] text-slate-400 font-mono">e.g. jdavid or 0001</span>
               </div>
               <div className="relative">
                 <input
@@ -475,7 +475,7 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
                     setEmployeeCodeInput(e.target.value);
                     setErrorMsg('');
                   }}
-                  placeholder="Enter your Username (e.g. rmach) or Employee Code..."
+                  placeholder="Enter your Username (e.g. jdavid) or Employee Code..."
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl py-3 pl-4 pr-10 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-mono"
                   required
                 />
