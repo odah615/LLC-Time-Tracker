@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { User, UserRole, Designation } from '../../types';
 import { DESIGNATION_LIST } from '../../data/initialData';
-import { Users, X, Check, Lock, KeyRound, Eye, EyeOff, RefreshCw, Calendar } from 'lucide-react';
+import { Users, X, Check, Lock, KeyRound, Eye, EyeOff, RefreshCw, Calendar, BadgeCheck } from 'lucide-react';
 import { ConfirmationModal } from './ConfirmationModal';
+import { generateUniqueUsername } from '../../lib/userUtils';
 
 interface EmployeeCrudModalProps {
   isOpen: boolean;
@@ -37,6 +38,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
   const { users, addUser, updateUser, currentUser, addAuditLog, designationList } = useApp();
 
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -76,6 +78,10 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
   useEffect(() => {
     if (editingUser) {
       setName(editingUser.name);
+      setUsername(
+        editingUser.username ||
+          generateUniqueUsername(editingUser.name, users, editingUser.id)
+      );
       setEmail(editingUser.email);
       setPassword(editingUser.password || 'Password123!');
       setRole(editingUser.role);
@@ -90,6 +96,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
       setAvatar(editingUser.avatar);
     } else {
       setName('');
+      setUsername('');
       setEmail('');
       setPassword('Password123!');
       setRole('agent');
@@ -126,10 +133,14 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
     const finalRole = isEditingSuperAdmin ? 'admin' : role;
     const finalDesignation = isEditingSuperAdmin ? 'Admin' : designation;
     const finalEmployeeCode = isEditingSuperAdmin ? 'SuperAdmin' : (employeeCode.trim() || getNextEmployeeCode(users));
+    const finalUsername = isEditingSuperAdmin
+      ? 'admin'
+      : (username.trim().toLowerCase() || generateUniqueUsername(name, users, editingUser?.id));
 
     if (editingUser) {
       updateUser(editingUser.id, {
         name,
+        username: finalUsername,
         email,
         password: password.trim() || editingUser.password || 'Password123!',
         role: finalRole,
@@ -153,12 +164,13 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
         targetEmployeeName: name,
         fromValue: editingUser.role,
         toValue: finalRole,
-        details: `Updated employee record for ${name} (${finalEmployeeCode}). Hired: ${finalJoinDate}. Credentials/role synchronized.`,
+        details: `Updated employee record for ${name} (@${finalUsername} / ${finalEmployeeCode}). Hired: ${finalJoinDate}. Credentials/role synchronized.`,
       });
     } else {
       const initialPass = password.trim() || 'Password123!';
       addUser({
         name,
+        username: finalUsername,
         email,
         password: initialPass,
         mustChangePassword: true,
@@ -193,7 +205,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
         targetEmployeeName: name,
         fromValue: 'Unregistered',
         toValue: `${role.toUpperCase()} (${designation})`,
-        details: `Registered new employee ${name} (${finalEmployeeCode}) as ${designation}. Date Hired: ${finalJoinDate}. Assigned initial credentials.`,
+        details: `Registered new employee ${name} (@${finalUsername} / ${finalEmployeeCode}) as ${designation}. Date Hired: ${finalJoinDate}. Assigned initial credentials.`,
       });
     }
 
@@ -226,9 +238,15 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
               <label className="block text-slate-700 font-semibold mb-1">Full Name</label>
               <input
                 type="text"
-                placeholder="e.g. Alex Rivera"
+                placeholder="e.g. Maria Ignacio or Red Macha"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setName(val);
+                  if (!editingUser) {
+                    setUsername(generateUniqueUsername(val, users));
+                  }
+                }}
                 className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-medium"
                 required
               />
@@ -243,6 +261,56 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
                 className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-medium"
                 required
               />
+            </div>
+          </div>
+
+          {/* System Username & Employee Code */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-slate-700 font-semibold flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-blue-600" /> Username (Login ID)
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setUsername(generateUniqueUsername(name, users, editingUser?.id))}
+                  className="text-[11px] text-blue-600 hover:text-blue-700 font-bold flex items-center gap-1"
+                  title="Auto-format username: 1st letter of first name + 4 letters of surname (e.g. rmach). Duplicate resolved with 5th letter (mignac)."
+                >
+                  <RefreshCw className="w-3 h-3" /> Auto
+                </button>
+              </div>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono font-bold text-xs">@</span>
+                <input
+                  type="text"
+                  placeholder="e.g. rmach or mignac"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                  className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 pl-7 focus:ring-2 focus:ring-blue-500 font-mono font-bold text-xs"
+                  required
+                />
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1">
+                Rule: 1st initial + 4 letters of surname (e.g. <strong>rmach</strong>). Duplicate uses 5th letter (<strong>mignac</strong>).
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1 flex items-center gap-1.5">
+                <BadgeCheck className="w-3.5 h-3.5 text-blue-600" /> Employee Code
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. LLC-0001"
+                value={employeeCode}
+                onChange={(e) => setEmployeeCode(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-mono font-medium"
+                required
+              />
+              <p className="text-[10px] text-slate-500 mt-1">
+                Company ID number (can also be used to sign in).
+              </p>
             </div>
           </div>
 
@@ -398,7 +466,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-slate-700 font-semibold mb-1">Monthly Rate (₱)</label>
               <input
@@ -407,17 +475,6 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
                 step="100"
                 value={monthlyRate}
                 onChange={(e) => setMonthlyRate(Number(e.target.value))}
-                className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-mono font-medium"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-slate-700 font-semibold mb-1">Employee Code</label>
-              <input
-                type="text"
-                placeholder="e.g. LLC-0001"
-                value={employeeCode}
-                onChange={(e) => setEmployeeCode(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 font-mono font-medium"
                 required
               />

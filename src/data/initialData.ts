@@ -28,6 +28,7 @@ export const INITIAL_USERS: User[] = [
     status: 'active',
     joinDate: '2024-01-01',
     employeeCode: 'SuperAdmin',
+    username: 'admin',
     department: 'Executive Management',
     password: 'AdminpassW0rd123!',
     mustChangePassword: false,

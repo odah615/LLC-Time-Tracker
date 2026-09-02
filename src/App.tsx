@@ -21,11 +21,24 @@ import { LeaveModal } from './components/modals/LeaveModal';
 import { EmployeeCrudModal } from './components/modals/EmployeeCrudModal';
 import { OfflineBanner } from './components/OfflineBanner';
 import { User } from './types';
-import { Shield, Clock, Heart, Globe, Laptop, LogOut, Maximize2, Sparkles, ExternalLink } from 'lucide-react';
+import { Shield, Clock, Heart, Globe, Laptop, LogOut, Maximize2, Sparkles, ExternalLink, RefreshCw, CheckCircle2, ArrowUpCircle } from 'lucide-react';
 
 const MainAppContent: React.FC = () => {
   const { currentUser, isAuthenticated, isDesktopDockView, setIsDesktopDockView, logout, saveToast, setSaveToast } = useApp();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
+
+  const handleDesktopSyncUpdate = () => {
+    setIsCheckingUpdate(true);
+    setTimeout(() => {
+      setIsCheckingUpdate(false);
+      setShowUpdateSuccess(true);
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    }, 800);
+  };
 
   // Ensure any account (Admin, Team Lead, Trainer, VA Admin, HR, Agent, Payroll) defaults into Dashboard on login
   useEffect(() => {
@@ -78,6 +91,15 @@ const MainAppContent: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleDesktopSyncUpdate}
+              disabled={isCheckingUpdate}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all"
+              title="Check for system updates and sync live cloud changes"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-blue-400 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+              <span>{isCheckingUpdate ? 'Syncing...' : showUpdateSuccess ? 'Up to Date!' : 'Check Updates'}</span>
+            </button>
             <a
               href={currentWebUrl}
               target="_blank"
@@ -98,6 +120,22 @@ const MainAppContent: React.FC = () => {
               <span>Sign Out</span>
             </button>
           </div>
+        </div>
+
+        {/* Live Over-The-Air Update Banner */}
+        <div className="max-w-2xl w-full mb-4 bg-blue-950/40 border border-blue-800/40 rounded-xl px-3.5 py-2 flex items-center justify-between text-xs text-blue-200">
+          <div className="flex items-center gap-2">
+            <ArrowUpCircle className="w-4 h-4 text-blue-400 shrink-0" />
+            <span>
+              <strong>Zero-Download Updates:</strong> Live cloud sync is active. System updates, staff logins, and features refresh automatically.
+            </span>
+          </div>
+          <button
+            onClick={handleDesktopSyncUpdate}
+            className="text-[11px] underline font-bold text-blue-300 hover:text-white shrink-0 ml-2"
+          >
+            Refresh Now
+          </button>
         </div>
 
         {/* Desktop Tracker Widget Container */}

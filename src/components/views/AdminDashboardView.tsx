@@ -916,7 +916,14 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                           size="md"
                         />
                         <div>
-                          <div className="font-bold text-slate-900">{usr.name}</div>
+                          <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                            <span>{usr.name}</span>
+                            {usr.username && (
+                              <span className="text-[10px] font-mono font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200" title="System Login Username">
+                                @{usr.username}
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] text-slate-500">{usr.email}</div>
                         </div>
                       </div>

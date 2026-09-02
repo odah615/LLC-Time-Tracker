@@ -80,11 +80,15 @@ export const LoginView: React.FC = () => {
     }
 
     const query = cleanCode.toLowerCase();
+    const cleanUsernameQuery = query.replace(/^@/, '').trim();
     const alphaNumericQuery = query.replace(/[^a-z0-9]/g, '');
     const digitsOnlyQuery = query.replace(/\D/g, '');
 
-    // Search user by employee code flexibly (exact, alphanumeric, or numeric suffix match)
+    // Search user by username, employee code, or email flexibly
     let foundUser = users.find((u) => {
+      // 0. Primary username match (e.g. "rmach", "migna", "mignac", "admin")
+      if (u.username && u.username.toLowerCase() === cleanUsernameQuery) return true;
+
       const uCode = (u.employeeCode || '').toLowerCase();
       const uAlphaNumeric = uCode.replace(/[^a-z0-9]/g, '');
       const uDigits = uCode.replace(/\D/g, '');
@@ -116,6 +120,8 @@ export const LoginView: React.FC = () => {
     // Failsafe root admin fallback (SuperAdmin)
     if (!foundUser) {
       if (
+        cleanUsernameQuery === 'admin' ||
+        cleanUsernameQuery === 'superadmin' ||
         alphaNumericQuery === 'superadmin' ||
         query === 'superadmin' ||
         query === 'admin' ||
@@ -128,6 +134,7 @@ export const LoginView: React.FC = () => {
           email: 'admin@llc.com',
           role: 'admin',
           designation: 'Admin',
+          username: 'admin',
           avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250',
           monthlyRate: 60000,
           hourlyRate: 375.0,
@@ -147,7 +154,7 @@ export const LoginView: React.FC = () => {
     }
 
     if (!foundUser) {
-      setErrorMsg(`No employee account found matching "${cleanCode}". Please verify your Employee Code or use your work email.`);
+      setErrorMsg(`No employee account found matching "${cleanCode}". Please enter your assigned Username (e.g. rmach) or Employee Code.`);
       return;
     }
 
@@ -452,13 +459,13 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
           )}
 
           <form onSubmit={handleLoginSubmit} className="space-y-5">
-            {/* Employee Code Field */}
+            {/* Username or Employee Code Field */}
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-xs font-bold text-slate-300">
-                  Employee Code
+                  Username or Employee Code
                 </label>
-                <span className="text-[10px] text-slate-500 font-mono">e.g. 0001 or LLC0001</span>
+                <span className="text-[10px] text-slate-400 font-mono">e.g. rmach or 0001</span>
               </div>
               <div className="relative">
                 <input
@@ -468,7 +475,7 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
                     setEmployeeCodeInput(e.target.value);
                     setErrorMsg('');
                   }}
-                  placeholder="Enter your Employee Code (e.g. 0001 or LLC0001)..."
+                  placeholder="Enter your Username (e.g. rmach) or Employee Code..."
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl py-3 pl-4 pr-10 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-mono"
                   required
                 />
@@ -520,83 +527,6 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
               <ArrowRight className="w-4 h-4" />
             </button>
           </form>
-
-          {/* Quick Demo Logins Helper */}
-          <div className="mt-6 pt-5 border-t border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                <span>Demo 1-Click Accounts & Roles</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => downloadWordDocInstructions()}
-                className="text-[11px] text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1 transition-colors"
-                title="Download instructions as Word document"
-              >
-                <FileText className="w-3 h-3 text-blue-400" />
-                <span>Download User Guide (.doc)</span>
-              </button>
-            </div>
-            
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setEmployeeCodeInput('0001');
-                  setPassword('admin123');
-                  setErrorMsg('');
-                }}
-                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-all group"
-              >
-                <div className="text-[10px] text-blue-400 font-bold uppercase">Super Admin</div>
-                <div className="text-xs font-semibold text-white group-hover:text-blue-300 truncate">Sarah Connor</div>
-                <div className="text-[10px] text-slate-500 font-mono">Code: 0001</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setEmployeeCodeInput('0004');
-                  setPassword('lead123');
-                  setErrorMsg('');
-                }}
-                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-all group"
-              >
-                <div className="text-[10px] text-amber-400 font-bold uppercase">Team Lead</div>
-                <div className="text-xs font-semibold text-white group-hover:text-amber-300 truncate">Marcus Thorne</div>
-                <div className="text-[10px] text-slate-500 font-mono">Code: 0004</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setEmployeeCodeInput('0003');
-                  setPassword('trainer123');
-                  setErrorMsg('');
-                }}
-                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-all group"
-              >
-                <div className="text-[10px] text-emerald-400 font-bold uppercase">Trainer</div>
-                <div className="text-xs font-semibold text-white group-hover:text-emerald-300 truncate">Elena Rostova</div>
-                <div className="text-[10px] text-slate-500 font-mono">Code: 0003</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setEmployeeCodeInput('0007');
-                  setPassword('agent123');
-                  setErrorMsg('');
-                }}
-                className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition-all group"
-              >
-                <div className="text-[10px] text-purple-400 font-bold uppercase">VA Agent</div>
-                <div className="text-xs font-semibold text-white group-hover:text-purple-300 truncate">Alex Mercer</div>
-                <div className="text-[10px] text-slate-500 font-mono">Code: 0007</div>
-              </button>
-            </div>
-          </div>
 
           {/* Contextual Link at the Bottom */}
           <div className="mt-5 pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">

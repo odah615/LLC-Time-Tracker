@@ -184,15 +184,25 @@ export function downloadWordDocInstructions(): void {
     <li>The script will automatically compile your native standalone application (<code>LLC Time Tracker.exe</code> or <code>LLC Time Tracker.app</code>).</li>
   </ol>
 
-  <h2>2. Demo Login Accounts & Credentials</h2>
-  <p>You can log in immediately by entering any of the credentials below or by clicking the <strong>Demo 1-Click Login buttons</strong> on the sign-in screen:</p>
+  <h2>2. System Login & Username Naming Convention</h2>
+  <p>To provide clean, professional, and memorable logins for every team member, LLC Time Tracker uses an automated unique username convention alongside employee code authentication:</p>
+
+  <div class="highlight-box">
+    <strong>Standard Username Rule:</strong>
+    <ul>
+      <li><strong>Formula:</strong> First initial of first name + first 4 letters of last name (e.g. <strong>Red Macha</strong> &rarr; <code>rmach</code>).</li>
+      <li><strong>Automatic Collision Handling:</strong> If another agent already has the same username (e.g. <code>migna</code> for Maria Ignacio), the system automatically uses the 5th letter of the last name (&rarr; <code>mignac</code>), then the 6th letter (&rarr; <code>mignaci</code>), ensuring complete uniqueness without conflicts.</li>
+      <li><strong>Login Flexibility:</strong> Employees can sign in using either their <strong>Username</strong> (e.g. <code>rmach</code>), their <strong>Employee Code</strong> (e.g. <code>0001</code> or <code>LLC-0001</code>), or their company email.</li>
+    </ul>
+  </div>
 
   <table>
     <thead>
       <tr>
         <th>Role</th>
         <th>Full Name</th>
-        <th>Demo Email / Username</th>
+        <th>Username</th>
+        <th>Employee Code</th>
         <th>Default Password</th>
         <th>Key Permissions</th>
       </tr>
@@ -200,64 +210,88 @@ export function downloadWordDocInstructions(): void {
     <tbody>
       <tr>
         <td><span class="badge">Super Admin</span></td>
-        <td><strong>Sarah Connor</strong></td>
-        <td><code>admin@timetracker.com</code></td>
-        <td><code>admin123</code></td>
-        <td>Full Access, Role Editor, Google Sheets Sync, Financials, All Logs</td>
+        <td><strong>Admin</strong></td>
+        <td><code>admin</code></td>
+        <td><code>SuperAdmin</code></td>
+        <td><code>AdminpassW0rd123!</code></td>
+        <td>Full Access, Directory, Google Sheets Sync, Financials, All Logs</td>
       </tr>
       <tr>
         <td><span class="badge">VA Admin</span></td>
         <td><strong>Daniel Vance</strong></td>
-        <td><code>va.admin@timetracker.com</code></td>
+        <td><code>dvanc</code></td>
+        <td><code>LLC-0002</code></td>
         <td><code>admin123</code></td>
         <td>Department Management, Team Allocations, Live Board, Directory</td>
       </tr>
       <tr>
         <td><span class="badge">Trainer / Supervisor</span></td>
         <td><strong>Elena Rostova</strong></td>
-        <td><code>trainer@timetracker.com</code></td>
+        <td><code>erost</code></td>
+        <td><code>LLC-0003</code></td>
         <td><code>trainer123</code></td>
         <td>Live Agent Dashboard, Real-time Task Oversight, Screenshot Review</td>
       </tr>
       <tr>
         <td><span class="badge">Team Leader</span></td>
         <td><strong>Marcus Thorne</strong></td>
-        <td><code>teamlead@timetracker.com</code></td>
+        <td><code>mthor</code></td>
+        <td><code>LLC-0004</code></td>
         <td><code>lead123</code></td>
         <td>Team Member Timesheet Approval, Active Shift Monitoring</td>
       </tr>
       <tr>
         <td><span class="badge">HR Manager</span></td>
         <td><strong>Rachel Green</strong></td>
-        <td><code>hr@timetracker.com</code></td>
+        <td><code>rgree</code></td>
+        <td><code>LLC-0005</code></td>
         <td><code>hr123</code></td>
         <td>Employee Directory, Leave Approvals, Onboarding & Rate Setup</td>
       </tr>
       <tr>
         <td><span class="badge">Payroll Officer</span></td>
         <td><strong>David Miller</strong></td>
-        <td><code>payroll@timetracker.com</code></td>
+        <td><code>dmill</code></td>
+        <td><code>LLC-0006</code></td>
         <td><code>payroll123</code></td>
         <td>Salary Disbursement, Deductions, Pay Slip Generation, Rate Review</td>
       </tr>
       <tr>
-        <td><span class="badge">Virtual Assistant (Agent)</span></td>
+        <td><span class="badge">Virtual Assistant</span></td>
         <td><strong>Alex Mercer</strong></td>
-        <td><code>alex@timetracker.com</code></td>
+        <td><code>amerc</code></td>
+        <td><code>LLC-0007</code></td>
         <td><code>agent123</code></td>
         <td>Desktop Tracker, Task Selection, Break Manager, My Timesheet</td>
       </tr>
       <tr>
-        <td><span class="badge">Virtual Assistant (Agent)</span></td>
+        <td><span class="badge">Virtual Assistant</span></td>
         <td><strong>Maria Santos</strong></td>
-        <td><code>maria@timetracker.com</code></td>
+        <td><code>msant</code></td>
+        <td><code>LLC-0008</code></td>
         <td><code>agent123</code></td>
         <td>Agent Dashboard, Time Logging, Shift History</td>
       </tr>
     </tbody>
   </table>
 
-  <h2>3. Core Features & User Instructions</h2>
+  <h2>3. Standalone Desktop App: macOS Compatibility & Zero-Redownload Updates</h2>
+  
+  <div class="highlight-box">
+    <strong>Apple / macOS Compatibility:</strong><br>
+    The desktop software is 100% compatible with macOS, supporting both <strong>Apple Silicon (M1, M2, M3, M4 chips)</strong> and <strong>Intel Macs</strong>. Mac users can download <code>Build_LLC_Time_Tracker_Mac.sh</code> and double-click <code>Launch_LLC_Time_Tracker.command</code> to launch immediately.
+  </div>
+
+  <div class="highlight-box">
+    <strong>Over-The-Air Desktop Updates (No Re-downloading Required!):</strong><br>
+    Because the standalone desktop application utilizes an embedded native Electron window connected to the cloud engine, <strong>users NEVER need to re-download the desktop application when system features or updates are deployed</strong>.
+    <ul>
+      <li>When a new version or user update is pushed, the desktop app automatically detects the release and displays an <strong>"Update Available - Click to Sync"</strong> notification.</li>
+      <li>Clicking the prompt (or pressing <code>Cmd+R</code> / <code>Ctrl+R</code>) reloads the interface with the latest features instantly!</li>
+    </ul>
+  </div>
+
+  <h2>4. Core Features & User Instructions</h2>
 
   <h3>A. Clocking In & Time Tracking (For Agents)</h3>
   <ol>

@@ -20,6 +20,7 @@ import {
 import { doc, setDoc, deleteDoc, onSnapshot, collection, getDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { getManilaDateString, getManilaTimeString } from '../lib/dateUtils';
+import { generateUniqueUsername } from '../lib/userUtils';
 import {
   syncDataToGoogleSheetsWebhook,
   DEFAULT_SPREADSHEET_URL,
@@ -209,6 +210,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         name: 'Admin',
         email: 'admin@llc.com',
         employeeCode: 'SuperAdmin',
+        username: u.username || 'admin',
         role: 'admin' as const,
         designation: 'Admin',
         department: 'Executive Management',
@@ -221,18 +223,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return u;
   };
 
+  // Helper to ensure all users have a guaranteed unique username
+  const ensureUsernames = (userList: User[]): User[] => {
+    const result: User[] = [];
+    for (const rawUser of userList) {
+      const norm = normalizeSuperAdmin(rawUser);
+      if (!norm.username || norm.username.trim() === '') {
+        norm.username = generateUniqueUsername(norm.name, result, norm.id);
+      }
+      result.push(norm);
+    }
+    return result;
+  };
+
   // Load from localStorage or defaults
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem('trackpulse_users');
-    if (!saved) return INITIAL_USERS;
+    if (!saved) return ensureUsernames(INITIAL_USERS);
     try {
       const parsed: User[] = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map(normalizeSuperAdmin);
+        return ensureUsernames(parsed);
       }
-      return INITIAL_USERS;
+      return ensureUsernames(INITIAL_USERS);
     } catch {
-      return INITIAL_USERS;
+      return ensureUsernames(INITIAL_USERS);
     }
   });
 
@@ -619,7 +634,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
           const remoteUsers: User[] = snapshot.data().data;
           if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-            const sanitizedUsers = remoteUsers.map(normalizeSuperAdmin);
+            const sanitizedUsers = ensureUsernames(remoteUsers);
             setUsers(sanitizedUsers);
             localStorage.setItem('trackpulse_users', JSON.stringify(sanitizedUsers));
           }
@@ -1913,8 +1928,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // CRUD User
   const addUser = (userData: Omit<User, 'id'>) => {
+    const assignedUsername = userData.username?.trim().toLowerCase() || generateUniqueUsername(userData.name, users);
     const newUser: User = {
       ...userData,
+      username: assignedUsername,
       id: `usr-${Date.now()}`,
     };
     const updatedUsers = [...users, newUser];

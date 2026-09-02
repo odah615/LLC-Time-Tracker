@@ -1,4 +1,5 @@
 import { AuditLog, TimeLog, User, PayrollRecord, DailyAttendanceLog, IdleLog, LeaveRequest } from '../types';
+import { generateUniqueUsername } from './userUtils';
 
 export const DEFAULT_SPREADSHEET_ID = '1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA';
 export const DEFAULT_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA/edit?gid=1299988798#gid=1299988798';
@@ -138,6 +139,7 @@ export const SPREADSHEET_SCHEMA = [
     description: 'Master employee roster with all active/registered staff, updated automatically on additions, edits, and deletions.',
     headers: [
       'Employee Code',
+      'Username',
       'Full Name',
       'Work Email',
       'System Role',
@@ -679,8 +681,8 @@ function doPost(e) {
       var empSheet = ss.getSheetByName('Employee_Directory');
       if (empSheet && users.length > 0) {
         empSheet.clear();
-        empSheet.appendRow(['Employee Code', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Date Hired', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)']);
-        empSheet.getRange(1, 1, 1, 13).setFontWeight('bold').setBackground('#0369a1').setFontColor('#ffffff');
+        empSheet.appendRow(['Employee Code', 'Username', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Date Hired', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)']);
+        empSheet.getRange(1, 1, 1, 14).setFontWeight('bold').setBackground('#0369a1').setFontColor('#ffffff');
         empSheet.setFrozenRows(1);
         users.forEach(function(u) {
           var maskedPass = maskPassword(u.password || 'Password123!');
@@ -694,6 +696,7 @@ function doPost(e) {
           var hRate = (u.hourlyRate !== undefined && u.hourlyRate !== null) ? Number(u.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
           empSheet.appendRow([
             u.employeeCode || 'N/A',
+            u.username || 'agent',
             u.name || 'Unknown',
             u.email || '',
             u.role || 'agent',
@@ -985,11 +988,14 @@ export const fetchEmployeesFromGoogleSheets = async (
               : code.toLowerCase() === 'superadmin' ? 'admin' : 'employee') as any;
 
             const isSuperAdmin = code.toLowerCase() === 'superadmin' || role === 'admin';
+            const empName = rawEmp.name || existing?.name || (isSuperAdmin ? 'Red' : `Employee ${code}`);
+            const username = (rawEmp.username || existing?.username || (isSuperAdmin ? 'admin' : generateUniqueUsername(empName, existingUsers, existing?.id))).toLowerCase();
 
             const userObj: User = {
               id: existing ? existing.id : `usr-${code.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
               employeeCode: code,
-              name: rawEmp.name || existing?.name || (isSuperAdmin ? 'Red' : `Employee ${code}`),
+              username,
+              name: empName,
               email: rawEmp.email || existing?.email || `${code.toLowerCase()}@llctimetracker.com`,
               role,
               designation: rawEmp.designation || existing?.designation || (role === 'admin' ? 'Admin' : 'Agent'),
@@ -1046,20 +1052,52 @@ export const fetchEmployeesFromGoogleSheets = async (
     }
 
     // Skip header row (row 0)
+    const headerRow = rows[0] || [];
+    const hasUsernameCol = headerRow.some((h: string) => h.toLowerCase().trim() === 'username') || (rows[1] && rows[1].length >= 14);
+
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const code = (row[0] || '').trim();
-      const name = (row[1] || '').trim();
-      const email = (row[2] || '').trim();
-      const roleStr = (row[3] || 'employee').toLowerCase().trim();
-      const designation = (row[4] || 'Agent').trim();
-      const joinDateStr = (row[5] || '').trim();
-      const monthlyRateStr = (row[6] || '').replace(/[^0-9.]/g, '');
-      const hourlyRateStr = (row[7] || '').replace(/[^0-9.]/g, '');
-      const supervisor = (row[8] || '').trim();
-      const scrMonitored = (row[9] || '').toUpperCase() === 'YES';
-      const actMonitored = (row[10] || '').toUpperCase() === 'YES';
-      const statusStr = (row[11] || 'active').toLowerCase().trim();
+      
+      let parsedUsername = '';
+      let name = '';
+      let email = '';
+      let roleStr = '';
+      let designation = '';
+      let joinDateStr = '';
+      let monthlyRateStr = '';
+      let hourlyRateStr = '';
+      let supervisor = '';
+      let scrMonitored = false;
+      let actMonitored = false;
+      let statusStr = 'active';
+
+      if (hasUsernameCol) {
+        parsedUsername = (row[1] || '').trim().toLowerCase();
+        name = (row[2] || '').trim();
+        email = (row[3] || '').trim();
+        roleStr = (row[4] || 'employee').toLowerCase().trim();
+        designation = (row[5] || 'Agent').trim();
+        joinDateStr = (row[6] || '').trim();
+        monthlyRateStr = (row[7] || '').replace(/[^0-9.]/g, '');
+        hourlyRateStr = (row[8] || '').replace(/[^0-9.]/g, '');
+        supervisor = (row[9] || '').trim();
+        scrMonitored = (row[10] || '').toUpperCase() === 'YES';
+        actMonitored = (row[11] || '').toUpperCase() === 'YES';
+        statusStr = (row[12] || 'active').toLowerCase().trim();
+      } else {
+        name = (row[1] || '').trim();
+        email = (row[2] || '').trim();
+        roleStr = (row[3] || 'employee').toLowerCase().trim();
+        designation = (row[4] || 'Agent').trim();
+        joinDateStr = (row[5] || '').trim();
+        monthlyRateStr = (row[6] || '').replace(/[^0-9.]/g, '');
+        hourlyRateStr = (row[7] || '').replace(/[^0-9.]/g, '');
+        supervisor = (row[8] || '').trim();
+        scrMonitored = (row[9] || '').toUpperCase() === 'YES';
+        actMonitored = (row[10] || '').toUpperCase() === 'YES';
+        statusStr = (row[11] || 'active').toLowerCase().trim();
+      }
 
       if (!code && !name) continue;
 
@@ -1070,11 +1108,14 @@ export const fetchEmployeesFromGoogleSheets = async (
       const isSuperAdmin = code.toLowerCase() === 'superadmin' || validRole === 'admin';
 
       const existing = userMap.get(code.toUpperCase()) || userMap.get(email.toLowerCase());
+      const empName = name || existing?.name || (isSuperAdmin ? 'Admin' : `Employee ${code}`);
+      const finalUsername = (parsedUsername || existing?.username || (isSuperAdmin ? 'admin' : generateUniqueUsername(empName, existingUsers, existing?.id))).toLowerCase();
 
       const userObj: User = {
         id: existing ? existing.id : `usr-${code.toLowerCase().replace(/[^a-z0-9]/g, '-') || `auto-${i}`}`,
         employeeCode: code || `LLC-${String(i).padStart(4, '0')}`,
-        name: name || existing?.name || (isSuperAdmin ? 'Admin' : `Employee ${code}`),
+        username: finalUsername,
+        name: empName,
         email: email || existing?.email || `${code.toLowerCase()}@llctimetracker.com`,
         role: validRole,
         designation: (designation as any) || existing?.designation || (validRole === 'admin' ? 'Admin' : 'Agent'),

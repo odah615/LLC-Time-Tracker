@@ -39,6 +39,7 @@ export interface User {
   teamId?: string;
   joinDate: string;
   employeeCode: string;
+  username?: string; // Formatted unique username: e.g. first initial + first 4 letters of last name (or 5+ if duplicate)
   department: string;
   status?: 'active' | 'inactive';
   teamLeaderId?: string; // ID of assigned Team Leader or Trainer
