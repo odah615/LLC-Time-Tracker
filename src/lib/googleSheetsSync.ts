@@ -654,25 +654,27 @@ function doPost(e) {
       // 7. POPULATE DAILY ATTENDANCE LOGS
       // ==========================================
       var attSheet = ss.getSheetByName('Daily_Attendance_Logs');
-      if (attSheet && dailyAttendanceLogs.length > 0) {
+      if (attSheet) {
         attSheet.clear();
         attSheet.appendRow(['Attendance ID', 'Date', 'Employee Code', 'Employee Name', 'First Login Time', 'Last Logout Time', 'Total Logged Hours', 'Idle Deductions (Mins)', 'Required Shift Extension (Mins)', 'Attendance Status']);
         attSheet.getRange(1, 1, 1, 10).setFontWeight('bold').setBackground('#0e7490').setFontColor('#ffffff');
         attSheet.setFrozenRows(1);
-        dailyAttendanceLogs.forEach(function(a) {
-          attSheet.appendRow([
-            a.id,
-            a.date,
-            a.employeeCode || 'N/A',
-            a.userName,
-            a.firstLoginTime,
-            a.lastLogoutTime || 'Active Shift',
-            a.totalLoggedHours || 0,
-            (a.totalIdleDeductionsMinutes || 0) + ' mins',
-            '+' + (a.requiredExtensionMinutes || a.totalIdleDeductionsMinutes || 0) + ' mins',
-            a.status || 'present'
-          ]);
-        });
+        if (dailyAttendanceLogs.length > 0) {
+          dailyAttendanceLogs.forEach(function(a) {
+            attSheet.appendRow([
+              a.id,
+              a.date,
+              a.employeeCode || 'N/A',
+              a.userName,
+              a.firstLoginTime || '--:--',
+              a.lastLogoutTime || 'Active Shift',
+              a.totalLoggedHours || 0,
+              (a.totalIdleDeductionsMinutes || 0) + ' mins',
+              (a.requiredExtensionMinutes || a.totalIdleDeductionsMinutes || 0) + ' mins',
+              a.status || 'present'
+            ]);
+          });
+        }
       }
 
       // ==========================================

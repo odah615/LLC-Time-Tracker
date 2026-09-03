@@ -26,6 +26,7 @@ export const TeamLeadDashboardView: React.FC = () => {
   const {
     currentUser,
     users,
+    userPresenceList,
     timeLogs,
     idleLogs,
     leaveRequests,
@@ -272,6 +273,17 @@ export const TeamLeadDashboardView: React.FC = () => {
               const lastLog = agentLogs[0];
               const totalSec = agentLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
 
+              const presence = userPresenceList.find((p) => p.userId === agent.id);
+              const now = Date.now();
+              const lastHeartbeat = presence ? new Date(presence.lastHeartbeat).getTime() : 0;
+              const isRecent = now - lastHeartbeat < 60000;
+              const isOnline = !!presence && (presence.isOnline || isRecent);
+              const isTracking = isOnline && !!presence?.isTracking;
+              const isIdle = isOnline && (presence?.status === 'idle' || !!presence?.isPaused);
+              const currentTask = isTracking
+                ? (presence?.currentTask || lastLog?.task || 'Email Reachout')
+                : (isOnline ? (presence?.currentTask || 'Available / Standby') : (lastLog?.task || 'Shift Concluded'));
+
               return (
                 <div
                   key={agent.id}
@@ -290,15 +302,36 @@ export const TeamLeadDashboardView: React.FC = () => {
                       </div>
                     </div>
 
-                    <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] px-2 py-0.5 rounded-full font-semibold">
-                      Online / Active
-                    </span>
+                    {isTracking && (
+                      <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Tracking
+                      </span>
+                    )}
+                    {isOnline && !isTracking && !isIdle && (
+                      <span className="bg-blue-100 text-blue-800 border border-blue-200 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                        Online
+                      </span>
+                    )}
+                    {isIdle && (
+                      <span className="bg-amber-100 text-amber-800 border border-amber-200 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        Idle
+                      </span>
+                    )}
+                    {!isOnline && (
+                      <span className="bg-slate-100 text-slate-500 border border-slate-200 text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                        Offline
+                      </span>
+                    )}
                   </div>
 
                   <div className="bg-white p-2.5 rounded-lg text-xs space-y-1.5 border border-slate-200">
                     <div className="flex justify-between text-slate-700">
                       <span className="text-slate-500">Current / Last Task:</span>
-                      <strong className="text-emerald-700">{lastLog?.task || 'Email Reachout'}</strong>
+                      <strong className="text-emerald-700 truncate max-w-[140px]" title={currentTask}>{currentTask}</strong>
                     </div>
                     <div className="flex justify-between text-slate-700">
                       <span className="text-slate-500">GEO Timezone:</span>

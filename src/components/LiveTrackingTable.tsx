@@ -114,11 +114,14 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
 
       const latestLog = userTodayLogs[0] || timeLogs.find((l) => l.userId === user.id);
 
-      const currentTask = presence?.currentTask || (calculatedStatus === 'online' ? latestLog?.task : undefined) || 'Shift Idle / No Active Task';
-      const currentApp = presence?.currentApp || (calculatedStatus === 'online' ? latestLog?.appsUsed?.[0]?.appName : undefined) || 'None';
-      const mouseActivity = presence?.mouseActivity ?? (calculatedStatus === 'online' ? latestLog?.mouseActivityPercentage ?? 75 : 0);
-      const keyboardActivity = presence?.keyboardActivity ?? (calculatedStatus === 'online' ? latestLog?.keyboardActivityPercentage ?? 80 : 0);
-      const firstLoginTime = attendance?.firstLoginTime || (calculatedStatus !== 'offline' ? '08:00 AM' : '--:--');
+      const isTracking = calculatedStatus === 'online' && !!presence?.isTracking;
+      const currentTask = presence?.isTracking
+        ? (presence.currentTask || latestLog?.task || 'Active Task')
+        : (calculatedStatus === 'online' ? (presence?.currentTask || 'Web Portal Session') : (calculatedStatus === 'idle' ? 'Shift Paused / Idle' : 'Shift Concluded'));
+      const currentApp = presence?.currentApp || (calculatedStatus === 'online' ? 'LLC Web Portal' : 'None');
+      const mouseActivity = isTracking ? (presence?.mouseActivity ?? 100) : 0;
+      const keyboardActivity = isTracking ? (presence?.keyboardActivity ?? 100) : 0;
+      const firstLoginTime = attendance?.firstLoginTime || '--:--';
 
       return {
         user,
@@ -176,7 +179,8 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
 
   // Statistics counters
   const totalCount = filteredData.length;
-  const onlineCount = filteredData.filter((d) => d.calculatedStatus === 'online').length;
+  const trackingCount = filteredData.filter((d) => d.calculatedStatus === 'online' && d.presence?.isTracking).length;
+  const onlineOnlyCount = filteredData.filter((d) => d.calculatedStatus === 'online' && !d.presence?.isTracking).length;
   const idleCount = filteredData.filter((d) => d.calculatedStatus === 'idle').length;
   const offlineCount = filteredData.filter((d) => d.calculatedStatus === 'offline').length;
 
@@ -214,7 +218,11 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
           <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl p-1.5 text-xs font-semibold">
             <span className="px-2.5 py-1 text-emerald-700 font-bold flex items-center gap-1.5 bg-emerald-100/60 rounded-lg">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              {onlineCount} Online
+              {trackingCount} Tracking
+            </span>
+            <span className="px-2.5 py-1 text-blue-700 font-bold flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              {onlineOnlyCount} Online
             </span>
             <span className="px-2.5 py-1 text-amber-700 font-bold flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-amber-500" />
@@ -418,10 +426,16 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
 
                     {/* Live Presence Status Badge */}
                     <td className="py-3 px-3">
-                      {isOnline && (
+                      {isOnline && row.presence?.isTracking && (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 border border-emerald-200 text-emerald-800 shadow-2xs">
                           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                           Tracking
+                        </span>
+                      )}
+                      {isOnline && !row.presence?.isTracking && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 border border-blue-200 text-blue-700 shadow-2xs">
+                          <span className="w-2 h-2 rounded-full bg-blue-500" />
+                          {row.presence?.currentApp?.toLowerCase().includes('desktop') ? 'Desktop Ready' : 'Web Portal'}
                         </span>
                       )}
                       {isIdle && (

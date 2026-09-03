@@ -306,7 +306,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem('trackpulse_attendance');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          // Clean out any legacy dummy auto-seeded logs with 08:30:00 AM and 0 tracked seconds
+          return parsed.filter(
+            (a: DailyAttendanceLog) =>
+              !(a.firstLoginTime === '08:30:00 AM' && (a.totalLoggedSeconds === 0 || !a.lastLogoutTime))
+          );
+        }
       } catch {
         // fallback
       }
@@ -675,8 +682,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
           const remoteAtt: DailyAttendanceLog[] = snapshot.data().data;
           if (Array.isArray(remoteAtt)) {
-            setDailyAttendanceLogs(remoteAtt);
-            localStorage.setItem('trackpulse_attendance', JSON.stringify(remoteAtt));
+            const cleanAtt = remoteAtt.filter(
+              (a: DailyAttendanceLog) =>
+                !(a.firstLoginTime === '08:30:00 AM' && (a.totalLoggedSeconds === 0 || !a.lastLogoutTime))
+            );
+            setDailyAttendanceLogs(cleanAtt);
+            localStorage.setItem('trackpulse_attendance', JSON.stringify(cleanAtt));
+            if (cleanAtt.length !== remoteAtt.length) {
+              safeSetDoc(doc(db, 'system_state', 'attendance'), { data: cleanAtt }).catch(() => {});
+            }
           }
         }
       }, (err) => console.warn('Firestore attendance listener warning:', err));
@@ -972,14 +986,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       elapsedSeconds: 0,
       mouseActivity: 0,
       keyboardActivity: 0,
-      currentTask: 'Available / Ready',
-      currentApp: mode === 'software' ? 'LLC Time Tracker Desktop Software' : 'Web Portal',
+      currentTask: mode === 'software' ? 'Desktop App Standby' : 'Web Portal Session',
+      currentApp: mode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal',
       lastHeartbeat: nowIso,
       loginTime: nowIso,
     };
     safeSetDoc(doc(db, 'user_presence', user.id), loginPresence, { merge: true }).catch(() => {});
+    setUserPresenceList((prev) => {
+      const existing = prev.find((p) => p.userId === user.id);
+      if (existing) {
+        return prev.map((p) => (p.userId === user.id ? { ...p, ...loginPresence } : p));
+      }
+      return [loginPresence, ...prev];
+    });
 
-    triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
+    // Create daily attendance record ONLY if signing into the desktop application software
+    let currentAttendanceList = dailyAttendanceLogs;
+    if (mode === 'software') {
+      const today = getManilaDateString();
+      const existingAttendance = dailyAttendanceLogs.find(
+        (a) => a.userId === user.id && a.date === today
+      );
+      if (!existingAttendance) {
+        const checkInTime = getManilaTimeString(now);
+        const newAtt: DailyAttendanceLog = {
+          id: `att-${user.id}-${today}`,
+          userId: user.id,
+          userName: user.name,
+          employeeCode: user.employeeCode || '',
+          date: today,
+          firstLoginTime: checkInTime,
+          totalLoggedSeconds: 0,
+          totalLoggedHours: 0,
+          status: 'present',
+          syncedToGoogleSheets: true,
+        };
+        currentAttendanceList = [newAtt, ...dailyAttendanceLogs];
+        setDailyAttendanceLogs(currentAttendanceList);
+        localStorage.setItem('trackpulse_attendance', JSON.stringify(currentAttendanceList));
+        safeSetDoc(doc(db, 'system_state', 'attendance'), { data: currentAttendanceList }).catch(() => {});
+      }
+    }
+
+    triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, currentAttendanceList, idleLogs, leaveRequests);
   };
 
   const logout = (reason?: string) => {
@@ -1001,13 +1050,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAuditLogs(updatedAudit);
 
       // Instant offline status broadcast
-      safeSetDoc(doc(db, 'user_presence', currentUser.id), {
+      const offlineDoc = {
         isOnline: false,
-        status: 'offline',
+        status: 'offline' as const,
         isTracking: false,
         isPaused: false,
         lastHeartbeat: new Date().toISOString(),
-      }, { merge: true }).catch(() => {});
+      };
+      safeSetDoc(doc(db, 'user_presence', currentUser.id), offlineDoc, { merge: true }).catch(() => {});
+      setUserPresenceList((prev) =>
+        prev.map((p) =>
+          p.userId === currentUser.id
+            ? { ...p, ...offlineDoc }
+            : p
+        )
+      );
 
       triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
     }
@@ -1200,7 +1257,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const statusValue = isPaused ? 'idle' : 'online';
       const taskDisplay = isTracking 
         ? (isPaused ? `Paused (${currentTask})` : currentTask)
-        : 'Available / Ready';
+        : (loginMode === 'software' ? 'Desktop App Standby' : 'Web Portal Session');
 
       const presenceDoc: UserPresence = {
         userId: currentUser.id,
@@ -1513,6 +1570,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Instant presence broadcast on tracking start
     if (currentUser) {
+      const today = getManilaDateString();
+      const existingAttendance = dailyAttendanceLogs.find(
+        (a) => a.userId === currentUser.id && a.date === today
+      );
+      if (!existingAttendance) {
+        const checkInTime = getManilaTimeString(new Date());
+        const newAtt: DailyAttendanceLog = {
+          id: `att-${currentUser.id}-${today}`,
+          userId: currentUser.id,
+          userName: currentUser.name,
+          employeeCode: currentUser.employeeCode || '',
+          date: today,
+          firstLoginTime: checkInTime,
+          totalLoggedSeconds: 0,
+          totalLoggedHours: 0,
+          status: 'present',
+          syncedToGoogleSheets: true,
+        };
+        const updatedAttendance = [newAtt, ...dailyAttendanceLogs];
+        setDailyAttendanceLogs(updatedAttendance);
+        localStorage.setItem('trackpulse_attendance', JSON.stringify(updatedAttendance));
+        safeSetDoc(doc(db, 'system_state', 'attendance'), { data: updatedAttendance }).catch(() => {});
+      }
+
       safeSetDoc(doc(db, 'user_presence', currentUser.id), {
         isOnline: true,
         status: 'online',
@@ -1525,6 +1606,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         keyboardActivity: 100,
         lastHeartbeat: nowIso,
       }, { merge: true }).catch(() => {});
+
+      setUserPresenceList((prev) =>
+        prev.map((p) =>
+          p.userId === currentUser.id
+            ? {
+                ...p,
+                isOnline: true,
+                status: 'online',
+                isTracking: true,
+                isPaused: false,
+                currentTask: currentTask,
+                currentApp: currentActiveApp || (loginMode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal'),
+                lastHeartbeat: nowIso,
+              }
+            : p
+        )
+      );
     }
   };
 
@@ -1957,23 +2055,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedPayroll = [...payrollRecords, newPayroll];
     setPayrollRecords(updatedPayroll);
 
-    // Seed presence and attendance
-    const today = getManilaDateString();
-    const newAttendance: DailyAttendanceLog = {
-      id: `att-${newUser.id}-${today}`,
-      userId: newUser.id,
-      userName: newUser.name,
-      employeeCode: newUser.employeeCode,
-      date: today,
-      firstLoginTime: '08:30:00 AM',
-      totalLoggedSeconds: 0,
-      totalLoggedHours: 0,
-      status: 'present',
-      syncedToGoogleSheets: true,
-    };
-    const updatedAttendance = [newAttendance, ...dailyAttendanceLogs];
-    setDailyAttendanceLogs(updatedAttendance);
-
+    // Seed offline presence for new user
     const newPresence: UserPresence = {
       userId: newUser.id,
       userName: newUser.name,
@@ -1984,10 +2066,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       teamLeaderId: newUser.teamLeaderId,
       isOnline: false,
       status: 'offline',
+      isTracking: false,
+      isPaused: false,
+      elapsedSeconds: 0,
       mouseActivity: 0,
       keyboardActivity: 0,
-      lastHeartbeat: new Date().toISOString(),
-      loginTime: new Date().toISOString(),
+      currentTask: 'Shift Concluded',
+      currentApp: 'None',
+      lastHeartbeat: new Date(0).toISOString(),
+      loginTime: new Date(0).toISOString(),
     };
     const updatedPresence = [newPresence, ...userPresenceList];
     setUserPresenceList(updatedPresence);
@@ -2024,7 +2111,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timeLogs,
       updatedAudit,
       updatedPayroll,
-      updatedAttendance,
+      dailyAttendanceLogs,
       idleLogs,
       leaveRequests,
       designationTasks,
