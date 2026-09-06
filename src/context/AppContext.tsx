@@ -17,7 +17,7 @@ import {
   PasswordResetRequest,
   RolePermissions,
 } from '../types';
-import { doc, setDoc, deleteDoc, onSnapshot, collection, getDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, onSnapshot, collection, getDoc, disableNetwork, enableNetwork } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { getManilaDateString, getManilaTimeString } from '../lib/dateUtils';
 import { generateUniqueUsername } from '../lib/userUtils';
@@ -67,9 +67,48 @@ export function sanitizeForFirestore<T>(val: T): T {
   return result as T;
 }
 
-const safeSetDoc = (docRef: any, data: any, options?: any) => {
-  const cleanData = sanitizeForFirestore(data);
-  return options ? setDoc(docRef, cleanData, options) : setDoc(docRef, cleanData);
+let isQuotaExhaustedGlobal = false;
+let quotaExhaustedTimeout: any = null;
+
+export const setCloudQuotaExhausted = () => {
+  if (!isQuotaExhaustedGlobal) {
+    isQuotaExhaustedGlobal = true;
+    console.warn('[Firestore] Daily Spark quota limit reached. Gracefully disabling network retries and switching to offline-first local mode.');
+    // Shut down Firestore network retry loops completely so SDK stops throwing 'resource-exhausted'
+    disableNetwork(db).catch(() => {});
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('firestore_quota_status_change'));
+    }
+  }
+  clearTimeout(quotaExhaustedTimeout);
+  // Auto-retry in 30 minutes
+  quotaExhaustedTimeout = setTimeout(() => {
+    isQuotaExhaustedGlobal = false;
+    enableNetwork(db).catch(() => {});
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('firestore_quota_status_change'));
+    }
+  }, 30 * 60 * 1000);
+};
+
+const safeSetDoc = async (docRef: any, data: any, options?: any) => {
+  if (isQuotaExhaustedGlobal) {
+    return Promise.resolve();
+  }
+  try {
+    const cleanData = sanitizeForFirestore(data);
+    return await (options ? setDoc(docRef, cleanData, options) : setDoc(docRef, cleanData));
+  } catch (err: any) {
+    const isQuota = err?.code === 'resource-exhausted' ||
+                    err?.message?.includes('Quota exceeded') ||
+                    err?.message?.includes('resource-exhausted');
+    if (isQuota) {
+      setCloudQuotaExhausted();
+      return Promise.resolve();
+    }
+    console.warn('safeSetDoc write warning:', err);
+    return Promise.resolve();
+  }
 };
 
 interface TaskSwitchPending {
@@ -80,6 +119,8 @@ interface AppContextType {
   currentUser: User;
   users: User[];
   setCurrentUser: (user: User) => void;
+  // Cloud Quota & Connection Health
+  isCloudQuotaExhausted: boolean;
   // Auth state
   isAuthenticated: boolean;
   loginMode: 'webapp' | 'software';
@@ -398,6 +439,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return DEFAULT_ROLE_PERMISSIONS;
   });
 
+  const [isCloudQuotaExhausted, setIsCloudQuotaExhausted] = useState(isQuotaExhaustedGlobal);
+
+  useEffect(() => {
+    const handleQuotaChange = () => {
+      setIsCloudQuotaExhausted(isQuotaExhaustedGlobal);
+    };
+    window.addEventListener('firestore_quota_status_change', handleQuotaChange);
+    return () => window.removeEventListener('firestore_quota_status_change', handleQuotaChange);
+  }, []);
+
   const [saveToast, setSaveToast] = useState<string | null>(null);
 
   const [googleSheetsWebhookUrl, setGoogleSheetsWebhookUrlState] = useState<string>(() => {
@@ -408,6 +459,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cleanUrl = (url || '').trim();
     setGoogleSheetsWebhookUrlState(cleanUrl);
     localStorage.setItem('trackpulse_sheets_webhook', cleanUrl);
+    fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ webhookUrl: cleanUrl }),
+    }).catch(() => {});
     safeSetDoc(doc(db, 'system_state', 'config'), {
       webhookUrl: cleanUrl,
       sheetsWebhookUrl: cleanUrl,
@@ -422,7 +478,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
   });
 
-  // Dedicated automatic sync dispatcher with fallback Firestore config fetch
+  // Dedicated automatic sync dispatcher with fallback API Bridge & Firestore config fetch
   const triggerAutoSync = useCallback(
     async (
       updatedUsers = users,
@@ -438,16 +494,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
       if (!activeUrl || !activeUrl.trim()) {
         try {
-          const cfgSnap = await getDoc(doc(db, 'system_state', 'config'));
-          if (cfgSnap.exists()) {
-            const cData = cfgSnap.data();
-            activeUrl = cData?.webhookUrl || cData?.sheetsWebhookUrl || '';
-            if (activeUrl && activeUrl.trim()) {
-              setGoogleSheetsWebhookUrlState(activeUrl.trim());
-              localStorage.setItem('trackpulse_sheets_webhook', activeUrl.trim());
+          const apiRes = await fetch('/api/config');
+          if (apiRes.ok) {
+            const apiCfg = await apiRes.json();
+            if (apiCfg?.webhookUrl && apiCfg.webhookUrl.trim()) {
+              activeUrl = apiCfg.webhookUrl.trim();
+              setGoogleSheetsWebhookUrlState(activeUrl);
+              localStorage.setItem('trackpulse_sheets_webhook', activeUrl);
             }
           }
         } catch (e) {}
+
+        if (!activeUrl || !activeUrl.trim()) {
+          try {
+            const cfgSnap = await getDoc(doc(db, 'system_state', 'config'));
+            if (cfgSnap.exists()) {
+              const cData = cfgSnap.data();
+              activeUrl = cData?.webhookUrl || cData?.sheetsWebhookUrl || '';
+              if (activeUrl && activeUrl.trim()) {
+                setGoogleSheetsWebhookUrlState(activeUrl.trim());
+                localStorage.setItem('trackpulse_sheets_webhook', activeUrl.trim());
+              }
+            }
+          } catch (e) {}
+        }
       }
       if (activeUrl && activeUrl.trim()) {
         syncDataToGoogleSheetsWebhook(
@@ -611,6 +681,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let unsubPerms = () => {};
     let unsubConfig = () => {};
 
+    const unsubAll = () => {
+      try { unsubTimeLogs(); } catch (e) {}
+      try { unsubUsers(); } catch (e) {}
+      try { unsubAudit(); } catch (e) {}
+      try { unsubScreenshots(); } catch (e) {}
+      try { unsubPayroll(); } catch (e) {}
+      try { unsubAttendance(); } catch (e) {}
+      try { unsubPresence(); } catch (e) {}
+      try { unsubLeave(); } catch (e) {}
+      try { unsubManual(); } catch (e) {}
+      try { unsubPasswordReqs(); } catch (e) {}
+      try { unsubTasks(); } catch (e) {}
+      try { unsubPerms(); } catch (e) {}
+      try { unsubConfig(); } catch (e) {}
+    };
+
+    const handleSnapshotError = (name: string, err: any) => {
+      setIsFirestoreLoaded(true);
+      const isQuota = err?.code === 'resource-exhausted' || 
+                      err?.message?.includes('Quota exceeded') || 
+                      err?.message?.includes('resource-exhausted');
+      if (isQuota) {
+        setCloudQuotaExhausted();
+        unsubAll();
+        return;
+      }
+      console.warn(`Firestore ${name} listener warning:`, err);
+    };
+
     try {
       unsubConfig = onSnapshot(doc(db, 'system_state', 'config'), (snapshot) => {
         if (snapshot.exists()) {
@@ -621,7 +720,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             localStorage.setItem('trackpulse_sheets_webhook', remoteUrl.trim());
           }
         }
-      }, (err) => console.warn('Config listener warning:', err));
+      }, (err) => handleSnapshotError('config', err));
 
       unsubTimeLogs = onSnapshot(doc(db, 'system_state', 'timelogs'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -632,10 +731,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }
         setIsFirestoreLoaded(true);
-      }, (err) => {
-        console.warn('Firestore timelogs listener warning:', err);
-        setIsFirestoreLoaded(true);
-      });
+      }, (err) => handleSnapshotError('timelogs', err));
 
       unsubUsers = onSnapshot(doc(db, 'system_state', 'users'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -646,7 +742,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             localStorage.setItem('trackpulse_users', JSON.stringify(sanitizedUsers));
           }
         }
-      }, (err) => console.warn('Firestore users listener warning:', err));
+      }, (err) => handleSnapshotError('users', err));
 
       unsubAudit = onSnapshot(doc(db, 'system_state', 'auditlogs'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -656,7 +752,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             localStorage.setItem('trackpulse_auditlogs', JSON.stringify(remoteAudit));
           }
         }
-      }, (err) => console.warn('Firestore auditlogs listener warning:', err));
+      }, (err) => handleSnapshotError('auditlogs', err));
 
       unsubScreenshots = onSnapshot(doc(db, 'system_state', 'screenshots'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -666,7 +762,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             localStorage.setItem('trackpulse_screenshots', JSON.stringify(remoteScreenshots));
           }
         }
-      }, (err) => console.warn('Firestore screenshots listener warning:', err));
+      }, (err) => handleSnapshotError('screenshots', err));
 
       unsubPayroll = onSnapshot(doc(db, 'system_state', 'payroll'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -676,7 +772,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             localStorage.setItem('trackpulse_payroll', JSON.stringify(remotePayroll));
           }
         }
-      }, (err) => console.warn('Firestore payroll listener warning:', err));
+      }, (err) => handleSnapshotError('payroll', err));
 
       unsubAttendance = onSnapshot(doc(db, 'system_state', 'attendance'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -688,12 +784,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             );
             setDailyAttendanceLogs(cleanAtt);
             localStorage.setItem('trackpulse_attendance', JSON.stringify(cleanAtt));
-            if (cleanAtt.length !== remoteAtt.length) {
+            if (cleanAtt.length !== remoteAtt.length && !isQuotaExhaustedGlobal) {
               safeSetDoc(doc(db, 'system_state', 'attendance'), { data: cleanAtt }).catch(() => {});
             }
           }
         }
-      }, (err) => console.warn('Firestore attendance listener warning:', err));
+      }, (err) => handleSnapshotError('attendance', err));
 
       // Real-time live presence listener: Listens to collection('user_presence') across all active devices
       unsubPresence = onSnapshot(collection(db, 'user_presence'), (snapshot) => {
@@ -721,17 +817,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
         }
       }, (err) => {
-        console.warn('Firestore user_presence collection listener warning:', err);
-        // Fallback to system_state/presence if collection read had issues
-        onSnapshot(doc(db, 'system_state', 'presence'), (snap) => {
-          if (snap.exists() && snap.data()?.data !== undefined) {
-            const remotePresence: UserPresence[] = snap.data().data;
-            if (Array.isArray(remotePresence)) {
-              setUserPresenceList(remotePresence);
-              localStorage.setItem('trackpulse_presence', JSON.stringify(remotePresence));
-            }
-          }
-        }, () => {});
+        handleSnapshotError('user_presence', err);
       });
 
       unsubLeave = onSnapshot(doc(db, 'system_state', 'leaverequests'), (snapshot) => {
@@ -742,7 +828,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             localStorage.setItem('trackpulse_leaverequests', JSON.stringify(remoteLeave));
           }
         }
-      }, (err) => console.warn('Firestore leave requests listener warning:', err));
+      }, (err) => handleSnapshotError('leaverequests', err));
 
       unsubManual = onSnapshot(doc(db, 'system_state', 'manualrequests'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -752,7 +838,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             localStorage.setItem('trackpulse_manualrequests', JSON.stringify(remoteManual));
           }
         }
-      }, (err) => console.warn('Firestore manual requests listener warning:', err));
+      }, (err) => handleSnapshotError('manualrequests', err));
 
       unsubPasswordReqs = onSnapshot(doc(db, 'system_state', 'passwordrequests'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -762,7 +848,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             localStorage.setItem('trackpulse_pwd_requests', JSON.stringify(remoteReqs));
           }
         }
-      }, (err) => console.warn('Firestore password requests listener warning:', err));
+      }, (err) => handleSnapshotError('passwordrequests', err));
 
       unsubTasks = onSnapshot(doc(db, 'system_state', 'designationtasks'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -772,7 +858,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             localStorage.setItem('trackpulse_designation_tasks', JSON.stringify(remoteTasks));
           }
         }
-      }, (err) => console.warn('Firestore designation tasks listener warning:', err));
+      }, (err) => handleSnapshotError('designationtasks', err));
 
       unsubPerms = onSnapshot(doc(db, 'system_state', 'rolepermissions'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -782,7 +868,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             localStorage.setItem('trackpulse_role_permissions', JSON.stringify(remotePerms));
           }
         }
-      }, (err) => console.warn('Firestore role permissions listener warning:', err));
+      }, (err) => handleSnapshotError('rolepermissions', err));
     } catch (err) {
       console.warn('Firestore setup error:', err);
       setIsFirestoreLoaded(true);
@@ -803,6 +889,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubPerms();
       unsubConfig();
     };
+  }, []);
+
+  // Central Sync Bridge & Google Sheets Auto-Hydration on Mount
+  useEffect(() => {
+    // 1. Fetch shared Webhook URL
+    fetch('/api/config')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((cfg) => {
+        if (cfg?.webhookUrl && typeof cfg.webhookUrl === 'string' && cfg.webhookUrl.trim()) {
+          setGoogleSheetsWebhookUrlState(cfg.webhookUrl.trim());
+          localStorage.setItem('trackpulse_sheets_webhook', cfg.webhookUrl.trim());
+        }
+      })
+      .catch(() => {});
+
+    // 2. Fetch shared time logs across desktop and web app clients
+    fetch('/api/timelogs')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((remoteLogs) => {
+        if (Array.isArray(remoteLogs) && remoteLogs.length > 0) {
+          setTimeLogs((prev) => {
+            const map = new Map(prev.map((l) => [l.id, l]));
+            for (const item of remoteLogs) {
+              if (item && item.id && !map.has(item.id)) {
+                map.set(item.id, item);
+              }
+            }
+            return Array.from(map.values());
+          });
+        }
+      })
+      .catch(() => {});
+
+    // 3. Fetch shared users
+    fetch('/api/users')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((remoteUsers) => {
+        if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
+          setUsers((prev) => {
+            const map = new Map<string, User>(prev.map((u) => [u.id, u]));
+            for (const item of remoteUsers) {
+              if (item && item.id) {
+                const existing = map.get(item.id);
+                map.set(item.id, { ...(existing || item), ...item });
+              }
+            }
+            return Array.from(map.values());
+          });
+        }
+      })
+      .catch(() => {});
+
+    // 4. Background auto-import from Google Sheets CSV (100% quota-free)
+    fetchEmployeesFromGoogleSheets('', DEFAULT_SPREADSHEET_ID, users)
+      .then((res) => {
+        if (res.success && res.employees.length > 0) {
+          setUsers((prev) => {
+            const map = new Map<string, User>(prev.map((u) => [u.id, u]));
+            for (const emp of res.employees) {
+              if (emp && emp.id) {
+                const existing = map.get(emp.id);
+                // Keep existing user password if changed locally
+                map.set(emp.id, existing?.password && existing.password !== 'Password123!' ? { ...emp, password: existing.password } : emp);
+              }
+            }
+            const merged = Array.from(map.values());
+            localStorage.setItem('trackpulse_users', JSON.stringify(merged));
+            return merged;
+          });
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Save changes to localStorage
@@ -1247,70 +1405,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [isTracking, isPaused]);
 
-  // Dedicated Multi-Device Real-Time Presence Heartbeat Broadcaster
-  // Broadcasts active presence to Firestore user_presence collection every 5 seconds
+  // Ref tracking latest state for presence broadcast without triggering re-renders or quota thrashing
+  const presenceLatestRef = useRef({
+    currentUser,
+    isTracking,
+    isPaused,
+    currentTask,
+    currentDesignation,
+    elapsedSeconds,
+    currentMouseActivity,
+    currentKeyboardActivity,
+    currentActiveApp,
+    loginMode,
+  });
+
   useEffect(() => {
-    if (!isAuthenticated || !currentUser) return;
-
-    const broadcastPresence = () => {
-      const nowIso = new Date().toISOString();
-      const statusValue = isPaused ? 'idle' : 'online';
-      const taskDisplay = isTracking 
-        ? (isPaused ? `Paused (${currentTask})` : currentTask)
-        : (loginMode === 'software' ? 'Desktop App Standby' : 'Web Portal Session');
-
-      const presenceDoc: UserPresence = {
-        userId: currentUser.id,
-        userName: currentUser.name,
-        employeeCode: currentUser.employeeCode || '',
-        role: currentUser.role,
-        designation: currentDesignation || currentUser.designation || 'Agent',
-        department: currentUser.department || 'Operations',
-        teamLeaderId: currentUser.teamLeaderId || '',
-        isOnline: true,
-        status: statusValue,
-        isTracking: !!isTracking,
-        isPaused: !!isPaused,
-        elapsedSeconds: elapsedSeconds || 0,
-        mouseActivity: isTracking ? currentMouseActivity : 0,
-        keyboardActivity: isTracking ? currentKeyboardActivity : 0,
-        currentTask: taskDisplay,
-        currentApp: currentActiveApp || (loginMode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal'),
-        lastHeartbeat: nowIso,
-        loginTime: nowIso,
-      };
-
-      safeSetDoc(doc(db, 'user_presence', currentUser.id), presenceDoc, { merge: true }).catch((err) => {
-        console.warn('Presence broadcast warning:', err);
-      });
-    };
-
-    // Immediate initial broadcast
-    broadcastPresence();
-
-    // 5-second recurring heartbeat interval
-    const interval = setInterval(broadcastPresence, 5000);
-
-    // On window unload / close, notify immediately that user went offline
-    const handleUnload = () => {
-      const offlineDoc = {
-        isOnline: false,
-        status: 'offline',
-        isTracking: false,
-        isPaused: false,
-        lastHeartbeat: new Date().toISOString(),
-      };
-      safeSetDoc(doc(db, 'user_presence', currentUser.id), offlineDoc, { merge: true }).catch(() => {});
-    };
-
-    window.addEventListener('beforeunload', handleUnload);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('beforeunload', handleUnload);
+    presenceLatestRef.current = {
+      currentUser,
+      isTracking,
+      isPaused,
+      currentTask,
+      currentDesignation,
+      elapsedSeconds,
+      currentMouseActivity,
+      currentKeyboardActivity,
+      currentActiveApp,
+      loginMode,
     };
   }, [
-    isAuthenticated,
     currentUser,
     isTracking,
     isPaused,
@@ -1322,6 +1444,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     currentActiveApp,
     loginMode,
   ]);
+
+  const broadcastPresence = useCallback((overrideOffline?: boolean) => {
+    if (!isAuthenticated) return;
+    const snap = presenceLatestRef.current;
+    if (!snap.currentUser) return;
+
+    const nowIso = new Date().toISOString();
+    if (overrideOffline) {
+      const offlineDoc = {
+        isOnline: false,
+        status: 'offline',
+        isTracking: false,
+        isPaused: false,
+        lastHeartbeat: nowIso,
+      };
+      safeSetDoc(doc(db, 'user_presence', snap.currentUser.id), offlineDoc, { merge: true }).catch(() => {});
+      return;
+    }
+
+    const statusValue = snap.isPaused ? 'idle' : 'online';
+    const taskDisplay = snap.isTracking 
+      ? (snap.isPaused ? `Paused (${snap.currentTask})` : snap.currentTask)
+      : (snap.loginMode === 'software' ? 'Desktop App Standby' : 'Web Portal Session');
+
+    const presenceDoc: UserPresence = {
+      userId: snap.currentUser.id,
+      userName: snap.currentUser.name,
+      employeeCode: snap.currentUser.employeeCode || '',
+      role: snap.currentUser.role,
+      designation: snap.currentDesignation || snap.currentUser.designation || 'Agent',
+      department: snap.currentUser.department || 'Operations',
+      teamLeaderId: snap.currentUser.teamLeaderId || '',
+      isOnline: true,
+      status: statusValue,
+      isTracking: !!snap.isTracking,
+      isPaused: !!snap.isPaused,
+      elapsedSeconds: snap.elapsedSeconds || 0,
+      mouseActivity: snap.isTracking ? snap.currentMouseActivity : 0,
+      keyboardActivity: snap.isTracking ? snap.currentKeyboardActivity : 0,
+      currentTask: taskDisplay,
+      currentApp: snap.currentActiveApp || (snap.loginMode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal'),
+      lastHeartbeat: nowIso,
+      loginTime: nowIso,
+    };
+
+    safeSetDoc(doc(db, 'user_presence', snap.currentUser.id), presenceDoc, { merge: true }).catch(() => {});
+  }, [isAuthenticated]);
+
+  // Gentle 60-second periodic presence heartbeat (drastically reduces Firestore write quota consumption)
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser) return;
+
+    // Initial broadcast on login / load
+    broadcastPresence();
+
+    // 60-second recurring heartbeat (previously 5s / 1s with thrashing)
+    const interval = setInterval(() => {
+      broadcastPresence();
+    }, 60000);
+
+    // On window unload / close, notify immediately that user went offline
+    const handleUnload = () => {
+      broadcastPresence(true);
+    };
+
+    window.addEventListener('beforeunload', handleUnload);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', handleUnload);
+    };
+  }, [isAuthenticated, currentUser?.id, broadcastPresence]);
+
+  // Immediate presence broadcast when major tracking state changes (start, stop, pause, resume, task change)
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser) return;
+    broadcastPresence();
+  }, [isAuthenticated, currentUser?.id, isTracking, isPaused, currentTask, broadcastPresence]);
 
   // Task Switch Confirmation Modal state
   const [taskSwitchPending, setTaskSwitchPending] = useState<TaskSwitchPending | null>(null);
@@ -1722,6 +1922,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedScreenshots = [newScreenshot, ...screenshots];
     localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
     localStorage.setItem('trackpulse_screenshots', JSON.stringify(updatedScreenshots));
+
+    // Instantly sync to Central Bridge across desktop & web clients
+    fetch('/api/timelogs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newLog),
+    }).catch(() => {});
+
     safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
       console.warn('TimeLogs sync err:', err)
     );
@@ -2124,6 +2332,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedUsers = users.map((u) => (u.id === id ? { ...u, ...data } : u));
     setUsers(updatedUsers);
     localStorage.setItem('trackpulse_users', JSON.stringify(updatedUsers));
+
+    // Instantly sync updated user record to Central Bridge
+    fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, ...data }),
+    }).catch(() => {});
+
     safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
       console.warn('Users save err:', err)
     );
@@ -2378,6 +2594,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedLogs = [newLog, ...timeLogs];
     setTimeLogs(updatedLogs);
     localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+
+    // Instantly sync to Central Bridge across desktop & web clients
+    fetch('/api/timelogs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newLog),
+    }).catch(() => {});
+
     safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
       console.warn('TimeLog add sync error:', err)
     );
@@ -3139,6 +3363,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         users,
         setCurrentUser,
+        isCloudQuotaExhausted,
         isAuthenticated,
         loginMode,
         setLoginMode,

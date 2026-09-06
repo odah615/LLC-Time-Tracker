@@ -353,8 +353,9 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
                   <button
                     onClick={stopTracking}
                     className="flex-1 sm:flex-none px-4 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-red-100"
+                    title="Stop tracking - Automatically saves shift to Database & Google Sheets"
                   >
-                    <Square className="w-4 h-4 fill-white" /> Stop & Save
+                    <Square className="w-4 h-4 fill-white" /> Stop
                   </button>
                 </div>
               )}

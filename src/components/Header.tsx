@@ -29,6 +29,7 @@ import {
   Code,
   Layers,
   Shield,
+  Database,
 } from 'lucide-react';
 import { UserRole } from '../types';
 import { getGoogleAppsScriptTemplate, downloadTableCSV, DEFAULT_SPREADSHEET_ID, DEFAULT_SPREADSHEET_URL } from '../lib/googleSheetsSync';
@@ -64,6 +65,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
     triggerGoogleSheetsSync,
     importEmployeesFromGoogleSheets,
     hasPermission,
+    isCloudQuotaExhausted,
   } = useApp();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
@@ -337,6 +339,17 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
               </div>
             </div>
           </div>
+
+          {/* Cloud Quota Status Notice */}
+          {isCloudQuotaExhausted && (
+            <div 
+              className="p-1.5 px-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 flex items-center gap-1.5 text-xs font-semibold"
+              title="Daily Firestore write/read quota reached. Local-first mode is active: all punches, logs, and screenshots are preserved safely in your browser and will sync back to Firestore automatically once reset."
+            >
+              <Database className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Local Storage Mode</span>
+            </div>
+          )}
 
           {/* Google Sheets Integration Sync Button - Restricted to Super Admin (admin role) only */}
           {currentUser.role === 'admin' && (

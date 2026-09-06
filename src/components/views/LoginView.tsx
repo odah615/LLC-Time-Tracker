@@ -645,9 +645,38 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
                   <li>
                     <strong>Download Installer:</strong> Click the green <em>"Download Installer"</em> button below to save the file to your Downloads or Desktop folder.
                   </li>
-                  <li>
-                    <strong>Run Installer / Builder:</strong> Double-click the downloaded file (<code>{downloadOS === 'windows' ? 'Build_LLC_Time_Tracker_Windows.bat' : downloadOS === 'mac' ? 'Build_LLC_Time_Tracker_Mac.sh' : 'Build_LLC_Time_Tracker_Linux.sh'}</code>).
-                  </li>
+                  {downloadOS === 'mac' ? (
+                    <>
+                      <li className="bg-emerald-50 p-3 rounded-lg border border-emerald-300 text-emerald-950 space-y-1.5">
+                        <div className="font-bold flex items-center gap-1.5 text-xs text-emerald-900">
+                          🍎 Option 1: 1-Click Desktop App (Fastest & Zero Terminal)
+                        </div>
+                        <div className="text-[11px] text-emerald-900 leading-normal">
+                          • In <strong>Google Chrome</strong>: Click the <em>Install LLC Time Tracker</em> icon on the right side of your address bar (or Menu <code>⋮</code> → <em>Save and share</em> → <em>Install page as app</em>).<br/>
+                          • In <strong>Safari</strong> (macOS Sonoma, Sequoia, Ventura): Click <em>File → Add to Dock</em>.<br/>
+                          This immediately adds a native <strong>LLC Time Tracker.app</strong> directly to your Applications & Dock without needing any script or terminal!
+                        </div>
+                      </li>
+                      <li className="bg-amber-50 p-3 rounded-lg border border-amber-300 text-amber-950 space-y-1.5">
+                        <div className="font-bold flex items-center gap-1.5 text-xs text-amber-950">
+                          ⚙️ Option 2: Run Automated Mac Builder Script
+                        </div>
+                        <div className="text-[11px] text-amber-900 leading-relaxed">
+                          If you downloaded <code>Build_LLC_Time_Tracker_Mac.sh</code>, open <strong>Terminal</strong> (Press <kbd>Cmd + Space</kbd>, type <em>Terminal</em>, press Enter) and copy-paste this command:
+                          <div className="mt-1.5 bg-slate-900 text-emerald-300 font-mono text-[11px] p-2 rounded-md select-all">
+                            bash ~/Downloads/Build_LLC_Time_Tracker_Mac.sh
+                          </div>
+                          <span className="text-[10px] text-amber-800 block mt-1">
+                            <em>⚠️ Note: Do not paste the file path alone, or macOS will say "Permission denied". You must include <code>bash </code> at the start.</em>
+                          </span>
+                        </div>
+                      </li>
+                    </>
+                  ) : (
+                    <li>
+                      <strong>Run Installer / Builder:</strong> Double-click the downloaded file (<code>{downloadOS === 'windows' ? 'Build_LLC_Time_Tracker_Windows.bat' : 'Build_LLC_Time_Tracker_Linux.sh'}</code>).
+                    </li>
+                  )}
                   {downloadOS === 'windows' && (
                     <li className="bg-amber-100/70 p-2 rounded-lg border border-amber-300/80 text-amber-950">
                       <strong>Windows Defender / SmartScreen prompt?</strong> If a blue <em>"Windows protected your PC"</em> popup appears, click <u>"More info"</u> and then click <u>"Run anyway"</u>.

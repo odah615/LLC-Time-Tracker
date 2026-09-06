@@ -174,8 +174,9 @@ export const AdminTaskTimerWidget: React.FC = () => {
               <button
                 onClick={handleStopAndSave}
                 className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition-all"
+                title="Stop timer - Automatically saves shift to Database & Google Sheets"
               >
-                <Square className="w-4 h-4 fill-white" /> Stop & Save
+                <Square className="w-4 h-4 fill-white" /> Stop
               </button>
             )}
           </div>
