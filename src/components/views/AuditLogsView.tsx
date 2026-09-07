@@ -8,6 +8,7 @@ import {
   generateAppsScriptCode,
   downloadTableCSV,
 } from '../../lib/googleSheetsSync';
+import { formatLogStartTime, formatLogEndTime } from '../../lib/dateUtils';
 import {
   ShieldAlert,
   FileSpreadsheet,
@@ -59,6 +60,7 @@ export const AuditLogsView: React.FC = () => {
     setGoogleSheetsWebhookUrl,
     triggerGoogleSheetsSync,
     importEmployeesFromGoogleSheets,
+    importTimeLogsFromGoogleSheets,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<LogTabType>('login');
@@ -69,6 +71,7 @@ export const AuditLogsView: React.FC = () => {
   const [syncSuccessMsg, setSyncSuccessMsg] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isPulling, setIsPulling] = useState(false);
+  const [isPullingLogs, setIsPullingLogs] = useState(false);
   const [webhookInput, setWebhookInput] = useState(googleSheetsWebhookUrl || '');
   const [showSetupGuide, setShowSetupGuide] = useState(false);
 
@@ -274,8 +277,8 @@ export const AuditLogsView: React.FC = () => {
             t.designation,
             t.task,
             t.date,
-            t.startTime,
-            t.endTime || 'Running Live',
+            t.geoLocalStartTime || formatLogStartTime(t.startTime, 'Asia/Manila'),
+            t.endTime === 'Running Live' || !t.endTime ? 'Running Live' : (t.geoLocalEndTime || formatLogEndTime(t.endTime, 'Asia/Manila')),
             durStr,
             t.idleSeconds ? `${Math.round(t.idleSeconds / 60)} mins` : '0 mins',
             `${t.mouseActivityAvg}%`,
@@ -395,8 +398,8 @@ export const AuditLogsView: React.FC = () => {
         t.designation,
         t.task,
         t.date,
-        t.startTime,
-        t.endTime || 'Running Live',
+        t.geoLocalStartTime || formatLogStartTime(t.startTime, 'Asia/Manila'),
+        t.endTime === 'Running Live' || !t.endTime ? 'Running Live' : (t.geoLocalEndTime || formatLogEndTime(t.endTime, 'Asia/Manila')),
         durStr,
         t.idleSeconds ? `${Math.round(t.idleSeconds / 60)} mins` : '0 mins',
         `${t.mouseActivityAvg}%`,
@@ -629,6 +632,33 @@ export const AuditLogsView: React.FC = () => {
               >
                 <Download className={`w-3.5 h-3.5 ${isPulling ? 'animate-bounce' : ''}`} />
                 {isPulling ? 'Pulling...' : 'Pull Employees'}
+              </button>
+
+              <button
+                disabled={isSyncing || isPulling || isPullingLogs}
+                onClick={async () => {
+                  if (!webhookInput.trim()) {
+                    setSyncSuccessMsg('⚠️ Please paste your Apps Script Web App URL (ends with /exec)');
+                    setTimeout(() => setSyncSuccessMsg(''), 5000);
+                    return;
+                  }
+                  setGoogleSheetsWebhookUrl(webhookInput.trim());
+                  setIsPullingLogs(true);
+                  setSyncSuccessMsg('Extracting time logs from Google Sheets Time_Logs / Active_Logs tab...');
+                  const res = await importTimeLogsFromGoogleSheets(webhookInput.trim());
+                  setIsPullingLogs(false);
+                  if (res.success) {
+                    setSyncSuccessMsg(`✓ ${res.message}`);
+                  } else {
+                    setSyncSuccessMsg(`⚠️ ${res.message}`);
+                  }
+                  setTimeout(() => setSyncSuccessMsg(''), 6000);
+                }}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-50 shrink-0"
+                title="Extract all time logs and active session records directly from your Google Sheet Time_Logs tab"
+              >
+                <Download className={`w-3.5 h-3.5 ${isPullingLogs ? 'animate-bounce' : ''}`} />
+                {isPullingLogs ? 'Extracting...' : 'Pull Time Logs'}
               </button>
             </div>
           </div>
@@ -1303,7 +1333,10 @@ export const AuditLogsView: React.FC = () => {
                             {t.date}
                           </td>
                           <td className="py-3.5 px-4 font-mono text-slate-700 whitespace-nowrap">
-                            {t.startTime} - {t.endTime || 'Running'}
+                            {t.geoLocalStartTime || formatLogStartTime(t.startTime, 'Asia/Manila')} -{' '}
+                            {t.endTime === 'Running Live' || !t.endTime
+                              ? 'Running Live'
+                              : t.geoLocalEndTime || formatLogEndTime(t.endTime, 'Asia/Manila')}
                           </td>
                           <td className="py-3.5 px-4 font-mono font-bold text-emerald-800 whitespace-nowrap">
                             {durStr}

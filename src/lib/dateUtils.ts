@@ -56,6 +56,55 @@ export function getManilaTimeWithSeconds(date: Date = new Date(), timeZone: stri
 }
 
 /**
+ * Formats the exact start time of a session in Manila timezone (PHT / UTC+8).
+ * Prioritizes parsing log.startTime (ISO string). Falls back to geoLocalStartTime.
+ */
+export function formatLogStartTime(
+  logOrStartTime?: { startTime?: string; geoLocalStartTime?: string; geoTimezone?: string } | string,
+  timeZone: string = DEFAULT_TIMEZONE
+): string {
+  if (!logOrStartTime) return '';
+  if (typeof logOrStartTime === 'string') {
+    const d = new Date(logOrStartTime);
+    if (!isNaN(d.getTime())) {
+      return getManilaTimeString(d, timeZone);
+    }
+    return logOrStartTime;
+  }
+  if (logOrStartTime.startTime) {
+    const d = new Date(logOrStartTime.startTime);
+    if (!isNaN(d.getTime())) {
+      return getManilaTimeString(d, logOrStartTime.geoTimezone || timeZone);
+    }
+  }
+  return logOrStartTime.geoLocalStartTime || '';
+}
+
+/**
+ * Formats the exact end time of a session in Manila timezone (PHT / UTC+8).
+ */
+export function formatLogEndTime(
+  logOrEndTime?: { endTime?: string; geoTimezone?: string } | string,
+  timeZone: string = DEFAULT_TIMEZONE
+): string {
+  if (!logOrEndTime) return '';
+  if (typeof logOrEndTime === 'string') {
+    const d = new Date(logOrEndTime);
+    if (!isNaN(d.getTime())) {
+      return getManilaTimeString(d, timeZone);
+    }
+    return logOrEndTime;
+  }
+  if (logOrEndTime.endTime) {
+    const d = new Date(logOrEndTime.endTime);
+    if (!isNaN(d.getTime())) {
+      return getManilaTimeString(d, logOrEndTime.geoTimezone || timeZone);
+    }
+  }
+  return '';
+}
+
+/**
  * Returns full date display (e.g. "Friday, 21 Aug 2026") in Asia/Manila timezone
  */
 export function getManilaFormattedDate(date: Date = new Date(), timeZone: string = DEFAULT_TIMEZONE): string {

@@ -138,6 +138,22 @@ function centralSyncBridge(): Plugin {
           }
         }
 
+        function formatPhtTime(isoStr?: string) {
+          if (!isoStr) return '';
+          try {
+            const d = new Date(isoStr);
+            if (isNaN(d.getTime())) return '';
+            return new Intl.DateTimeFormat('en-US', {
+              timeZone: 'Asia/Manila',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true,
+            }).format(d);
+          } catch {
+            return '';
+          }
+        }
+
         if (url === '/api/timelogs') {
           if (req.method === 'POST') {
             let body = '';
@@ -149,6 +165,11 @@ function centralSyncBridge(): Plugin {
                 const existingMap = new Map(syncState.timeLogs.map(l => [l.id, l]));
                 for (const item of logsToAdd) {
                   if (item && item.id) {
+                    if (item.startTime) {
+                      const pht = formatPhtTime(item.startTime);
+                      if (pht) item.geoLocalStartTime = pht;
+                    }
+                    if (!item.geoTimezone) item.geoTimezone = 'Asia/Manila';
                     existingMap.set(item.id, item);
                   }
                 }
@@ -163,8 +184,18 @@ function centralSyncBridge(): Plugin {
             });
             return;
           }
+
+          // Ensure all returned logs have accurate geoLocalStartTime computed from startTime
+          const sanitizedLogs = (syncState.timeLogs || []).map(l => {
+            if (l.startTime) {
+              const pht = formatPhtTime(l.startTime);
+              if (pht) return { ...l, geoLocalStartTime: pht, geoTimezone: l.geoTimezone || 'Asia/Manila' };
+            }
+            return l;
+          });
+
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(syncState.timeLogs));
+          res.end(JSON.stringify(sanitizedLogs));
           return;
         }
 

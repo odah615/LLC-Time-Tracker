@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { User, UserPresence, DailyAttendanceLog } from '../types';
 import { UserAvatar } from './UserAvatar';
-import { getManilaDateString, formatDurationHuman } from '../lib/dateUtils';
+import { getManilaDateString, formatDurationHuman, formatLogStartTime } from '../lib/dateUtils';
 import {
   Radio,
   Search,
@@ -145,7 +145,9 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
       const currentApp = presence?.currentApp || (calculatedStatus === 'online' ? 'LLC Web Portal' : 'None');
       const mouseActivity = isTracking ? (presence?.mouseActivity ?? 100) : 0;
       const keyboardActivity = isTracking ? (presence?.keyboardActivity ?? 100) : 0;
-      const firstLoginTime = attendance?.firstLoginTime || (calculatedStatus !== 'offline' ? 'Active' : '--:--');
+      const firstLoginTime =
+        attendance?.firstLoginTime ||
+        (presence?.loginTime ? formatLogStartTime(presence.loginTime, 'Asia/Manila') : (calculatedStatus !== 'offline' ? 'Active' : '--:--'));
 
       return {
         user,

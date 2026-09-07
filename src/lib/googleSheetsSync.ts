@@ -88,8 +88,28 @@ export const SPREADSHEET_SCHEMA = [
     ],
   },
   {
+    tabName: 'Time_Logs',
+    description: 'Master time tracker log for all work sessions from Desktop App & Web Portal, tasks, start/end timestamps in Manila time (GMT+8), net duration, and live status.',
+    headers: [
+      'Session ID',
+      'Employee Code',
+      'Employee Name',
+      'Designation',
+      'Task Category',
+      'Date',
+      'Start Time (Manila GMT+8)',
+      'End Time (Manila GMT+8)',
+      'Net Active Duration (HH:MM:SS)',
+      'Idle Deductions (Mins)',
+      'Mouse Avg %',
+      'Keyboard Avg %',
+      'Status',
+      'Notes',
+    ],
+  },
+  {
     tabName: 'Active_Logs',
-    description: 'Dedicated log of all active shift work sessions, assigned tasks, start/end timestamps, net duration, mouse/keyboard activity %, and apps used.',
+    description: 'Compatibility alias for Time_Logs. Dedicated log of all active shift work sessions, assigned tasks, start/end timestamps, net duration, and activity %.',
     headers: [
       'Session ID',
       'Employee Code',
@@ -404,6 +424,11 @@ function setupSheetsSchema() {
       headers: ['Idle Log ID', 'Timestamp', 'Employee Code', 'Employee Name', 'Inactivity Duration (Mins)', 'Deducted From Shift', 'Required Shift Extension', 'Active Task', 'Reason / Trigger', 'Status']
     },
     {
+      tab: 'Time_Logs',
+      color: '#059669', // Emerald
+      headers: ['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Net Active Duration (HH:MM:SS)', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes']
+    },
+    {
       tab: 'Active_Logs',
       color: '#059669', // Emerald
       headers: ['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Net Active Duration (HH:MM:SS)', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes']
@@ -638,7 +663,7 @@ function doPost(e) {
       if (idleSheet) populateCleanSheet(idleSheet, idleHeaders, idleRows, '#b45309');
 
       // ==========================================
-      // 4. POPULATE ACTIVE LOGS (Timesheet Sessions)
+      // 4. POPULATE TIME LOGS (Timesheet Sessions & Live Tracking)
       // ==========================================
       var activeHeaders = ['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Net Active Duration (HH:MM:SS)', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes'];
       var activeSeen = {};
@@ -654,6 +679,26 @@ function doPost(e) {
           : (t.duration || '00:00:00');
         var idleMins = t.idleSeconds ? Math.round(t.idleSeconds / 60) + ' mins' : '0 mins';
 
+        // Format start and end times in Philippine Timezone (Asia/Manila GMT+8)
+        var sTime = t.geoLocalStartTime || '';
+        if (!sTime && t.startTime) {
+          try {
+            var sD = new Date(t.startTime);
+            if (!isNaN(sD.getTime())) {
+              sTime = Utilities.formatDate(sD, 'Asia/Manila', 'hh:mm:ss a');
+            }
+          } catch(e) { sTime = t.startTime; }
+        }
+        var eTime = (t.endTime === 'Running Live' || !t.endTime) ? 'Running Live' : (t.geoLocalEndTime || '');
+        if (eTime !== 'Running Live' && !eTime && t.endTime) {
+          try {
+            var eD = new Date(t.endTime);
+            if (!isNaN(eD.getTime())) {
+              eTime = Utilities.formatDate(eD, 'Asia/Manila', 'hh:mm:ss a');
+            }
+          } catch(e) { eTime = t.endTime; }
+        }
+
         activeRows.push([
           t.id || 'N/A',
           matchedUser.employeeCode || 'N/A',
@@ -661,8 +706,8 @@ function doPost(e) {
           t.designation || 'Agent',
           t.task || 'General',
           t.date || '',
-          t.startTime || '',
-          t.endTime || 'Running Live',
+          sTime,
+          eTime,
           durStr,
           idleMins,
           (t.mouseActivityAvg != null ? t.mouseActivityAvg : 0) + '%',
@@ -680,8 +725,16 @@ function doPost(e) {
         return (tB || 0) - (tA || 0);
       });
 
+      var timeLogsSheet = ss.getSheetByName('Time_Logs');
+      if (timeLogsSheet) populateCleanSheet(timeLogsSheet, activeHeaders, activeRows, '#047857');
+
       var activeSheet = ss.getSheetByName('Active_Logs');
       if (activeSheet) populateCleanSheet(activeSheet, activeHeaders, activeRows, '#047857');
+
+      if (!timeLogsSheet && !activeSheet) {
+        timeLogsSheet = ss.insertSheet('Time_Logs');
+        populateCleanSheet(timeLogsSheet, activeHeaders, activeRows, '#047857');
+      }
 
       // ==========================================
       // 5. POPULATE INACTIVE LOGS (Dedicated Tab)
@@ -1012,10 +1065,39 @@ function doGet(e) {
         });
       });
     }
+
+    var timeLogsSheet = ss.getSheetByName('Time_Logs') || ss.getSheetByName('Active_Logs');
+    var timeLogs = [];
+    if (timeLogsSheet && timeLogsSheet.getLastRow() > 1) {
+      var tData = timeLogsSheet.getRange(2, 1, timeLogsSheet.getLastRow() - 1, 14).getValues();
+      tData.forEach(function(row) {
+        var id = String(row[0] || '').trim();
+        var empName = String(row[2] || '').trim();
+        if (!id && !empName) return;
+        timeLogs.push({
+          id: id || ('log-' + Date.now()),
+          employeeCode: String(row[1] || '').trim(),
+          userName: empName,
+          designation: String(row[3] || 'Agent').trim(),
+          task: String(row[4] || 'General').trim(),
+          date: String(row[5] || '').trim(),
+          startTime: String(row[6] || '').trim(),
+          endTime: String(row[7] || '').trim(),
+          durationFormatted: String(row[8] || '').trim(),
+          idleDeductions: String(row[9] || '').trim(),
+          mouseActivityAvg: Number(String(row[10] || '0').replace(/[^0-9.]/g, '')) || 0,
+          keyboardActivityAvg: Number(String(row[11] || '0').replace(/[^0-9.]/g, '')) || 0,
+          status: String(row[12] || 'completed').trim(),
+          notes: String(row[13] || '').trim()
+        });
+      });
+    }
+
     return ContentService.createTextOutput(JSON.stringify({
       status: 'SUCCESS',
       count: employees.length,
       employees: employees,
+      timeLogs: timeLogs,
       timestamp: new Date().toISOString()
     })).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
@@ -1344,7 +1426,8 @@ export const syncDataToGoogleSheetsWebhook = async (
   idleLogs: IdleLog[] = [],
   leaveRequests: LeaveRequest[] = [],
   designationTasks?: Record<string, string[]>,
-  rolePermissions?: Record<string, import('../types').RolePermissions>
+  rolePermissions?: Record<string, import('../types').RolePermissions>,
+  activeSessions?: TimeLog[]
 ): Promise<{ success: boolean; message: string }> => {
   if (!webhookUrl || !webhookUrl.trim()) {
     return {
@@ -1365,9 +1448,14 @@ export const syncDataToGoogleSheetsWebhook = async (
     // Hide emergency backup account from database spreadsheet sync
     const safeUsers = users.filter((u) => !u.isSecretBackup);
 
+    // Combine any active live sessions (e.g. running on desktop) with completed time logs
+    const combinedLogs = activeSessions && activeSessions.length > 0
+      ? [...activeSessions, ...timeLogs]
+      : timeLogs;
+
     const payload = {
       action: 'SYNC_ALL',
-      timeLogs,
+      timeLogs: combinedLogs,
       users: safeUsers,
       auditLogs,
       payrollRecords,
@@ -1422,6 +1510,90 @@ export const syncDataToGoogleSheetsWebhook = async (
       message: `Failed to connect to Google Sheets webhook: ${err?.message || 'Network unreachable'}. Please verify Apps Script deployment is set to "Anyone".`,
     };
   }
+};
+
+/**
+ * Extracts and imports Time Logs from the Google Sheets database (Time_Logs or Active_Logs tab)
+ */
+export const fetchTimeLogsFromGoogleSheets = async (
+  webhookUrl?: string,
+  spreadsheetId?: string
+): Promise<{ success: boolean; timeLogs: Partial<TimeLog>[]; message: string }> => {
+  if (!webhookUrl && !spreadsheetId) {
+    return { success: false, timeLogs: [], message: 'No Webhook URL or Spreadsheet ID provided.' };
+  }
+
+  // Method 1: Webhook GET
+  if (webhookUrl && isValidWebhookUrl(webhookUrl)) {
+    try {
+      const proxyRes = await fetch(`/api/sync-sheets?url=${encodeURIComponent(webhookUrl.trim())}`);
+      if (proxyRes.ok) {
+        const data = await proxyRes.json();
+        if (data && Array.isArray(data.timeLogs) && data.timeLogs.length > 0) {
+          return {
+            success: true,
+            timeLogs: data.timeLogs,
+            message: `Successfully extracted ${data.timeLogs.length} time logs from Google Sheets!`,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('Webhook GET for timeLogs failed, trying CSV export fallback...', err);
+    }
+  }
+
+  // Method 2: Direct Google Sheets CSV Query for Time_Logs tab
+  if (spreadsheetId) {
+    try {
+      const tabsToTry = ['Time_Logs', 'Active_Logs'];
+      for (const tab of tabsToTry) {
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${tab}`;
+        const response = await fetch(csvUrl);
+        if (response.ok) {
+          const csvText = await response.text();
+          const rows = parseCSVRows(csvText);
+          if (rows.length > 1) {
+            const parsedLogs: Partial<TimeLog>[] = [];
+            for (let i = 1; i < rows.length; i++) {
+              const r = rows[i];
+              const id = (r[0] || '').trim();
+              const empName = (r[2] || '').trim();
+              if (!id && !empName) continue;
+
+              parsedLogs.push({
+                id: id || `log-sheet-${Date.now()}-${i}`,
+                userName: empName,
+                designation: (r[3] || 'Agent').trim(),
+                task: (r[4] || 'General').trim(),
+                date: (r[5] || '').trim(),
+                startTime: (r[6] || '').trim(),
+                endTime: (r[7] || '').trim(),
+                geoLocalStartTime: (r[6] || '').trim(),
+                geoTimezone: 'Asia/Manila',
+                status: (r[12] || 'completed').toLowerCase().includes('run') ? 'running' : 'completed',
+                notes: (r[13] || 'Imported from Google Sheets Database').trim(),
+              });
+            }
+            if (parsedLogs.length > 0) {
+              return {
+                success: true,
+                timeLogs: parsedLogs,
+                message: `Successfully extracted ${parsedLogs.length} time logs from Google Sheets tab "${tab}"!`,
+              };
+            }
+          }
+        }
+      }
+    } catch (csvErr: any) {
+      console.warn('CSV export fallback for time logs failed:', csvErr);
+    }
+  }
+
+  return {
+    success: false,
+    timeLogs: [],
+    message: 'Could not extract time logs from Google Sheets. Ensure the sheet has a "Time_Logs" tab and is accessible.',
+  };
 };
 
 export const downloadTableCSV = (filename: string, headers: string[], rows: (string | number)[][]) => {

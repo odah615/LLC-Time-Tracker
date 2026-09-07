@@ -7,6 +7,7 @@ import {
   getManilaTimeString,
   getManilaFormattedDate,
   formatDurationHuman,
+  formatLogStartTime,
 } from '../lib/dateUtils';
 import {
   Radio,
@@ -205,7 +206,7 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
       let loginTimeDisplay = attendance?.firstLoginTime || '';
       if (!loginTimeDisplay && presence?.loginTime) {
         try {
-          loginTimeDisplay = new Date(presence.loginTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          loginTimeDisplay = formatLogStartTime(presence.loginTime, 'Asia/Manila');
         } catch {
           // fallback
         }

@@ -88,6 +88,7 @@ export interface TimeLog {
   status: 'running' | 'completed' | 'paused' | 'idle';
   geoTimezone: string;
   geoLocalStartTime: string; // formatted time e.g. "06:12 AM"
+  geoLocalEndTime?: string; // formatted time e.g. "08:12 AM"
   mouseActivityAvg: number; // 0 - 100%
   keyboardActivityAvg: number; // 0 - 100%
   appsUsed: AppUsage[];

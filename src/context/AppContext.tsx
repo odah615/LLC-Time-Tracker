@@ -19,13 +19,14 @@ import {
 } from '../types';
 import { doc, setDoc, deleteDoc, onSnapshot, collection, getDoc, disableNetwork, enableNetwork } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { getManilaDateString, getManilaTimeString } from '../lib/dateUtils';
+import { getManilaDateString, getManilaTimeString, formatLogStartTime, formatLogEndTime } from '../lib/dateUtils';
 import { generateUniqueUsername } from '../lib/userUtils';
 import {
   syncDataToGoogleSheetsWebhook,
   DEFAULT_SPREADSHEET_URL,
   DEFAULT_SPREADSHEET_ID,
   fetchEmployeesFromGoogleSheets,
+  fetchTimeLogsFromGoogleSheets,
   isValidWebhookUrl,
 } from '../lib/googleSheetsSync';
 import {
@@ -185,6 +186,7 @@ interface AppContextType {
   setGoogleSheetsWebhookUrl: (url: string) => void;
   triggerGoogleSheetsSync: (overrideUrl?: string) => Promise<{ success: boolean; message: string }>;
   importEmployeesFromGoogleSheets: (overrideUrl?: string) => Promise<{ success: boolean; count: number; message: string }>;
+  importTimeLogsFromGoogleSheets: (overrideUrl?: string) => Promise<{ success: boolean; count: number; message: string }>;
   // Desktop dock view toggle
   isDesktopDockView: boolean;
   setIsDesktopDockView: (val: boolean) => void;
@@ -579,6 +581,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (activeUrl && isValidWebhookUrl(activeUrl)) {
+        // Collect active live sessions from employees currently tracking time on Desktop App
+        const liveSessions: TimeLog[] = userPresenceList
+          .filter((p) => p.isTracking && p.isOnline)
+          .map((p) => {
+            const pStart = p.startTime || p.loginTime || p.lastHeartbeat || new Date().toISOString();
+            const startFormatted = formatLogStartTime(pStart, 'Asia/Manila');
+            return {
+              id: `live-${p.userId}`,
+              userId: p.userId,
+              userName: p.userName,
+              userAvatar: '',
+              designation: p.designation || 'Agent',
+              task: p.currentTask || 'Active Task',
+              startTime: pStart,
+              endTime: 'Running Live',
+              durationSeconds: p.elapsedSeconds || 1,
+              status: 'running' as const,
+              geoTimezone: 'Asia/Manila',
+              geoLocalStartTime: startFormatted,
+              mouseActivityAvg: p.mouseActivity || 100,
+              keyboardActivityAvg: p.keyboardActivity || 100,
+              idleSeconds: 0,
+              date: getManilaDateString(),
+              notes: 'Tracking live in Desktop Client Software',
+              appsUsed: [{ appName: p.currentApp || 'Desktop App', icon: 'Globe', durationSeconds: p.elapsedSeconds || 1, category: 'productive' as const }],
+            };
+          });
+
         syncDataToGoogleSheetsWebhook(
           activeUrl.trim(),
           updatedLogs,
@@ -589,12 +619,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           updatedIdle,
           updatedLeaves,
           updatedDesignationTasks,
-          updatedRolePermissions
+          updatedRolePermissions,
+          liveSessions
         ).catch((err) => console.warn('Auto-sync to Google Sheets warning:', err));
       }
     },
-    [googleSheetsWebhookUrl, users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions]
+    [googleSheetsWebhookUrl, users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions, userPresenceList]
   );
+
+  // Periodic background auto-sync to Google Sheets database (every 45s)
+  // Ensures all time logs from Desktop App and live active sessions reflect in the Google Spreadsheet
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      const activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
+      if (!activeUrl || !isValidWebhookUrl(activeUrl)) return;
+      triggerAutoSync();
+    }, 45000);
+
+    return () => clearInterval(syncInterval);
+  }, [googleSheetsWebhookUrl, triggerAutoSync]);
 
   const triggerGoogleSheetsSync = async (overrideUrl?: string): Promise<{ success: boolean; message: string }> => {
     const targetUrl = overrideUrl || googleSheetsWebhookUrl;
@@ -603,6 +646,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setTimeout(() => setSaveToast(null), 8000);
       return { success: false, message: 'No webhook URL provided' };
     }
+
+    const liveSessions: TimeLog[] = userPresenceList
+      .filter((p) => p.isTracking && p.isOnline)
+      .map((p) => {
+        const pStart = p.startTime || p.loginTime || p.lastHeartbeat || new Date().toISOString();
+        const startFormatted = formatLogStartTime(pStart, 'Asia/Manila');
+        return {
+          id: `live-${p.userId}`,
+          userId: p.userId,
+          userName: p.userName,
+          userAvatar: '',
+          designation: p.designation || 'Agent',
+          task: p.currentTask || 'Active Task',
+          startTime: pStart,
+          endTime: 'Running Live',
+          durationSeconds: p.elapsedSeconds || 1,
+          status: 'running' as const,
+          geoTimezone: 'Asia/Manila',
+          geoLocalStartTime: startFormatted,
+          mouseActivityAvg: p.mouseActivity || 100,
+          keyboardActivityAvg: p.keyboardActivity || 100,
+          idleSeconds: 0,
+          date: getManilaDateString(),
+          notes: 'Tracking live in Desktop Client Software',
+          appsUsed: [{ appName: p.currentApp || 'Desktop App', icon: 'Globe', durationSeconds: p.elapsedSeconds || 1, category: 'productive' as const }],
+        };
+      });
+
     const res = await syncDataToGoogleSheetsWebhook(
       targetUrl,
       timeLogs,
@@ -613,10 +684,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       idleLogs,
       leaveRequests,
       designationTasks,
-      rolePermissions
+      rolePermissions,
+      liveSessions
     );
     if (res.success) {
-      setSaveToast(`✓ Synced all Database Tabs (including Designation Tasks & Permissions) to Google Sheets!`);
+      setSaveToast(`✓ Synced all Database Tabs (including Time Logs & Active Sessions) to Google Sheets!`);
     } else {
       setSaveToast(`⚠️ Google Sheets Sync: ${res.message}`);
     }
@@ -716,6 +788,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: true, count: res.count, message: res.message };
     } else {
       setSaveToast(`⚠️ Google Sheets Import: ${res.message}`);
+      setTimeout(() => setSaveToast(null), 7000);
+      return { success: false, count: 0, message: res.message };
+    }
+  };
+
+  // Two-Way Sync: Pull time logs directly from Google Sheets Time_Logs / Active_Logs tab
+  const importTimeLogsFromGoogleSheets = async (
+    overrideUrl?: string
+  ): Promise<{ success: boolean; count: number; message: string }> => {
+    const targetUrl = overrideUrl || googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
+    const res = await fetchTimeLogsFromGoogleSheets(targetUrl, DEFAULT_SPREADSHEET_ID);
+
+    if (res.success && res.timeLogs.length > 0) {
+      const existingMap = new Map(timeLogs.map((l) => [l.id, l]));
+      let addedCount = 0;
+      for (const log of res.timeLogs) {
+        if (log.id && !existingMap.has(log.id)) {
+          existingMap.set(log.id, {
+            id: log.id,
+            userId: log.userId || (users.find((u) => u.name.toLowerCase() === (log.userName || '').toLowerCase())?.id || 'usr-imported'),
+            userName: log.userName || 'Employee',
+            userAvatar: log.userAvatar || '',
+            designation: log.designation || 'Agent',
+            task: log.task || 'General',
+            startTime: log.startTime || new Date().toISOString(),
+            endTime: log.endTime || new Date().toISOString(),
+            durationSeconds: log.durationSeconds || 0,
+            status: log.status || 'completed',
+            geoTimezone: log.geoTimezone || 'Asia/Manila',
+            geoLocalStartTime: log.geoLocalStartTime || log.startTime || '',
+            geoLocalEndTime: log.geoLocalEndTime || log.endTime || '',
+            mouseActivityAvg: log.mouseActivityAvg ?? 100,
+            keyboardActivityAvg: log.keyboardActivityAvg ?? 100,
+            idleSeconds: log.idleSeconds ?? 0,
+            date: log.date || getManilaDateString(),
+            notes: log.notes || 'Imported from Google Sheets Time_Logs',
+            appsUsed: log.appsUsed || [],
+          });
+          addedCount++;
+        }
+      }
+      const merged = Array.from(existingMap.values());
+      setTimeLogs(merged);
+      localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
+      safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: merged }).catch((err) =>
+        console.warn('Time logs save err:', err)
+      );
+
+      setSaveToast(`✓ Two-Way Sync: Extracted ${res.timeLogs.length} time logs from Google Sheets!`);
+      setTimeout(() => setSaveToast(null), 7000);
+      return { success: true, count: res.timeLogs.length, message: res.message };
+    } else {
+      setSaveToast(`⚠️ Google Sheets Time Logs: ${res.message}`);
       setTimeout(() => setSaveToast(null), 7000);
       return { success: false, count: 0, message: res.message };
     }
@@ -2272,7 +2397,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const startTimeStr = startTimeIso || new Date(Date.now() - trackedSecs * 1000).toISOString();
     const todayStr = getManilaDateString();
 
-    const localTimeFormatted = getManilaTimeString();
+    const sessionStartDate = new Date(startTimeStr);
+    const sessionEndDate = new Date(nowIso);
+    const userTz = currentUser.geoTimezone || 'Asia/Manila';
+    const localStartTimeFormatted = getManilaTimeString(sessionStartDate, userTz);
+    const localEndTimeFormatted = getManilaTimeString(sessionEndDate, userTz);
 
     const mouseAvg = mouseActivityHistoryRef.current.length > 0
       ? Math.round(mouseActivityHistoryRef.current.reduce((a, b) => a + b, 0) / mouseActivityHistoryRef.current.length)
@@ -2297,8 +2426,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       endTime: nowIso,
       durationSeconds: trackedSecs,
       status: 'completed',
-      geoTimezone: currentUser.geoTimezone || 'America/Toronto',
-      geoLocalStartTime: localTimeFormatted,
+      geoTimezone: userTz,
+      geoLocalStartTime: localStartTimeFormatted,
+      geoLocalEndTime: localEndTimeFormatted,
       mouseActivityAvg: mouseAvg,
       keyboardActivityAvg: keyAvg,
       idleSeconds: sessionIdleDeductionSeconds,
@@ -2327,7 +2457,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       department: currentUser.department || 'Operations',
       designation: currentDesignation || currentUser.designation || 'Virtual Assistant',
       date: todayStr,
-      timestamp: localTimeFormatted,
+      timestamp: localEndTimeFormatted,
       capturedAtIso: nowIso,
       imageUrl: sampleImgs[Math.floor(Math.random() * sampleImgs.length)],
       activityPercent: overallActivity,
@@ -2401,7 +2531,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...att,
           totalLoggedSeconds: newSecs,
           totalLoggedHours: Number((newSecs / 3600).toFixed(2)),
-          lastLogoutTime: localTimeFormatted,
+          lastLogoutTime: localEndTimeFormatted,
         };
       }
       return att;
@@ -2643,6 +2773,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Log current task segment if running
     if (isTracking && elapsedSeconds > 5) {
       const nowIso = new Date().toISOString();
+      const segStartTime = startTimeIso || new Date(Date.now() - elapsedSeconds * 1000).toISOString();
+      const userTz = currentUser.geoTimezone || 'Asia/Manila';
+      const segStartFormatted = formatLogStartTime(segStartTime, userTz);
+      const segEndFormatted = formatLogEndTime(nowIso, userTz);
+
       const newLog: TimeLog = {
         id: `log-${Date.now()}`,
         userId: currentUser.id,
@@ -2650,12 +2785,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         userAvatar: currentUser.avatar,
         designation: currentDesignation,
         task: currentTask,
-        startTime: startTimeIso || new Date(Date.now() - elapsedSeconds * 1000).toISOString(),
+        startTime: segStartTime,
         endTime: nowIso,
         durationSeconds: elapsedSeconds,
         status: 'completed',
-        geoTimezone: currentUser.geoTimezone || 'America/Toronto',
-        geoLocalStartTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        geoTimezone: userTz,
+        geoLocalStartTime: segStartFormatted,
+        geoLocalEndTime: segEndFormatted,
         mouseActivityAvg: currentMouseActivity,
         keyboardActivityAvg: currentKeyboardActivity,
         idleSeconds: 0,
@@ -3900,6 +4036,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setGoogleSheetsWebhookUrl,
         triggerGoogleSheetsSync,
         importEmployeesFromGoogleSheets,
+        importTimeLogsFromGoogleSheets,
         isDesktopDockView,
         setIsDesktopDockView,
         addUser,
