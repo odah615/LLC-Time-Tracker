@@ -907,7 +907,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Central Sync Bridge & Google Sheets Auto-Hydration on Mount
   useEffect(() => {
-    // 1. Fetch shared Webhook URL
+    // 1. Fetch shared Webhook URL & sync config
     fetch('/api/config')
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {
@@ -918,66 +918,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
       .catch(() => {});
 
-    // 2. Fetch shared time logs across desktop and web app clients
-    fetch('/api/timelogs')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((remoteLogs) => {
-        if (Array.isArray(remoteLogs) && remoteLogs.length > 0) {
-          setTimeLogs((prev) => {
-            const map = new Map(prev.map((l) => [l.id, l]));
-            for (const item of remoteLogs) {
-              if (item && item.id && !map.has(item.id)) {
-                map.set(item.id, item);
-              }
-            }
-            return Array.from(map.values());
-          });
-        }
-      })
-      .catch(() => {});
+    // Pre-populate server with local users and timelogs if available so desktop and web share all records immediately
+    if (users.length > 0) {
+      fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(users),
+      }).catch(() => {});
+    }
+    if (timeLogs.length > 0) {
+      fetch('/api/timelogs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(timeLogs),
+      }).catch(() => {});
+    }
 
-    // 3. Fetch shared users
-    fetch('/api/users')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((remoteUsers) => {
-        if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-          setUsers((prev) => {
-            const map = new Map<string, User>(prev.map((u) => [u.id, u]));
-            for (const item of remoteUsers) {
-              if (item && item.id) {
-                const existing = map.get(item.id);
-                map.set(item.id, { ...(existing || item), ...item });
+    // 2. Continuous Central Sync Bridge (timelogs, users, presence across desktop & web)
+    const fetchCentralSync = () => {
+      // 2a. Sync timelogs across desktop software and web portal
+      fetch('/api/timelogs')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((remoteLogs) => {
+          if (Array.isArray(remoteLogs) && remoteLogs.length > 0) {
+            setTimeLogs((prev) => {
+              const map = new Map(prev.map((l) => [l.id, l]));
+              let hasNew = false;
+              for (const item of remoteLogs) {
+                if (item && item.id && !map.has(item.id)) {
+                  map.set(item.id, item);
+                  hasNew = true;
+                }
               }
-            }
-            return Array.from(map.values());
-          });
-        }
-      })
-      .catch(() => {});
-
-    // 4. Background auto-import from Google Sheets CSV (100% quota-free)
-    fetchEmployeesFromGoogleSheets('', DEFAULT_SPREADSHEET_ID, users)
-      .then((res) => {
-        if (res.success && res.employees.length > 0) {
-          setUsers((prev) => {
-            const map = new Map<string, User>(prev.map((u) => [u.id, u]));
-            for (const emp of res.employees) {
-              if (emp && emp.id) {
-                const existing = map.get(emp.id);
-                // Keep existing user password if changed locally
-                map.set(emp.id, existing?.password && existing.password !== 'Password123!' ? { ...emp, password: existing.password } : emp);
+              if (hasNew) {
+                const merged = Array.from(map.values());
+                localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
+                return merged;
               }
-            }
-            const merged = Array.from(map.values());
-            localStorage.setItem('trackpulse_users', JSON.stringify(merged));
-            return merged;
-          });
-        }
-      })
-      .catch(() => {});
+              return prev;
+            });
+          }
+        })
+        .catch(() => {});
 
-    // 5. Central Sync Bridge Presence Polling (100% Firestore quota-free live status)
-    const fetchApiPresence = () => {
+      // 2b. Sync shared users across desktop software and web portal
+      fetch('/api/users')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((remoteUsers) => {
+          if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
+            setUsers((prev) => {
+              const map = new Map<string, User>(prev.map((u) => [u.id, u]));
+              let hasNewOrUpdated = false;
+              for (const item of remoteUsers) {
+                if (item && item.id) {
+                  const existing = map.get(item.id);
+                  if (
+                    !existing ||
+                    existing.password !== item.password ||
+                    existing.name !== item.name ||
+                    existing.role !== item.role ||
+                    existing.status !== item.status
+                  ) {
+                    map.set(item.id, { ...(existing || item), ...item });
+                    hasNewOrUpdated = true;
+                  }
+                }
+              }
+              if (hasNewOrUpdated) {
+                const merged = Array.from(map.values());
+                localStorage.setItem('trackpulse_users', JSON.stringify(merged));
+                return merged;
+              }
+              return prev;
+            });
+          }
+        })
+        .catch(() => {});
+
+      // 2c. Central Sync Bridge Presence Polling (100% Firestore quota-free live status)
       fetch('/api/presence')
         .then((res) => (res.ok ? res.json() : null))
         .then((remotePresence: UserPresence[]) => {
@@ -997,11 +1015,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .catch(() => {});
     };
 
-    fetchApiPresence();
-    const presenceInterval = setInterval(fetchApiPresence, 15000);
+    fetchCentralSync();
+    const centralSyncInterval = setInterval(fetchCentralSync, 5000);
+
+    // 3. Background auto-import from Google Sheets CSV (100% quota-free)
+    fetchEmployeesFromGoogleSheets('', DEFAULT_SPREADSHEET_ID, users)
+      .then((res) => {
+        if (res.success && res.employees.length > 0) {
+          setUsers((prev) => {
+            const map = new Map<string, User>(prev.map((u) => [u.id, u]));
+            for (const emp of res.employees) {
+              if (emp && emp.id) {
+                const existing = map.get(emp.id);
+                // Keep existing user password if changed locally
+                map.set(emp.id, existing?.password && existing.password !== 'Password123!' ? { ...emp, password: existing.password } : emp);
+              }
+            }
+            const merged = Array.from(map.values());
+            localStorage.setItem('trackpulse_users', JSON.stringify(merged));
+            // Push merged Google Sheets employees to central server so desktop software gets them instantly!
+            fetch('/api/users', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(merged),
+            }).catch(() => {});
+            return merged;
+          });
+        }
+      })
+      .catch(() => {});
 
     return () => {
-      clearInterval(presenceInterval);
+      clearInterval(centralSyncInterval);
     };
   }, []);
 
@@ -1409,6 +1454,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const mouseActivityHistoryRef = useRef<number[]>([]);
   const keyboardActivityHistoryRef = useRef<number[]>([]);
 
+  // Wall-clock tracking refs for exact tracking across background/minimized windows
+  const trackingSessionStartMsRef = useRef<number>(0);
+  const lastActiveIntervalStartMsRef = useRef<number>(0);
+  const trackingAccumulatedSecondsRef = useRef<number>(0);
+
+  // Compute live elapsed wall-clock seconds accurately, immune to OS/browser background timer throttling
+  const getLiveElapsedSeconds = useCallback(() => {
+    if (!isTracking) return 0;
+    if (isPaused || lastActiveIntervalStartMsRef.current === 0) {
+      return trackingAccumulatedSecondsRef.current;
+    }
+    const currentSegmentSec = Math.floor((Date.now() - lastActiveIntervalStartMsRef.current) / 1000);
+    return trackingAccumulatedSecondsRef.current + Math.max(0, currentSegmentSec);
+  }, [isTracking, isPaused]);
+
   // Randomized Idle Inactivity Engine (Random 10 to 15 minutes)
   const getRandomIdleThreshold = () => Math.floor(Math.random() * 6) + 10; // 10, 11, 12, 13, 14, or 15 mins
   const [currentIdleThresholdMinutes, setCurrentIdleThresholdMinutes] = useState<number>(() => getRandomIdleThreshold());
@@ -1433,7 +1493,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const handleKeyboardActivity = () => {
       lastKeyboardActiveTimestampRef.current = Date.now();
-      // Keyboard use implies user is actively at the desk
       lastMouseActiveTimestampRef.current = Date.now();
     };
 
@@ -1441,9 +1500,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentActiveApp('LLC Time Tracker Desktop Software');
       lastMouseActiveTimestampRef.current = Date.now();
       lastKeyboardActiveTimestampRef.current = Date.now();
+      setCurrentInactivitySeconds(0);
+      if (isTracking && !isPaused) {
+        setElapsedSeconds(getLiveElapsedSeconds());
+      }
     };
+
     const handleBlur = () => {
       setCurrentActiveApp('Google Chrome / External Application');
+      // Employee switched to external work window or minimized tracker
+      lastMouseActiveTimestampRef.current = Date.now();
+      lastKeyboardActiveTimestampRef.current = Date.now();
+      setCurrentInactivitySeconds(0);
+    };
+
+    const handleVisibilityChange = () => {
+      const isHidden = typeof document !== 'undefined' && (document.hidden || document.visibilityState === 'hidden');
+      lastMouseActiveTimestampRef.current = Date.now();
+      lastKeyboardActiveTimestampRef.current = Date.now();
+      setCurrentInactivitySeconds(0);
+      if (!isHidden && isTracking && !isPaused) {
+        setElapsedSeconds(getLiveElapsedSeconds());
+      }
     };
 
     // Attach capturing listeners to window and document to catch all events regardless of focused element
@@ -1462,6 +1540,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     window.addEventListener('focus', handleFocus);
     window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('mousemove', handleMouseActivity, true);
@@ -1479,8 +1558,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isTracking, isPaused]);
+  }, [isTracking, isPaused, getLiveElapsedSeconds]);
 
   // Ref tracking latest state for presence broadcast without triggering re-renders or quota thrashing
   const presenceLatestRef = useRef({
@@ -1733,33 +1813,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let interval: any = null;
     if (isTracking && !isPaused) {
       interval = setInterval(() => {
-        setElapsedSeconds((prev) => prev + 1);
+        const liveSecs = getLiveElapsedSeconds();
+        setElapsedSeconds(liveSecs);
 
         const now = Date.now();
         const ACTIVITY_SUSTAIN_WINDOW_MS = 120000; // 2 minutes (120 seconds)
 
-        const timeSinceMouse = lastMouseActiveTimestampRef.current > 0
-          ? now - lastMouseActiveTimestampRef.current
-          : 0;
-        const timeSinceKey = lastKeyboardActiveTimestampRef.current > 0
-          ? now - lastKeyboardActiveTimestampRef.current
-          : 0;
+        const isAppHiddenOrMinimized = typeof document !== 'undefined' && (
+          document.hidden || 
+          document.visibilityState === 'hidden'
+        );
 
-        // If activity happened within the 2-minute window -> stay at 100%
-        // If inactive for more than 2 minutes -> drop to 0%
         let mousePercent = 0;
         let keyPercent = 0;
 
-        if (timeSinceMouse <= ACTIVITY_SUSTAIN_WINDOW_MS && lastMouseActiveTimestampRef.current > 0) {
+        if (isAppHiddenOrMinimized) {
+          // Running in background / minimized while agent works in other desktop applications
           mousePercent = 100;
-        } else {
-          mousePercent = 0;
-        }
-
-        if (timeSinceKey <= ACTIVITY_SUSTAIN_WINDOW_MS && lastKeyboardActiveTimestampRef.current > 0) {
           keyPercent = 100;
+          lastMouseActiveTimestampRef.current = now;
+          lastKeyboardActiveTimestampRef.current = now;
         } else {
-          keyPercent = 0;
+          const timeSinceMouse = lastMouseActiveTimestampRef.current > 0
+            ? now - lastMouseActiveTimestampRef.current
+            : 0;
+          const timeSinceKey = lastKeyboardActiveTimestampRef.current > 0
+            ? now - lastKeyboardActiveTimestampRef.current
+            : 0;
+
+          if (timeSinceMouse <= ACTIVITY_SUSTAIN_WINDOW_MS && lastMouseActiveTimestampRef.current > 0) {
+            mousePercent = 100;
+          } else {
+            mousePercent = 0;
+          }
+
+          if (timeSinceKey <= ACTIVITY_SUSTAIN_WINDOW_MS && lastKeyboardActiveTimestampRef.current > 0) {
+            keyPercent = 100;
+          } else {
+            keyPercent = 0;
+          }
         }
 
         setCurrentMouseActivity(mousePercent);
@@ -1783,26 +1875,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentKeyboardActivity(0);
     }
     return () => clearInterval(interval);
-  }, [isTracking, isPaused, currentActiveApp]);
+  }, [isTracking, isPaused, currentActiveApp, getLiveElapsedSeconds]);
 
   // Real-time Background Inactivity Detector: Random 10-15 minute threshold check & Desktop Software 30-Minute Inactivity Prompt
   useEffect(() => {
     let idleInterval: any = null;
     if (isTracking && !isPaused) {
       idleInterval = setInterval(() => {
+        const isAppHiddenOrMinimized = typeof document !== 'undefined' && (
+          document.hidden || 
+          document.visibilityState === 'hidden'
+        );
+
+        // When the desktop tracker is minimized or running in the background,
+        // the employee is working in other apps on their computer (e.g. CRM, Excel, Chrome, Zendesk).
+        // As requested: the app IS ALLOWED to be minimized and MUST track time smoothly without inactivity penalties.
+        if (isAppHiddenOrMinimized) {
+          lastMouseActiveTimestampRef.current = Date.now();
+          lastKeyboardActiveTimestampRef.current = Date.now();
+          setCurrentInactivitySeconds(0);
+          return;
+        }
+
         const now = Date.now();
         const lastActive = Math.max(lastMouseActiveTimestampRef.current || 0, lastKeyboardActiveTimestampRef.current || 0);
         const inactivitySec = lastActive > 0 ? Math.floor((now - lastActive) / 1000) : 0;
         setCurrentInactivitySeconds(inactivitySec);
 
-        // 1. Idle deduction penalty check at random 10-15 min interval
+        // 1. Idle deduction penalty check at random 10-15 min interval (only when foreground window is truly idle)
         const thresholdSeconds = currentIdleThresholdMinutes * 60;
         if (inactivitySec >= thresholdSeconds && thresholdSeconds > 0) {
           recordIdleInactivityEvent(currentIdleThresholdMinutes);
         }
 
         // 2. Desktop Software 30-Minute Inactivity Prompt ("Are you still there? - Yes or No")
-        // After 30 minutes of no mouse/keyboard activity, prompt agent with 5-minute countdown
+        // After 30 minutes of no mouse/keyboard activity in foreground, prompt agent with 5-minute countdown
         if (loginMode === 'software') {
           const SOFTWARE_PROMPT_START_SECONDS = 30 * 60; // 30 mins = 1800s
           const SOFTWARE_PROMPT_TOTAL_SECONDS = 35 * 60; // 35 mins = 2100s
@@ -1880,8 +1987,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Start tracking
   const startTracking = () => {
-    lastMouseActiveTimestampRef.current = Date.now();
-    lastKeyboardActiveTimestampRef.current = Date.now();
+    const nowMs = Date.now();
+    trackingSessionStartMsRef.current = nowMs;
+    lastActiveIntervalStartMsRef.current = nowMs;
+    trackingAccumulatedSecondsRef.current = 0;
+    lastMouseActiveTimestampRef.current = nowMs;
+    lastKeyboardActiveTimestampRef.current = nowMs;
     mouseActivityHistoryRef.current = [];
     keyboardActivityHistoryRef.current = [];
     setCurrentMouseActivity(100);
@@ -1965,11 +2076,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Pause tracking
   const pauseTracking = () => {
+    if (lastActiveIntervalStartMsRef.current > 0) {
+      const segmentSec = Math.floor((Date.now() - lastActiveIntervalStartMsRef.current) / 1000);
+      trackingAccumulatedSecondsRef.current += Math.max(0, segmentSec);
+      lastActiveIntervalStartMsRef.current = 0;
+    }
     setIsPaused(true);
   };
 
   // Resume tracking
   const resumeTracking = () => {
+    lastActiveIntervalStartMsRef.current = Date.now();
+    lastMouseActiveTimestampRef.current = Date.now();
+    lastKeyboardActiveTimestampRef.current = Date.now();
     setIsPaused(false);
   };
 
@@ -1977,13 +2096,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const stopTracking = () => {
     if (!isTracking) return;
 
+    const trackedSecs = Math.max(getLiveElapsedSeconds(), elapsedSeconds, 1);
     const nowIso = new Date().toISOString();
-    const startTimeStr = startTimeIso || new Date(Date.now() - elapsedSeconds * 1000).toISOString();
+    const startTimeStr = startTimeIso || new Date(Date.now() - trackedSecs * 1000).toISOString();
     const todayStr = getManilaDateString();
 
     const localTimeFormatted = getManilaTimeString();
-
-    const trackedSecs = Math.max(elapsedSeconds, 1);
 
     const mouseAvg = mouseActivityHistoryRef.current.length > 0
       ? Math.round(mouseActivityHistoryRef.current.reduce((a, b) => a + b, 0) / mouseActivityHistoryRef.current.length)
@@ -2160,6 +2278,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
+    trackingSessionStartMsRef.current = 0;
+    lastActiveIntervalStartMsRef.current = 0;
+    trackingAccumulatedSecondsRef.current = 0;
     setIsTracking(false);
     setIsPaused(false);
     setElapsedSeconds(0);
@@ -2457,6 +2578,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAuditLogs(updatedAudit);
 
     localStorage.setItem('trackpulse_users', JSON.stringify(updatedUsers));
+    fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newUser),
+    }).catch(() => {});
     safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
       console.warn('Users save err:', err)
     );
