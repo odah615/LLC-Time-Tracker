@@ -425,7 +425,26 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
               <button
                 type="button"
                 onClick={clearSessionExpiredReason}
-                className="text-amber-400 hover:text-amber-200 text-[10px] font-bold underline px-1"
+                className="text-amber-400 hover:text-amber-200 text-[10px] font-bold underline px-1 cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
+          {sessionExpiredReason === 'inactivity_30min_software' && (
+            <div className="mb-5 p-3.5 rounded-xl bg-amber-950/80 border border-amber-600/80 text-amber-200 text-xs font-medium flex items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                <div>
+                  <strong className="block text-white">Shift Safely Saved & Automatically Logged Out</strong>
+                  <span>Your desktop tracker was automatically stopped and signed out after <strong>30 minutes of inactivity</strong> and no response to the verification prompt. Log in to resume work.</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={clearSessionExpiredReason}
+                className="text-amber-400 hover:text-amber-200 text-[10px] font-bold underline px-1 shrink-0 cursor-pointer"
               >
                 Dismiss
               </button>

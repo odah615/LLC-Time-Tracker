@@ -54,6 +54,13 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [tick, setTick] = useState(0);
+
+  // Periodic 5-second tick to update real-time task elapsed durations
+  React.useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   const todayStr = getManilaDateString();
 
@@ -83,19 +90,24 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
       // Find presence in state
       const presence = userPresenceList.find((p) => p.userId === user.id);
 
-      // Calculate if active based on recent heartbeat (< 45s)
-      const lastHeartbeatMs = presence ? new Date(presence.lastHeartbeat).getTime() : 0;
-      const isHeartbeatFresh = presence?.isOnline && now - lastHeartbeatMs < 45000;
+      // Calculate if active based on recent heartbeat (< 2.5 mins for online; > 10 mins auto-offline)
+      const lastHeartbeatMs = presence?.lastHeartbeat ? new Date(presence.lastHeartbeat).getTime() : 0;
+      const diffMs = now - lastHeartbeatMs;
 
       // Determine real-time status
       let calculatedStatus: 'online' | 'idle' | 'offline' = 'offline';
-      if (isHeartbeatFresh) {
-        calculatedStatus = presence.status;
-      } else if (presence && presence.isOnline) {
-        // Heartbeat lapsed slightly
+      if (!presence || !presence.isOnline) {
+        calculatedStatus = 'offline';
+      } else if (diffMs > 10 * 60 * 1000) {
+        // Inactive / unclosed session for > 10 minutes -> Automatically mark OFFLINE
+        calculatedStatus = 'offline';
+      } else if (diffMs > 2.5 * 60 * 1000) {
+        // Heartbeat lapsed slightly (2.5 - 10 min)
+        calculatedStatus = 'idle';
+      } else if (presence.isPaused) {
         calculatedStatus = 'idle';
       } else {
-        calculatedStatus = 'offline';
+        calculatedStatus = presence.status || 'online';
       }
 
       // Today's attendance log
@@ -114,6 +126,15 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
 
       const latestLog = userTodayLogs[0] || timeLogs.find((l) => l.userId === user.id);
 
+      // Current task active duration
+      let taskElapsedSeconds = 0;
+      if (calculatedStatus === 'online' || calculatedStatus === 'idle') {
+        taskElapsedSeconds = presence?.elapsedSeconds || 0;
+        if (presence?.isTracking && !presence?.isPaused && diffMs > 0 && diffMs < 60000) {
+          taskElapsedSeconds += Math.floor(diffMs / 1000);
+        }
+      }
+
       const isTracking = calculatedStatus === 'online' && !!presence?.isTracking;
       const currentTask = presence?.isTracking
         ? (presence.currentTask || latestLog?.task || 'Active Task')
@@ -121,7 +142,7 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
       const currentApp = presence?.currentApp || (calculatedStatus === 'online' ? 'LLC Web Portal' : 'None');
       const mouseActivity = isTracking ? (presence?.mouseActivity ?? 100) : 0;
       const keyboardActivity = isTracking ? (presence?.keyboardActivity ?? 100) : 0;
-      const firstLoginTime = attendance?.firstLoginTime || '--:--';
+      const firstLoginTime = attendance?.firstLoginTime || (calculatedStatus !== 'offline' ? 'Active' : '--:--');
 
       return {
         user,
@@ -133,11 +154,12 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
         mouseActivity,
         keyboardActivity,
         totalTodaySec,
+        taskElapsedSeconds,
         firstLoginTime,
         lastHeartbeat: presence?.lastHeartbeat || 'N/A',
       };
     });
-  }, [users, userPresenceList, dailyAttendanceLogs, timeLogs, todayStr]);
+  }, [users, userPresenceList, dailyAttendanceLogs, timeLogs, todayStr, tick]);
 
   // Filtered dataset
   const filteredData = useMemo(() => {
@@ -457,6 +479,12 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
                       <div className="font-bold text-slate-800 truncate" title={row.currentTask}>
                         {row.currentTask}
                       </div>
+                      {row.taskElapsedSeconds > 0 && (
+                        <div className="text-[10px] font-mono text-emerald-600 font-bold flex items-center gap-1 mt-0.5">
+                          <Clock className="w-3 h-3 text-emerald-500" />
+                          <span>{formatDuration(row.taskElapsedSeconds)} on current task</span>
+                        </div>
+                      )}
                       <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1 truncate mt-0.5" title={row.currentApp}>
                         <Laptop className="w-3 h-3 text-slate-400 shrink-0" />
                         <span className="truncate">{row.currentApp}</span>

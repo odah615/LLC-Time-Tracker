@@ -380,7 +380,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          const now = Date.now();
+          return parsed.map((p: UserPresence) => {
+            const lastMs = p.lastHeartbeat ? new Date(p.lastHeartbeat).getTime() : 0;
+            // Clean up stale inactive sessions (> 10 mins) on initial load
+            if (p.isOnline && now - lastMs > 10 * 60 * 1000) {
+              return {
+                ...p,
+                isOnline: false,
+                status: 'offline' as const,
+                isTracking: false,
+                currentTask: 'Shift Concluded',
+              };
+            }
+            return p;
+          });
         }
       } catch {
         // fallback
@@ -961,6 +975,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       })
       .catch(() => {});
+
+    // 5. Central Sync Bridge Presence Polling (100% Firestore quota-free live status)
+    const fetchApiPresence = () => {
+      fetch('/api/presence')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((remotePresence: UserPresence[]) => {
+          if (Array.isArray(remotePresence) && remotePresence.length > 0) {
+            setUserPresenceList((prev) => {
+              const map = new Map<string, UserPresence>(prev.map((p) => [p.userId, p]));
+              for (const p of remotePresence) {
+                if (p && p.userId) {
+                  const existing = map.get(p.userId);
+                  map.set(p.userId, { ...(existing || p), ...p });
+                }
+              }
+              return Array.from(map.values());
+            });
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchApiPresence();
+    const presenceInterval = setInterval(fetchApiPresence, 15000);
+
+    return () => {
+      clearInterval(presenceInterval);
+    };
   }, []);
 
   // Save changes to localStorage
@@ -1091,7 +1133,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const lastWebActivityTimestampRef = useRef<number>(Date.now());
 
   const refreshWebSession = useCallback(() => {
-    lastWebActivityTimestampRef.current = Date.now();
+    const nowMs = Date.now();
+    lastWebActivityTimestampRef.current = nowMs;
+    lastMouseActiveTimestampRef.current = nowMs;
+    lastKeyboardActiveTimestampRef.current = nowMs;
     setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
     setIsSessionWarningActive(false);
     setWebSessionWarningCountdown(300);
@@ -1107,6 +1152,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem('trackpulse_session_expired_reason');
     setSessionExpiredReason(null);
     lastWebActivityTimestampRef.current = Date.now();
+    lastMouseActiveTimestampRef.current = Date.now();
+    lastKeyboardActiveTimestampRef.current = Date.now();
     setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
     setIsSessionWarningActive(false);
     setWebSessionWarningCountdown(300);
@@ -1150,6 +1197,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loginTime: nowIso,
     };
     safeSetDoc(doc(db, 'user_presence', user.id), loginPresence, { merge: true }).catch(() => {});
+    fetch('/api/presence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(loginPresence),
+    }).catch(() => {});
     setUserPresenceList((prev) => {
       const existing = prev.find((p) => p.userId === user.id);
       if (existing) {
@@ -1213,9 +1265,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: 'offline' as const,
         isTracking: false,
         isPaused: false,
+        currentTask: 'Shift Concluded',
         lastHeartbeat: new Date().toISOString(),
       };
       safeSetDoc(doc(db, 'user_presence', currentUser.id), offlineDoc, { merge: true }).catch(() => {});
+      fetch('/api/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, ...offlineDoc }),
+      }).catch(() => {});
       setUserPresenceList((prev) =>
         prev.map((p) =>
           p.userId === currentUser.id
@@ -1284,11 +1342,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           timestamp: now.toISOString(),
           dateFormatted,
-          actorId: currentUser.id,
-          actorName: currentUser.name,
-          actorRole: currentUser.role,
+          actorId: currentUser?.id || 'agent',
+          actorName: currentUser?.name || 'Agent',
+          actorRole: currentUser?.role || 'agent',
           category: 'Logout',
-          details: `Session expired: 10-minute web inactivity timeout. ${currentUser.name} automatically signed out of LLC Web Portal.`,
+          details: `Session expired: 10-minute web inactivity timeout. ${currentUser?.name || 'Agent'} automatically signed out of LLC Web Portal.`,
         };
 
         setAuditLogs((prev) => {
@@ -1296,6 +1354,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           triggerAutoSync(users, timeLogs, updated, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
           return updated;
         });
+
+        // Set offline in database and memory
+        if (currentUser) {
+          const offlineDoc = {
+            isOnline: false,
+            status: 'offline' as const,
+            isTracking: false,
+            isPaused: false,
+            currentTask: 'Shift Concluded',
+            lastHeartbeat: now.toISOString(),
+          };
+          safeSetDoc(doc(db, 'user_presence', currentUser.id), offlineDoc, { merge: true }).catch(() => {});
+          fetch('/api/presence', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: currentUser.id, ...offlineDoc }),
+          }).catch(() => {});
+          setUserPresenceList((prev) => prev.map((p) => (p.userId === currentUser.id ? { ...p, ...offlineDoc } : p)));
+        }
 
         localStorage.setItem('trackpulse_session_expired_reason', 'inactivity_10min');
         setSessionExpiredReason('inactivity_10min');
@@ -1454,12 +1531,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (overrideOffline) {
       const offlineDoc = {
         isOnline: false,
-        status: 'offline',
+        status: 'offline' as const,
         isTracking: false,
         isPaused: false,
+        currentTask: 'Shift Concluded',
         lastHeartbeat: nowIso,
       };
       safeSetDoc(doc(db, 'user_presence', snap.currentUser.id), offlineDoc, { merge: true }).catch(() => {});
+      fetch('/api/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: snap.currentUser.id, ...offlineDoc }),
+      }).catch(() => {});
+      setUserPresenceList((prev) =>
+        prev.map((p) =>
+          p.userId === snap.currentUser.id
+            ? { ...p, ...offlineDoc }
+            : p
+        )
+      );
       return;
     }
 
@@ -1490,6 +1580,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     safeSetDoc(doc(db, 'user_presence', snap.currentUser.id), presenceDoc, { merge: true }).catch(() => {});
+    fetch('/api/presence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(presenceDoc),
+    }).catch(() => {});
+    setUserPresenceList((prev) => {
+      const exists = prev.some((p) => p.userId === snap.currentUser.id);
+      if (exists) {
+        return prev.map((p) => (p.userId === snap.currentUser.id ? { ...p, ...presenceDoc } : p));
+      }
+      return [presenceDoc, ...prev];
+    });
   }, [isAuthenticated]);
 
   // Gentle 60-second periodic presence heartbeat (drastically reduces Firestore write quota consumption)
@@ -1683,7 +1785,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => clearInterval(interval);
   }, [isTracking, isPaused, currentActiveApp]);
 
-  // Real-time Background Inactivity Detector: Random 10-15 minute threshold check
+  // Real-time Background Inactivity Detector: Random 10-15 minute threshold check & Desktop Software 30-Minute Inactivity Prompt
   useEffect(() => {
     let idleInterval: any = null;
     if (isTracking && !isPaused) {
@@ -1693,16 +1795,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const inactivitySec = lastActive > 0 ? Math.floor((now - lastActive) / 1000) : 0;
         setCurrentInactivitySeconds(inactivitySec);
 
+        // 1. Idle deduction penalty check at random 10-15 min interval
         const thresholdSeconds = currentIdleThresholdMinutes * 60;
         if (inactivitySec >= thresholdSeconds && thresholdSeconds > 0) {
           recordIdleInactivityEvent(currentIdleThresholdMinutes);
+        }
+
+        // 2. Desktop Software 30-Minute Inactivity Prompt ("Are you still there? - Yes or No")
+        // After 30 minutes of no mouse/keyboard activity, prompt agent with 5-minute countdown
+        if (loginMode === 'software') {
+          const SOFTWARE_PROMPT_START_SECONDS = 30 * 60; // 30 mins = 1800s
+          const SOFTWARE_PROMPT_TOTAL_SECONDS = 35 * 60; // 35 mins = 2100s
+
+          if (inactivitySec >= SOFTWARE_PROMPT_START_SECONDS) {
+            const promptRemaining = Math.max(0, SOFTWARE_PROMPT_TOTAL_SECONDS - inactivitySec);
+            setIsSessionWarningActive(true);
+            setWebSessionWarningCountdown(promptRemaining);
+
+            if (promptRemaining <= 0) {
+              // 5 minutes elapsed with no button click -> Auto logout & clean database!
+              setIsSessionWarningActive(false);
+              localStorage.setItem('trackpulse_session_expired_reason', 'inactivity_30min_software');
+              setSessionExpiredReason('inactivity_30min_software');
+              stopTracking();
+              logout('30-minute desktop inactivity: prompt unanswered');
+            }
+          } else if (isSessionWarningActive && inactivitySec < SOFTWARE_PROMPT_START_SECONDS) {
+            setIsSessionWarningActive(false);
+            setWebSessionWarningCountdown(300);
+          }
         }
       }, 1000);
     } else {
       setCurrentInactivitySeconds(0);
     }
     return () => clearInterval(idleInterval);
-  }, [isTracking, isPaused, currentIdleThresholdMinutes, currentUser, currentTask, dailyAttendanceLogs, idleLogs, auditLogs, payrollRecords, users, timeLogs, leaveRequests]);
+  }, [isTracking, isPaused, currentIdleThresholdMinutes, currentUser, currentTask, dailyAttendanceLogs, idleLogs, auditLogs, payrollRecords, users, timeLogs, leaveRequests, loginMode, isSessionWarningActive]);
 
   // Periodic Random Screenshot Generator Simulator (Randomized 10–15 min intervals)
   useEffect(() => {
@@ -1794,9 +1922,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         safeSetDoc(doc(db, 'system_state', 'attendance'), { data: updatedAttendance }).catch(() => {});
       }
 
-      safeSetDoc(doc(db, 'user_presence', currentUser.id), {
+      const startTrackingPresence = {
+        userId: currentUser.id,
+        userName: currentUser.name,
+        employeeCode: currentUser.employeeCode || '',
+        role: currentUser.role,
+        designation: currentDesignation || currentUser.designation || 'Agent',
+        department: currentUser.department || 'Operations',
+        teamLeaderId: currentUser.teamLeaderId || '',
         isOnline: true,
-        status: 'online',
+        status: 'online' as const,
         isTracking: true,
         isPaused: false,
         elapsedSeconds: 0,
@@ -1805,20 +1940,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         mouseActivity: 100,
         keyboardActivity: 100,
         lastHeartbeat: nowIso,
-      }, { merge: true }).catch(() => {});
+        loginTime: nowIso,
+      };
+
+      safeSetDoc(doc(db, 'user_presence', currentUser.id), startTrackingPresence, { merge: true }).catch(() => {});
+      fetch('/api/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(startTrackingPresence),
+      }).catch(() => {});
 
       setUserPresenceList((prev) =>
         prev.map((p) =>
           p.userId === currentUser.id
             ? {
                 ...p,
-                isOnline: true,
-                status: 'online',
-                isTracking: true,
-                isPaused: false,
-                currentTask: currentTask,
-                currentApp: currentActiveApp || (loginMode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal'),
-                lastHeartbeat: nowIso,
+                ...startTrackingPresence,
               }
             : p
         )
@@ -1999,15 +2136,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Instant presence broadcast on tracking stop
     if (currentUser) {
-      safeSetDoc(doc(db, 'user_presence', currentUser.id), {
+      const stopDoc = {
         isOnline: true,
-        status: 'online',
+        status: 'online' as const,
         isTracking: false,
         isPaused: false,
         elapsedSeconds: 0,
         currentTask: 'Available / Ready',
         lastHeartbeat: new Date().toISOString(),
-      }, { merge: true }).catch(() => {});
+      };
+      safeSetDoc(doc(db, 'user_presence', currentUser.id), stopDoc, { merge: true }).catch(() => {});
+      fetch('/api/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, ...stopDoc }),
+      }).catch(() => {});
+      setUserPresenceList((prev) =>
+        prev.map((p) =>
+          p.userId === currentUser.id
+            ? { ...p, ...stopDoc }
+            : p
+        )
+      );
     }
 
     setIsTracking(false);

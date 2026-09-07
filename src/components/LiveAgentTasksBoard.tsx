@@ -36,6 +36,7 @@ import {
   ExternalLink,
   Activity,
   EyeOff,
+  LogIn,
 } from 'lucide-react';
 import {
   BarChart,
@@ -108,6 +109,13 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
   // Timeframe Breakdown States (Daily / Weekly / Monthly)
   const [timeframeTab, setTimeframeTab] = useState<TimeframeMode>('daily');
   const [anchorDate, setAnchorDate] = useState<string>(todayStr);
+  const [tick, setTick] = useState(0);
+
+  // Periodic 5-second tick to update real-time task elapsed durations
+  React.useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 5000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Weekly Date Range Helper
   const getMondayFriday = (refDateStr: string) => {
@@ -169,22 +177,48 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
 
     return targetUsers.map((user) => {
       const presence = userPresenceList.find((p) => p.userId === user.id);
-      const lastHeartbeatMs = presence ? new Date(presence.lastHeartbeat).getTime() : 0;
-      const isHeartbeatFresh = presence?.isOnline && now - lastHeartbeatMs < 60000;
+      const lastHeartbeatMs = presence?.lastHeartbeat ? new Date(presence.lastHeartbeat).getTime() : 0;
+      const diffMs = now - lastHeartbeatMs;
 
       let calculatedStatus: 'online' | 'idle' | 'offline' = 'offline';
-      if (isHeartbeatFresh) {
-        calculatedStatus = presence.status;
-      } else if (presence && presence.isOnline) {
+      if (!presence || !presence.isOnline) {
+        calculatedStatus = 'offline';
+      } else if (diffMs > 10 * 60 * 1000) {
+        // Inactive / unclosed session > 10 minutes -> Automatically mark OFFLINE
+        calculatedStatus = 'offline';
+      } else if (diffMs > 2.5 * 60 * 1000) {
+        // Heartbeat lapsed slightly (2.5 - 10 min)
+        calculatedStatus = 'idle';
+      } else if (presence.isPaused) {
         calculatedStatus = 'idle';
       } else {
-        calculatedStatus = 'offline';
+        calculatedStatus = presence.status || 'online';
       }
 
       // Today's logs for this user
       const userTodayLogs = timeLogs.filter((l) => l.userId === user.id && l.date === todayStr);
       const todayTotalSec = userTodayLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
       const latestLog = userTodayLogs[0] || timeLogs.find((l) => l.userId === user.id);
+
+      // Attendance / Login Time
+      const attendance = dailyAttendanceLogs.find((a) => a.userId === user.id && a.date === todayStr);
+      let loginTimeDisplay = attendance?.firstLoginTime || '';
+      if (!loginTimeDisplay && presence?.loginTime) {
+        try {
+          loginTimeDisplay = new Date(presence.loginTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch {
+          // fallback
+        }
+      }
+
+      // Real-Time Task Elapsed Time
+      let taskElapsedSeconds = 0;
+      if (calculatedStatus === 'online' || calculatedStatus === 'idle') {
+        taskElapsedSeconds = presence?.elapsedSeconds || 0;
+        if (presence?.isTracking && !presence?.isPaused && diffMs > 0 && diffMs < 60000) {
+          taskElapsedSeconds += Math.floor(diffMs / 1000);
+        }
+      }
 
       // Determine task name
       let currentTaskName = presence?.currentTask;
@@ -217,11 +251,13 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
         mouseActivity,
         keyboardActivity,
         todayTotalSec,
+        loginTimeDisplay: loginTimeDisplay || (calculatedStatus !== 'offline' ? 'Active Shift' : '--:--'),
+        taskElapsedSeconds,
         supervisorName: supervisor?.name || 'Direct / Management',
         latestLog,
       };
     });
-  }, [targetUsers, userPresenceList, timeLogs, todayStr, users]);
+  }, [targetUsers, userPresenceList, timeLogs, todayStr, users, dailyAttendanceLogs, tick]);
 
   // Filter live agents by search & filters
   const filteredLiveAgents = useMemo(() => {
@@ -721,7 +757,11 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
                         >
                           {isOnline ? '🟢 Working' : isIdle ? '🟡 Inactive' : '⚪ Offline'}
                         </span>
-                        <span className="text-[10px] font-mono text-slate-400">
+                        <span className="text-[10px] font-medium text-slate-500 flex items-center gap-1">
+                          <LogIn className="w-2.5 h-2.5 text-slate-400" />
+                          Login: <strong className="font-mono text-slate-700">{agent.loginTimeDisplay}</strong>
+                        </span>
+                        <span className="text-[9px] font-mono text-slate-400">
                           {isOnline ? `PHT ${manilaCurrentTime}` : 'Manila (PHT)'}
                         </span>
                       </div>
@@ -748,6 +788,19 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
                           {agent.currentTaskName}
                         </span>
                       </div>
+
+                      {/* Real-time Task Elapsed Time */}
+                      {(isOnline || isIdle) && (
+                        <div className="flex items-center justify-between bg-blue-50/90 border border-blue-200/80 rounded-lg px-2.5 py-1 text-[11px]">
+                          <span className="font-semibold text-blue-900 flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
+                            <span>Task Elapsed Time:</span>
+                          </span>
+                          <span className="font-mono font-extrabold text-blue-700 bg-white px-2 py-0.5 rounded border border-blue-200/60 shadow-2xs">
+                            {agent.taskElapsedSeconds > 0 ? formatDurationHuman(agent.taskElapsedSeconds) : 'Just Started (< 1m)'}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Active App / Window */}
                       <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-200/80">

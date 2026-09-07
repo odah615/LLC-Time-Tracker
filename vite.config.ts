@@ -12,6 +12,7 @@ function centralSyncBridge(): Plugin {
     spreadsheetId: '1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA',
     timeLogs: [] as any[],
     users: [] as any[],
+    presence: {} as Record<string, any>,
   };
 
   try {
@@ -121,6 +122,75 @@ function centralSyncBridge(): Plugin {
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(syncState.users));
+          return;
+        }
+
+        if (url === '/api/presence') {
+          const now = Date.now();
+          if (!syncState.presence) syncState.presence = {};
+
+          // Auto-timeout sweep:
+          // If inactive/heartbeat missing for > 10 mins -> offline (isOnline: false)
+          // If inactive/heartbeat missing for > 2.5 mins -> idle (status: 'idle')
+          for (const key of Object.keys(syncState.presence)) {
+            const item = syncState.presence[key];
+            if (item && item.isOnline) {
+              const lastMs = item.lastHeartbeat ? new Date(item.lastHeartbeat).getTime() : 0;
+              const diffMs = now - lastMs;
+              if (diffMs > 10 * 60 * 1000) {
+                item.isOnline = false;
+                item.status = 'offline';
+                item.isTracking = false;
+                item.currentTask = 'Shift Concluded';
+              } else if (diffMs > 2.5 * 60 * 1000 && !item.isPaused) {
+                item.status = 'idle';
+              }
+            }
+          }
+
+          if (req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', () => {
+              try {
+                const payload = JSON.parse(body);
+                const itemsToMerge = Array.isArray(payload) ? payload : [payload];
+                if (!syncState.presence) syncState.presence = {};
+                for (const p of itemsToMerge) {
+                  if (p && p.userId) {
+                    const existing = syncState.presence[p.userId] || {};
+                    syncState.presence[p.userId] = {
+                      ...existing,
+                      ...p,
+                      lastHeartbeat: p.lastHeartbeat || new Date().toISOString(),
+                    };
+                  }
+                }
+                saveSyncState();
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                  success: true,
+                  count: Object.keys(syncState.presence).length,
+                  data: Object.values(syncState.presence),
+                }));
+              } catch (err) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Invalid JSON' }));
+              }
+            });
+            return;
+          }
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(Object.values(syncState.presence)));
+          return;
+        }
+
+        if (url === '/api/presence/reset' && req.method === 'POST') {
+          syncState.presence = {};
+          saveSyncState();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, message: 'All live presences reset' }));
           return;
         }
 

@@ -7,16 +7,18 @@ export const InactivityWarningModal: React.FC = () => {
   const {
     isAuthenticated,
     loginMode,
+    currentTask,
     isSessionWarningActive,
     webSessionWarningCountdown,
     refreshWebSession,
     logout,
   } = useApp();
 
-  if (!isAuthenticated || loginMode !== 'webapp' || !isSessionWarningActive) {
+  if (!isAuthenticated || !isSessionWarningActive) {
     return null;
   }
 
+  const isSoftware = loginMode === 'software';
   const minutes = Math.floor(webSessionWarningCountdown / 60);
   const seconds = webSessionWarningCountdown % 60;
   const formattedCountdown = `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -46,13 +48,17 @@ export const InactivityWarningModal: React.FC = () => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-lg text-white">Inactivity Alert</h3>
+                <h3 className="font-extrabold text-lg text-white">
+                  {isSoftware ? 'Are you still there?' : 'Inactivity Alert'}
+                </h3>
                 <span className="bg-amber-500/20 border border-amber-400/40 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  5 Min Idle
+                  {isSoftware ? '30 Min Inactivity Check' : '5 Min Idle'}
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                No activity detected on this web portal session for 5 minutes.
+                {isSoftware
+                  ? `No mouse or keyboard activity detected for 30 minutes. Are you still working on ${currentTask || 'your shift'}?`
+                  : 'No activity detected on this web portal session for 5 minutes.'}
               </p>
             </div>
           </div>
@@ -60,7 +66,8 @@ export const InactivityWarningModal: React.FC = () => {
           {/* Big Visual Countdown Card */}
           <div className="bg-slate-950/80 border border-amber-500/30 rounded-2xl p-5 my-4 text-center space-y-2.5 relative">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-amber-400" /> Web Session Auto-Logout In
+              <Clock className="w-3.5 h-3.5 text-amber-400" />
+              <span>{isSoftware ? 'Auto-Logout & Timesheet Save In' : 'Web Session Auto-Logout In'}</span>
             </p>
 
             <div className="text-4xl sm:text-5xl font-extrabold font-mono text-amber-400 tracking-tight">
@@ -82,7 +89,9 @@ export const InactivityWarningModal: React.FC = () => {
             </div>
 
             <p className="text-[11px] text-slate-400 pt-1">
-              Move your mouse, type any key, or click below to keep your session active.
+              {isSoftware
+                ? 'Click "Yes, I\'m Here" to continue tracking, or session will automatically conclude.'
+                : 'Move your mouse, type any key, or click below to keep your session active.'}
             </p>
           </div>
 
@@ -90,30 +99,32 @@ export const InactivityWarningModal: React.FC = () => {
           <div className="flex items-center gap-2 text-[11px] text-slate-400 bg-slate-800/60 p-3 rounded-xl border border-slate-700/50 mb-6">
             <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
             <span>
-              Web sessions auto-expire after 10 total minutes of inactivity to safeguard company data and timesheet accuracy.
+              {isSoftware
+                ? 'To protect payroll and accurate hours, shifts automatically close if this prompt is not answered within 5 minutes.'
+                : 'Web sessions auto-expire after 10 total minutes of inactivity to safeguard company data and timesheet accuracy.'}
             </span>
           </div>
 
-          {/* Actions */}
+          {/* Actions: Yes or No */}
           <div className="flex flex-col sm:flex-row items-center gap-3">
             <button
               id="stay-logged-in-btn"
               type="button"
               onClick={refreshWebSession}
-              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 transition-all hover:scale-[1.02] cursor-pointer"
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all hover:scale-[1.02] cursor-pointer"
             >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>I'm Still Working (Stay Signed In)</span>
+              <CheckCircle2 className="w-4 h-4 text-slate-950" />
+              <span>{isSoftware ? "Yes, I'm Here (Continue Shift)" : "I'm Still Working (Stay Signed In)"}</span>
             </button>
 
             <button
               id="logout-now-btn"
               type="button"
-              onClick={() => logout('manual_inactivity_prompt')}
+              onClick={() => logout(isSoftware ? 'inactivity_30min_prompt' : 'manual_inactivity_prompt')}
               className="w-full sm:w-auto py-3 px-4 rounded-xl bg-slate-800 hover:bg-red-950/80 hover:border-red-600/80 border border-slate-700 text-slate-300 hover:text-red-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
             >
               <LogOut className="w-4 h-4 text-red-400" />
-              <span>Sign Out</span>
+              <span>{isSoftware ? 'No, Sign Out' : 'Sign Out'}</span>
             </button>
           </div>
         </motion.div>
