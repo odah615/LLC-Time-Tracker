@@ -17,6 +17,26 @@ export const maskPassword = (pwd?: string): string => {
   return `${visiblePart}${maskedPart}`;
 };
 
+/**
+ * Validates that a Google Apps Script webhook URL is valid, uses HTTPS, and is not a placeholder
+ */
+export const isValidWebhookUrl = (url?: string | null): boolean => {
+  if (!url || typeof url !== 'string') return false;
+  const clean = url.trim();
+  if (!clean.startsWith('https://')) return false;
+  if (
+    clean.includes('...') ||
+    clean.includes('YOUR_') ||
+    clean.includes('example.com') ||
+    clean.includes('<') ||
+    clean.includes('>') ||
+    clean.length < 25
+  ) {
+    return false;
+  }
+  return true;
+};
+
 export const SPREADSHEET_SCHEMA = [
   {
     tabName: 'Login_Logs',
@@ -285,10 +305,84 @@ function maskPassword(pwd) {
 function createAllTabsNow() {
   var ss = getSpreadsheet();
   setupSheetsSchema();
+  repairAndCleanAllTabs();
   SpreadsheetApp.flush();
   var sheetCount = ss.getSheets().length;
   Logger.log('SUCCESS! Initialized tabs in Spreadsheet: "' + ss.getName() + '" (ID: ' + ss.getId() + ') | Total tabs: ' + sheetCount);
-  return 'Created all tabs in ' + ss.getName();
+  return 'Created and formatted all tabs in ' + ss.getName();
+}
+
+/**
+ * One-click utility: Select repairAndCleanAllTabs -> click Run in Apps Script editor.
+ * Removes broken filters, wipes ghost empty rows, fixes row headers, and restores clean layout.
+ */
+function repairAndCleanAllTabs() {
+  var ss = getSpreadsheet();
+  setupSheetsSchema();
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    var sh = sheets[i];
+    try {
+      var filter = sh.getFilter();
+      if (filter) {
+        filter.remove();
+      }
+    } catch (e) {}
+  }
+  SpreadsheetApp.flush();
+  Logger.log('SUCCESS! Repaired all tabs and removed all broken filters.');
+  return 'All spreadsheet tabs successfully cleaned and repaired!';
+}
+
+/**
+ * Atomic batch writer:
+ * 1. Automatically removes any active filter that was hiding rows.
+ * 2. Clears previous contents.
+ * 3. Writes Row 1 (Headers) followed directly by data rows in ONE single setValues call (no blank gaps!).
+ * 4. Freezes Row 1 and applies header styling.
+ * 5. Trims excess empty ghost rows at the bottom.
+ */
+function populateCleanSheet(sheet, headers, rows, headerColor) {
+  if (!sheet) return;
+
+  // 1. Remove active filter so data rows are never hidden or displaced
+  try {
+    var existingFilter = sheet.getFilter();
+    if (existingFilter) {
+      existingFilter.remove();
+    }
+  } catch (fErr) {}
+
+  // 2. Clear entire sheet
+  sheet.clear();
+
+  // 3. Assemble complete 2D matrix
+  var allData = [headers];
+  if (rows && rows.length > 0) {
+    allData = allData.concat(rows);
+  }
+
+  var numRows = allData.length;
+  var numCols = headers.length;
+
+  // 4. Atomic batch write: Starts strictly at Row 1, Col 1 (No gaps between header & row 2!)
+  var targetRange = sheet.getRange(1, 1, numRows, numCols);
+  targetRange.setValues(allData);
+
+  // 5. Header formatting
+  sheet.getRange(1, 1, 1, numCols)
+    .setFontWeight('bold')
+    .setBackground(headerColor || '#0f172a')
+    .setFontColor('#ffffff');
+  sheet.setFrozenRows(1);
+
+  // 6. Delete ghost blank rows at the bottom (leave clean 5 buffer rows)
+  try {
+    var maxRows = sheet.getMaxRows();
+    if (maxRows > numRows + 5 && maxRows > 25) {
+      sheet.deleteRows(numRows + 6, maxRows - (numRows + 5));
+    }
+  } catch (rErr) {}
 }
 
 function setupSheetsSchema() {
@@ -332,7 +426,7 @@ function setupSheetsSchema() {
     {
       tab: 'Employee_Directory',
       color: '#0284c7', // Sky
-      headers: ['Employee Code', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Date Hired', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)']
+      headers: ['Employee Code', 'Username', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Date Hired', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)']
     },
     {
       tab: 'Leave_Requests',
@@ -406,17 +500,23 @@ function doPost(e) {
     }
 
     if (data.action === 'SYNC_ALL' || data.action === 'APPEND_LOG') {
-      var auditLogs = data.auditLogs || [];
-      var users = data.users || [];
-      var timeLogs = data.timeLogs || [];
-      var idleLogs = data.idleLogs || [];
+      var rawAuditLogs = data.auditLogs || [];
+      var rawUsers = data.users || [];
+      var rawTimeLogs = data.timeLogs || [];
+      var rawIdleLogs = data.idleLogs || [];
       var dailyAttendanceLogs = data.dailyAttendanceLogs || [];
       var leaveRequests = data.leaveRequests || [];
       var payrollRecords = data.payrollRecords || [];
 
-      // Helper to lookup user details by id or name
+      // Deduplicate users
       var userMap = {};
-      users.forEach(function(u) {
+      var users = [];
+      rawUsers.forEach(function(u) {
+        var key = (u.employeeCode || u.id || u.username || '').toUpperCase();
+        if (key && !userMap[key]) {
+          userMap[key] = u;
+          users.push(u);
+        }
         if (u.id) userMap[u.id] = u;
         if (u.name) userMap[u.name] = u;
       });
@@ -424,437 +524,455 @@ function doPost(e) {
       // ==========================================
       // 1. POPULATE LOGIN LOGS (Support both 'Login_Logs' and 'Login_Session_Logs')
       // ==========================================
-      var loginSheet = ss.getSheetByName('Login_Logs');
-      var loginSessionSheet = ss.getSheetByName('Login_Session_Logs');
-      var allLoginSheets = [loginSheet, loginSessionSheet].filter(Boolean);
-
-      var loginEvents = auditLogs.filter(function(l) {
+      var loginHeaders = ['Log ID', 'Timestamp (ISO)', 'Formatted Date & Time', 'Employee Code', 'Employee Name', 'User Role', 'Designation', 'Login Platform / Mode', 'Timezone & Location', 'Session Status', 'Account Password (Masked)'];
+      var loginEvents = rawAuditLogs.filter(function(l) {
         return l.category === 'Login' || (l.details && l.details.toLowerCase().indexOf('signed in') !== -1);
       });
 
-      allLoginSheets.forEach(function(s) {
-        s.clear();
-        s.appendRow(['Log ID', 'Timestamp (ISO)', 'Formatted Date & Time', 'Employee Code', 'Employee Name', 'User Role', 'Designation', 'Login Platform / Mode', 'Timezone & Location', 'Session Status', 'Account Password (Masked)']);
-        s.getRange(1, 1, 1, 11).setFontWeight('bold').setBackground('#1e3a8a').setFontColor('#ffffff');
-        s.setFrozenRows(1);
+      var loginSeen = {};
+      var loginRows = [];
+      loginEvents.forEach(function(l) {
+        var dedupeKey = l.id || (l.actorName + '_' + l.timestamp);
+        if (loginSeen[dedupeKey]) return;
+        loginSeen[dedupeKey] = true;
 
-        loginEvents.forEach(function(l) {
-          var matchedUser = userMap[l.actorId] || userMap[l.actorName] || {};
-          var mode = (l.details && l.details.indexOf('Desktop') !== -1) ? 'Desktop Software App' : 'Web Portal';
-          var maskedPass = maskPassword(matchedUser.password || 'Password123!');
-          s.appendRow([
-            l.id,
-            l.timestamp,
-            l.dateFormatted || l.timestamp,
-            matchedUser.employeeCode || 'N/A',
-            l.actorName,
-            l.actorRole || matchedUser.role || 'agent',
-            matchedUser.designation || 'Agent',
-            mode,
-            (matchedUser.geoCity ? matchedUser.geoCity + ' (' + (matchedUser.geoTimezone || 'GMT+8') + ')' : 'Toronto, Canada (America/Toronto)'),
-            'Authenticated (Active)',
-            maskedPass
-          ]);
-        });
+        var matchedUser = userMap[(l.actorId || '').toUpperCase()] || userMap[l.actorId] || userMap[l.actorName] || {};
+        var mode = (l.details && l.details.indexOf('Desktop') !== -1) ? 'Desktop Software App' : 'Web Portal';
+        var maskedPass = maskPassword(matchedUser.password || 'Password123!');
+        loginRows.push([
+          l.id,
+          l.timestamp,
+          l.dateFormatted || l.timestamp,
+          matchedUser.employeeCode || 'N/A',
+          l.actorName,
+          l.actorRole || matchedUser.role || 'agent',
+          matchedUser.designation || 'Agent',
+          mode,
+          (matchedUser.geoCity ? matchedUser.geoCity + ' (' + (matchedUser.geoTimezone || 'GMT+8') + ')' : 'Toronto, Canada (America/Toronto)'),
+          'Authenticated (Active)',
+          maskedPass
+        ]);
       });
+
+      loginRows.sort(function(a, b) {
+        return new Date(b[1] || 0).getTime() - new Date(a[1] || 0).getTime();
+      });
+
+      var loginSheet = ss.getSheetByName('Login_Logs');
+      if (loginSheet) populateCleanSheet(loginSheet, loginHeaders, loginRows, '#1e3a8a');
+      var loginSessionSheet = ss.getSheetByName('Login_Session_Logs');
+      if (loginSessionSheet) populateCleanSheet(loginSessionSheet, loginHeaders, loginRows, '#1e3a8a');
 
       // ==========================================
       // 2. POPULATE LOGOUT LOGS (Dedicated Tab)
       // ==========================================
+      var logoutHeaders = ['Log ID', 'Timestamp (ISO)', 'Formatted Date & Time', 'Employee Code', 'Employee Name', 'User Role', 'Designation', 'Logout Platform / Event', 'Session Duration / Notes', 'Status'];
+      var logoutEvents = rawAuditLogs.filter(function(l) {
+        return l.category === 'Logout' || (l.details && (l.details.toLowerCase().indexOf('signed out') !== -1 || l.details.toLowerCase().indexOf('session') !== -1 || l.details.toLowerCase().indexOf('inactivity') !== -1));
+      });
+
+      var logoutSeen = {};
+      var logoutRows = [];
+      logoutEvents.forEach(function(l) {
+        var dedupeKey = l.id || (l.actorName + '_' + l.timestamp);
+        if (logoutSeen[dedupeKey]) return;
+        logoutSeen[dedupeKey] = true;
+
+        var matchedUser = userMap[(l.actorId || '').toUpperCase()] || userMap[l.actorId] || userMap[l.actorName] || {};
+        var eventType = 'Manual Sign Out (Web Portal)';
+        if (l.details && (l.details.toLowerCase().indexOf('10-minute') !== -1 || l.details.toLowerCase().indexOf('timeout') !== -1)) {
+          eventType = '10-Min Inactivity Auto-Logout (Web)';
+        } else if (l.details && l.details.toLowerCase().indexOf('desktop') !== -1) {
+          eventType = 'Desktop Software Sign Out';
+        }
+        logoutRows.push([
+          l.id,
+          l.timestamp,
+          l.dateFormatted || l.timestamp,
+          matchedUser.employeeCode || 'N/A',
+          l.actorName,
+          l.actorRole || matchedUser.role || 'agent',
+          matchedUser.designation || 'Agent',
+          eventType,
+          l.details || 'User signed out of LLC Time Tracker.',
+          'Logged Out (Complete)'
+        ]);
+      });
+
+      logoutRows.sort(function(a, b) {
+        return new Date(b[1] || 0).getTime() - new Date(a[1] || 0).getTime();
+      });
+
       var logoutSheet = ss.getSheetByName('Logout_Logs');
-      if (logoutSheet) {
-        logoutSheet.clear();
-        logoutSheet.appendRow(['Log ID', 'Timestamp (ISO)', 'Formatted Date & Time', 'Employee Code', 'Employee Name', 'User Role', 'Designation', 'Logout Platform / Event', 'Session Duration / Notes', 'Status']);
-        logoutSheet.getRange(1, 1, 1, 10).setFontWeight('bold').setBackground('#334155').setFontColor('#ffffff');
-        logoutSheet.setFrozenRows(1);
-
-        var logoutEvents = auditLogs.filter(function(l) {
-          return l.category === 'Logout' || (l.details && (l.details.toLowerCase().indexOf('signed out') !== -1 || l.details.toLowerCase().indexOf('session') !== -1 || l.details.toLowerCase().indexOf('inactivity') !== -1));
-        });
-
-        logoutEvents.forEach(function(l) {
-          var matchedUser = userMap[l.actorId] || userMap[l.actorName] || {};
-          var eventType = 'Manual Sign Out (Web Portal)';
-          if (l.details && (l.details.toLowerCase().indexOf('10-minute') !== -1 || l.details.toLowerCase().indexOf('timeout') !== -1)) {
-            eventType = '10-Min Inactivity Auto-Logout (Web)';
-          } else if (l.details && l.details.toLowerCase().indexOf('desktop') !== -1) {
-            eventType = 'Desktop Software Sign Out';
-          }
-          logoutSheet.appendRow([
-            l.id,
-            l.timestamp,
-            l.dateFormatted || l.timestamp,
-            matchedUser.employeeCode || 'N/A',
-            l.actorName,
-            l.actorRole || matchedUser.role || 'agent',
-            matchedUser.designation || 'Agent',
-            eventType,
-            l.details || 'User signed out of LLC Time Tracker.',
-            'Logged Out (Complete)'
-          ]);
-        });
-      }
+      if (logoutSheet) populateCleanSheet(logoutSheet, logoutHeaders, logoutRows, '#334155');
 
       // ==========================================
       // 3. POPULATE IDLE LOGS (Dedicated Tab)
       // ==========================================
+      var idleHeaders = ['Idle Log ID', 'Timestamp', 'Employee Code', 'Employee Name', 'Inactivity Duration (Mins)', 'Deducted From Shift', 'Required Shift Extension', 'Active Task', 'Reason / Trigger', 'Status'];
+      var idleSeen = {};
+      var idleRows = [];
+      rawIdleLogs.forEach(function(i) {
+        var dedupeKey = i.id || (i.userName + '_' + i.timestamp);
+        if (idleSeen[dedupeKey]) return;
+        idleSeen[dedupeKey] = true;
+
+        var matchedUser = userMap[i.userId] || userMap[i.userName] || {};
+        var deductMins = '-' + (i.deductedFromShiftMinutes != null ? i.deductedFromShiftMinutes : i.durationMinutes) + ' mins';
+        var extendMins = '+' + (i.requiredExtensionMinutes != null ? i.requiredExtensionMinutes : i.durationMinutes) + ' mins';
+        idleRows.push([
+          i.id,
+          i.timestamp,
+          matchedUser.employeeCode || 'N/A',
+          i.userName,
+          i.durationMinutes,
+          deductMins,
+          extendMins,
+          i.task,
+          i.reason || 'Zero Keyboard / Mouse Activity across 10-15m check',
+          i.status || 'logged'
+        ]);
+      });
+
       var idleSheet = ss.getSheetByName('Idle_Logs');
-      if (idleSheet) {
-        idleSheet.clear();
-        idleSheet.appendRow(['Idle Log ID', 'Timestamp', 'Employee Code', 'Employee Name', 'Inactivity Duration (Mins)', 'Deducted From Shift', 'Required Shift Extension', 'Active Task', 'Reason / Trigger', 'Status']);
-        idleSheet.getRange(1, 1, 1, 10).setFontWeight('bold').setBackground('#b45309').setFontColor('#ffffff');
-        idleSheet.setFrozenRows(1);
-
-        idleLogs.forEach(function(i) {
-          var matchedUser = userMap[i.userId] || userMap[i.userName] || {};
-          var deductMins = '-' + (i.deductedFromShiftMinutes != null ? i.deductedFromShiftMinutes : i.durationMinutes) + ' mins';
-          var extendMins = '+' + (i.requiredExtensionMinutes != null ? i.requiredExtensionMinutes : i.durationMinutes) + ' mins';
-          idleSheet.appendRow([
-            i.id,
-            i.timestamp,
-            matchedUser.employeeCode || 'N/A',
-            i.userName,
-            i.durationMinutes,
-            deductMins,
-            extendMins,
-            i.task,
-            i.reason,
-            i.status || 'logged'
-          ]);
-        });
-      }
+      if (idleSheet) populateCleanSheet(idleSheet, idleHeaders, idleRows, '#b45309');
 
       // ==========================================
-      // 4. POPULATE ACTIVE LOGS (Dedicated Tab)
+      // 4. POPULATE ACTIVE LOGS (Timesheet Sessions)
       // ==========================================
+      var activeHeaders = ['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Net Active Duration (HH:MM:SS)', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes'];
+      var activeSeen = {};
+      var activeRows = [];
+      rawTimeLogs.forEach(function(t) {
+        var dedupeKey = t.id || (t.userId + '_' + t.date + '_' + t.startTime);
+        if (activeSeen[dedupeKey]) return;
+        activeSeen[dedupeKey] = true;
+
+        var matchedUser = userMap[t.userId] || userMap[t.userName] || {};
+        var durStr = typeof t.durationSeconds === 'number' 
+          ? Math.floor(t.durationSeconds / 3600).toString().padStart(2, '0') + ':' + Math.floor((t.durationSeconds % 3600) / 60).toString().padStart(2, '0') + ':' + (t.durationSeconds % 60).toString().padStart(2, '0')
+          : (t.duration || '00:00:00');
+        var idleMins = t.idleSeconds ? Math.round(t.idleSeconds / 60) + ' mins' : '0 mins';
+
+        activeRows.push([
+          t.id || 'N/A',
+          matchedUser.employeeCode || 'N/A',
+          t.userName || 'Unknown',
+          t.designation || 'Agent',
+          t.task || 'General',
+          t.date || '',
+          t.startTime || '',
+          t.endTime || 'Running Live',
+          durStr,
+          idleMins,
+          (t.mouseActivityAvg != null ? t.mouseActivityAvg : 0) + '%',
+          (t.keyboardActivityAvg != null ? t.keyboardActivityAvg : 0) + '%',
+          t.status || 'completed',
+          t.notes || ''
+        ]);
+      });
+
+      activeRows.sort(function(a, b) {
+        var tA = new Date((a[5] || '') + ' ' + (a[6] || '')).getTime();
+        var tB = new Date((b[5] || '') + ' ' + (b[6] || '')).getTime();
+        if (isNaN(tA)) tA = new Date(a[6] || 0).getTime();
+        if (isNaN(tB)) tB = new Date(b[6] || 0).getTime();
+        return (tB || 0) - (tA || 0);
+      });
+
       var activeSheet = ss.getSheetByName('Active_Logs');
-      if (activeSheet) {
-        activeSheet.clear();
-        activeSheet.appendRow(['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Net Active Duration (HH:MM:SS)', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes']);
-        activeSheet.getRange(1, 1, 1, 14).setFontWeight('bold').setBackground('#047857').setFontColor('#ffffff');
-        activeSheet.setFrozenRows(1);
-
-        timeLogs.forEach(function(t) {
-          var matchedUser = userMap[t.userId] || userMap[t.userName] || {};
-          var durStr = typeof t.durationSeconds === 'number' 
-            ? Math.floor(t.durationSeconds / 3600).toString().padStart(2, '0') + ':' + Math.floor((t.durationSeconds % 3600) / 60).toString().padStart(2, '0') + ':' + (t.durationSeconds % 60).toString().padStart(2, '0')
-            : (t.duration || '00:00:00');
-          var idleMins = t.idleSeconds ? Math.round(t.idleSeconds / 60) + ' mins' : '0 mins';
-
-          activeSheet.appendRow([
-            t.id || 'N/A',
-            matchedUser.employeeCode || 'N/A',
-            t.userName || 'Unknown',
-            t.designation || 'Agent',
-            t.task || 'General',
-            t.date || '',
-            t.startTime || '',
-            t.endTime || 'Running Live',
-            durStr,
-            idleMins,
-            (t.mouseActivityAvg != null ? t.mouseActivityAvg : 0) + '%',
-            (t.keyboardActivityAvg != null ? t.keyboardActivityAvg : 0) + '%',
-            t.status || 'completed',
-            t.notes || ''
-          ]);
-        });
-      }
+      if (activeSheet) populateCleanSheet(activeSheet, activeHeaders, activeRows, '#047857');
 
       // ==========================================
       // 5. POPULATE INACTIVE LOGS (Dedicated Tab)
       // ==========================================
-      var inactiveSheet = ss.getSheetByName('Inactive_Logs');
-      if (inactiveSheet) {
-        inactiveSheet.clear();
-        inactiveSheet.appendRow(['Inactivity Log ID', 'Date & Time', 'Employee Code', 'Employee Name', 'Task Category', 'Inactivity Duration (Mins)', 'Deduction Status', 'Trigger Source', 'Impact on Shift & Extension']);
-        inactiveSheet.getRange(1, 1, 1, 9).setFontWeight('bold').setBackground('#c2410c').setFontColor('#ffffff');
-        inactiveSheet.setFrozenRows(1);
+      var inactiveHeaders = ['Inactivity Log ID', 'Date & Time', 'Employee Code', 'Employee Name', 'Task Category', 'Inactivity Duration (Mins)', 'Deduction Status', 'Trigger Source', 'Impact on Shift & Extension'];
+      var inactiveRows = [];
+      rawIdleLogs.forEach(function(i) {
+        var matchedUser = userMap[i.userId] || userMap[i.userName] || {};
+        var deductMins = (i.deductedFromShiftMinutes != null ? i.deductedFromShiftMinutes : i.durationMinutes);
+        var extendMins = (i.requiredExtensionMinutes != null ? i.requiredExtensionMinutes : i.durationMinutes);
+        inactiveRows.push([
+          'inact-' + i.id,
+          i.timestamp,
+          matchedUser.employeeCode || 'N/A',
+          i.userName,
+          i.task,
+          i.durationMinutes,
+          'Deducted -' + deductMins + 'm from Timesheet',
+          i.reason || 'Zero Keyboard / Mouse Activity across 10-15m check',
+          'Shift Extended by +' + extendMins + ' mins to cover'
+        ]);
+      });
 
-        // Populate from idleLogs + any explicit inactivity events
-        idleLogs.forEach(function(i) {
-          var matchedUser = userMap[i.userId] || userMap[i.userName] || {};
-          var deductMins = (i.deductedFromShiftMinutes != null ? i.deductedFromShiftMinutes : i.durationMinutes);
-          var extendMins = (i.requiredExtensionMinutes != null ? i.requiredExtensionMinutes : i.durationMinutes);
-          inactiveSheet.appendRow([
-            'inact-' + i.id,
-            i.timestamp,
-            matchedUser.employeeCode || 'N/A',
-            i.userName,
-            i.task,
-            i.durationMinutes,
-            'Deducted -' + deductMins + 'm from Timesheet',
-            i.reason || 'Zero Keyboard / Mouse Activity across 10-15m check',
-            'Shift Extended by +' + extendMins + ' mins to cover'
-          ]);
-        });
-      }
+      var inactiveSheet = ss.getSheetByName('Inactive_Logs');
+      if (inactiveSheet) populateCleanSheet(inactiveSheet, inactiveHeaders, inactiveRows, '#c2410c');
 
       // ==========================================
       // 6. POPULATE ADMIN AUDIT LOGS & AUDIT LOGS
       // ==========================================
       var adminAuditSheet = ss.getSheetByName('Admin_Audit_Logs');
       var fullAuditSheet = ss.getSheetByName('Audit_Logs');
+      var auditHeaders = ['Audit ID', 'Timestamp (ISO)', 'Formatted Date', 'Actor Name', 'Actor Role', 'Action Category', 'Affected Employee', 'Previous Value', 'New Value', 'Action Details'];
 
-      if (fullAuditSheet) {
-        fullAuditSheet.clear();
-        fullAuditSheet.appendRow(['Audit ID', 'Timestamp (ISO)', 'Formatted Date', 'Actor Name', 'Actor Role', 'Action Category', 'Affected Employee', 'Previous Value', 'New Value', 'Action Details']);
-        fullAuditSheet.getRange(1, 1, 1, 10).setFontWeight('bold').setBackground('#312e81').setFontColor('#ffffff');
-        fullAuditSheet.setFrozenRows(1);
-        auditLogs.forEach(function(l) {
-          fullAuditSheet.appendRow([
-            l.id,
-            l.timestamp,
-            l.dateFormatted || l.timestamp,
-            l.actorName,
-            l.actorRole,
-            l.category,
-            l.targetEmployeeName || 'N/A',
-            l.fromValue || '-',
-            l.toValue || '-',
-            l.details
-          ]);
+      var fullAuditRows = [];
+      var auditSeen = {};
+      rawAuditLogs.forEach(function(l) {
+        var dedupeKey = l.id || (l.actorName + '_' + l.timestamp + '_' + l.category);
+        if (auditSeen[dedupeKey]) return;
+        auditSeen[dedupeKey] = true;
+        fullAuditRows.push([
+          l.id,
+          l.timestamp,
+          l.dateFormatted || l.timestamp,
+          l.actorName,
+          l.actorRole,
+          l.category,
+          l.targetEmployeeName || 'N/A',
+          l.fromValue || '-',
+          l.toValue || '-',
+          l.details
+        ]);
+      });
+      fullAuditRows.sort(function(a, b) {
+        return new Date(b[1] || 0).getTime() - new Date(a[1] || 0).getTime();
+      });
+      if (fullAuditSheet) populateCleanSheet(fullAuditSheet, auditHeaders, fullAuditRows, '#312e81');
+
+      var adminRows = [];
+      var adminEvents = rawAuditLogs.filter(function(l) {
+        return l.category !== 'Login' && l.category !== 'Logout' && l.category !== 'Clock In' && l.category !== 'Clock Out';
+      });
+      if (adminEvents.length === 0) {
+        adminEvents = rawAuditLogs.filter(function(l) {
+          return l.category !== 'Login' && l.category !== 'Logout';
         });
       }
-
-      if (adminAuditSheet) {
-        adminAuditSheet.clear();
-        adminAuditSheet.appendRow(['Audit ID', 'Timestamp (ISO)', 'Formatted Date', 'Actor Name', 'Actor Role', 'Action Category', 'Affected Employee', 'Previous Value', 'New Value', 'Action Details']);
-        adminAuditSheet.getRange(1, 1, 1, 10).setFontWeight('bold').setBackground('#4338ca').setFontColor('#ffffff');
-        adminAuditSheet.setFrozenRows(1);
-
-        // Filter out simple login/logout and clock in/out to keep Admin Audit strictly for governance/system changes!
-        var adminEvents = auditLogs.filter(function(l) {
-          return l.category !== 'Login' && l.category !== 'Logout' && l.category !== 'Clock In' && l.category !== 'Clock Out';
-        });
-
-        // If no admin-only events exist, fallback to non-login/logout
-        if (adminEvents.length === 0) {
-          adminEvents = auditLogs.filter(function(l) {
-            return l.category !== 'Login' && l.category !== 'Logout';
-          });
-        }
-
-        adminEvents.forEach(function(l) {
-          adminAuditSheet.appendRow([
-            l.id,
-            l.timestamp,
-            l.dateFormatted,
-            l.actorName,
-            l.actorRole,
-            l.category,
-            l.targetEmployeeName || 'N/A',
-            l.fromValue || '-',
-            l.toValue || '-',
-            l.details
-          ]);
-        });
-      }
+      var adminSeen = {};
+      adminEvents.forEach(function(l) {
+        var dedupeKey = l.id || (l.actorName + '_' + l.timestamp + '_' + l.category);
+        if (adminSeen[dedupeKey]) return;
+        adminSeen[dedupeKey] = true;
+        adminRows.push([
+          l.id,
+          l.timestamp,
+          l.dateFormatted || l.timestamp,
+          l.actorName,
+          l.actorRole,
+          l.category,
+          l.targetEmployeeName || 'N/A',
+          l.fromValue || '-',
+          l.toValue || '-',
+          l.details
+        ]);
+      });
+      adminRows.sort(function(a, b) {
+        return new Date(b[1] || 0).getTime() - new Date(a[1] || 0).getTime();
+      });
+      if (adminAuditSheet) populateCleanSheet(adminAuditSheet, auditHeaders, adminRows, '#4338ca');
 
       // ==========================================
       // 7. POPULATE DAILY ATTENDANCE LOGS
       // ==========================================
+      var attHeaders = ['Attendance ID', 'Date', 'Employee Code', 'Employee Name', 'First Login Time', 'Last Logout Time', 'Total Logged Hours', 'Idle Deductions (Mins)', 'Required Shift Extension (Mins)', 'Attendance Status'];
+      var attRows = [];
+      var attSeen = {};
+      dailyAttendanceLogs.forEach(function(a) {
+        var dedupeKey = a.id || (a.userName + '_' + a.date);
+        if (attSeen[dedupeKey]) return;
+        attSeen[dedupeKey] = true;
+        var matchedUser = userMap[a.userId] || userMap[a.userName] || {};
+        attRows.push([
+          a.id,
+          a.date,
+          a.employeeCode || matchedUser.employeeCode || 'N/A',
+          a.userName,
+          a.firstLoginTime || '--:--',
+          a.lastLogoutTime || 'Active Shift',
+          a.totalLoggedHours || 0,
+          (a.totalIdleDeductionsMinutes || 0) + ' mins',
+          (a.requiredExtensionMinutes || a.totalIdleDeductionsMinutes || 0) + ' mins',
+          a.status || 'present'
+        ]);
+      });
+      attRows.sort(function(a, b) {
+        var dA = new Date(a[1] || 0).getTime();
+        var dB = new Date(b[1] || 0).getTime();
+        return (dB || 0) - (dA || 0);
+      });
       var attSheet = ss.getSheetByName('Daily_Attendance_Logs');
-      if (attSheet) {
-        attSheet.clear();
-        attSheet.appendRow(['Attendance ID', 'Date', 'Employee Code', 'Employee Name', 'First Login Time', 'Last Logout Time', 'Total Logged Hours', 'Idle Deductions (Mins)', 'Required Shift Extension (Mins)', 'Attendance Status']);
-        attSheet.getRange(1, 1, 1, 10).setFontWeight('bold').setBackground('#0e7490').setFontColor('#ffffff');
-        attSheet.setFrozenRows(1);
-        if (dailyAttendanceLogs.length > 0) {
-          dailyAttendanceLogs.forEach(function(a) {
-            attSheet.appendRow([
-              a.id,
-              a.date,
-              a.employeeCode || 'N/A',
-              a.userName,
-              a.firstLoginTime || '--:--',
-              a.lastLogoutTime || 'Active Shift',
-              a.totalLoggedHours || 0,
-              (a.totalIdleDeductionsMinutes || 0) + ' mins',
-              (a.requiredExtensionMinutes || a.totalIdleDeductionsMinutes || 0) + ' mins',
-              a.status || 'present'
-            ]);
-          });
-        }
-      }
+      if (attSheet) populateCleanSheet(attSheet, attHeaders, attRows, '#0e7490');
 
       // ==========================================
       // 8. POPULATE EMPLOYEE DIRECTORY
       // ==========================================
+      var empHeaders = ['Employee Code', 'Username', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Date Hired', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)'];
+      var empRows = [];
+      users.forEach(function(u) {
+        var maskedPass = maskPassword(u.password || 'Password123!');
+        var hireDate = u.joinDate || '2020-01-01';
+        var supervisorName = 'None / Direct Executive';
+        if (u.teamLeaderId) {
+          var sv = userMap[u.teamLeaderId];
+          supervisorName = sv ? sv.name + ' (' + (sv.designation || sv.role) + ')' : u.teamLeaderId;
+        }
+        var mRate = (u.monthlyRate !== undefined && u.monthlyRate !== null) ? Number(u.monthlyRate) : 0;
+        var hRate = (u.hourlyRate !== undefined && u.hourlyRate !== null) ? Number(u.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
+        empRows.push([
+          u.employeeCode || 'N/A',
+          u.username || 'agent',
+          u.name || 'Unknown',
+          u.email || '',
+          u.role || 'agent',
+          u.designation || 'Agent',
+          hireDate,
+          mRate,
+          hRate,
+          supervisorName,
+          u.screenshotMonitored ? 'YES' : 'NO',
+          u.activityMonitored ? 'YES' : 'NO',
+          u.status || 'active',
+          maskedPass
+        ]);
+      });
       var empSheet = ss.getSheetByName('Employee_Directory');
-      if (empSheet && users.length > 0) {
-        empSheet.clear();
-        empSheet.appendRow(['Employee Code', 'Username', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Date Hired', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)']);
-        empSheet.getRange(1, 1, 1, 14).setFontWeight('bold').setBackground('#0369a1').setFontColor('#ffffff');
-        empSheet.setFrozenRows(1);
-        users.forEach(function(u) {
-          var maskedPass = maskPassword(u.password || 'Password123!');
-          var hireDate = u.joinDate || '2020-01-01';
-          var supervisorName = 'None / Direct Executive';
-          if (u.teamLeaderId) {
-            var sv = userMap[u.teamLeaderId];
-            supervisorName = sv ? sv.name + ' (' + (sv.designation || sv.role) + ')' : u.teamLeaderId;
-          }
-          var mRate = (u.monthlyRate !== undefined && u.monthlyRate !== null) ? Number(u.monthlyRate) : 0;
-          var hRate = (u.hourlyRate !== undefined && u.hourlyRate !== null) ? Number(u.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
-          empSheet.appendRow([
-            u.employeeCode || 'N/A',
-            u.username || 'agent',
-            u.name || 'Unknown',
-            u.email || '',
-            u.role || 'agent',
-            u.designation || 'Agent',
-            hireDate,
-            mRate,
-            hRate,
-            supervisorName,
-            u.screenshotMonitored ? 'YES' : 'NO',
-            u.activityMonitored ? 'YES' : 'NO',
-            u.status || 'active',
-            maskedPass
-          ]);
-        });
-      }
+      if (empSheet) populateCleanSheet(empSheet, empHeaders, empRows, '#0369a1');
 
       // ==========================================
       // 9. POPULATE LEAVE REQUESTS
       // ==========================================
+      var leaveHeaders = ['Leave ID', 'Employee Name', 'Leave Type', 'Start Date', 'End Date', 'Reason', 'Status', 'Requested At'];
+      var leaveRows = [];
+      var leaveSeen = {};
+      leaveRequests.forEach(function(lv) {
+        var dedupeKey = lv.id || (lv.userName + '_' + lv.startDate + '_' + lv.type);
+        if (leaveSeen[dedupeKey]) return;
+        leaveSeen[dedupeKey] = true;
+        leaveRows.push([
+          lv.id,
+          lv.userName,
+          lv.type,
+          lv.startDate,
+          lv.endDate,
+          lv.reason,
+          lv.status || 'pending',
+          lv.requestedAt
+        ]);
+      });
       var leaveSheet = ss.getSheetByName('Leave_Requests');
-      if (leaveSheet && leaveRequests.length > 0) {
-        leaveSheet.clear();
-        leaveSheet.appendRow(['Leave ID', 'Employee Name', 'Leave Type', 'Start Date', 'End Date', 'Reason', 'Status', 'Requested At']);
-        leaveSheet.getRange(1, 1, 1, 8).setFontWeight('bold').setBackground('#7e22ce').setFontColor('#ffffff');
-        leaveSheet.setFrozenRows(1);
-        leaveRequests.forEach(function(lv) {
-          leaveSheet.appendRow([
-            lv.id,
-            lv.userName,
-            lv.type,
-            lv.startDate,
-            lv.endDate,
-            lv.reason,
-            lv.status || 'pending',
-            lv.requestedAt
-          ]);
-        });
-      }
+      if (leaveSheet) populateCleanSheet(leaveSheet, leaveHeaders, leaveRows, '#7e22ce');
 
       // ==========================================
       // 10. POPULATE PAYROLL SUMMARY
       // ==========================================
+      var payHeaders = ['Pay Period', 'Employee Code', 'Employee Name', 'Designation', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Total Tracked Hours', 'Missing Hours', 'Missing Deductions (₱)', 'Gross Pay (₱)', 'Incentive Bonus (₱)', 'Net Pay (₱)', 'Payment Status'];
+      var payRows = [];
+      var paySeen = {};
+      payrollRecords.forEach(function(p) {
+        var dedupeKey = p.id || (p.employeeCode + '_' + p.payPeriod);
+        if (paySeen[dedupeKey]) return;
+        paySeen[dedupeKey] = true;
+        payRows.push([
+          p.payPeriod || 'August 1-15, 2026',
+          p.employeeCode || 'LLC-0001',
+          p.userName,
+          p.designation || 'Agent',
+          p.monthlyRate || 23000,
+          p.hourlyRate || 143.75,
+          p.totalTrackedHours || 0,
+          p.missingHours || 0,
+          p.missingDeductions || 0,
+          p.grossPay || 23000,
+          p.incentiveBonus || 0,
+          p.netPay || 23000,
+          p.status || 'pending'
+        ]);
+      });
       var paySheet = ss.getSheetByName('Payroll_Summary');
-      if (paySheet && payrollRecords.length > 0) {
-        paySheet.clear();
-        paySheet.appendRow(['Pay Period', 'Employee Code', 'Employee Name', 'Designation', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Total Tracked Hours', 'Missing Hours', 'Missing Deductions (₱)', 'Gross Pay (₱)', 'Incentive Bonus (₱)', 'Net Pay (₱)', 'Payment Status']);
-        paySheet.getRange(1, 1, 1, 13).setFontWeight('bold').setBackground('#15803d').setFontColor('#ffffff');
-        paySheet.setFrozenRows(1);
-        payrollRecords.forEach(function(p) {
-          paySheet.appendRow([
-            p.payPeriod || 'August 1-15, 2026',
-            p.employeeCode || 'LLC-0001',
-            p.userName,
-            p.designation || 'Agent',
-            p.monthlyRate || 23000,
-            p.hourlyRate || 143.75,
-            p.totalTrackedHours || 0,
-            p.missingHours || 0,
-            p.missingDeductions || 0,
-            p.grossPay || 23000,
-            p.incentiveBonus || 0,
-            p.netPay || 23000,
-            p.status || 'pending'
-          ]);
-        });
-      }
+      if (paySheet) populateCleanSheet(paySheet, payHeaders, payRows, '#15803d');
 
       // ==========================================
       // 11. POPULATE DESIGNATION TASKS
       // ==========================================
       var desigTasks = data.designationTasks || {};
+      var desigHeaders = ['Designation Name', 'Allowed Tracking Tasks (Comma Separated)', 'Total Tasks Count', 'Last Updated (ISO)'];
+      var desigRows = [];
+      Object.keys(desigTasks).forEach(function(desigKey) {
+        var taskList = desigTasks[desigKey] || [];
+        desigRows.push([
+          desigKey,
+          taskList.join(', '),
+          taskList.length,
+          new Date().toISOString()
+        ]);
+      });
       var desigSheet = ss.getSheetByName('Designation_Tasks');
-      if (desigSheet && Object.keys(desigTasks).length > 0) {
-        desigSheet.clear();
-        desigSheet.appendRow(['Designation Name', 'Allowed Tracking Tasks (Comma Separated)', 'Total Tasks Count', 'Last Updated (ISO)']);
-        desigSheet.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground('#4338ca').setFontColor('#ffffff');
-        desigSheet.setFrozenRows(1);
-        Object.keys(desigTasks).forEach(function(desigKey) {
-          var taskList = desigTasks[desigKey] || [];
-          desigSheet.appendRow([
-            desigKey,
-            taskList.join(', '),
-            taskList.length,
-            new Date().toISOString()
-          ]);
-        });
-      }
+      if (desigSheet) populateCleanSheet(desigSheet, desigHeaders, desigRows, '#4338ca');
 
       // ==========================================
       // 12. POPULATE DESIGNATIONS & PERMISSIONS CONTROL
       // ==========================================
       var rPerms = data.rolePermissions || {};
-      var permSheet = ss.getSheetByName('Designations_Permissions');
-      if (permSheet && Object.keys(rPerms).length > 0) {
-        permSheet.clear();
-        permSheet.appendRow([
-          'Role / Category Key',
-          'Display Name',
-          'Category Type',
-          'Employee Directory CRUD',
-          'Team Leader Assignment',
-          'Activity Monitors',
-          'Screenshot Captures',
-          'Timesheets & Approvals',
-          'Payroll & Rates',
-          'Designation & Task Manager',
-          'Google Sheets & Webhooks',
-          'Assigned Staff Count',
-          'Assigned Employees Roster',
-          'Last Updated (ISO)'
-        ]);
-        permSheet.getRange(1, 1, 1, 14).setFontWeight('bold').setBackground('#6d28d9').setFontColor('#ffffff');
-        permSheet.setFrozenRows(1);
+      var permHeaders = [
+        'Role / Category Key',
+        'Display Name',
+        'Category Type',
+        'Employee Directory CRUD',
+        'Team Leader Assignment',
+        'Activity Monitors',
+        'Screenshot Captures',
+        'Timesheets & Approvals',
+        'Payroll & Rates',
+        'Designation & Task Manager',
+        'Google Sheets & Webhooks',
+        'Assigned Staff Count',
+        'Assigned Employees Roster',
+        'Last Updated (ISO)'
+      ];
+      var permRows = [];
+      var standardKeys = ['admin', 'trainer', 'team_lead', 'qa', 'writer', 'hr', 'payroll', 'agent'];
 
-        var standardKeys = ['admin', 'trainer', 'team_lead', 'qa', 'writer', 'hr', 'payroll', 'agent'];
+      Object.keys(rPerms).forEach(function(roleKey) {
+        var p = rPerms[roleKey] || {};
+        var isStd = standardKeys.indexOf(roleKey.toLowerCase()) !== -1;
+        var displayName = roleKey.charAt(0).toUpperCase() + roleKey.slice(1);
+        if (roleKey === 'team_lead') displayName = 'Team Leader';
+        if (roleKey === 'qa') displayName = 'QA Specialist';
+        if (roleKey === 'hr') displayName = 'HR';
+        if (roleKey === 'payroll') displayName = 'Payroll Officer';
+        if (roleKey === 'agent') displayName = 'Agent';
 
-        Object.keys(rPerms).forEach(function(roleKey) {
-          var p = rPerms[roleKey] || {};
-          var isStd = standardKeys.indexOf(roleKey.toLowerCase()) !== -1;
-          var displayName = roleKey.charAt(0).toUpperCase() + roleKey.slice(1);
-          if (roleKey === 'team_lead') displayName = 'Team Leader';
-          if (roleKey === 'qa') displayName = 'QA Specialist';
-          if (roleKey === 'hr') displayName = 'HR';
-          if (roleKey === 'payroll') displayName = 'Payroll Officer';
-          if (roleKey === 'agent') displayName = 'Agent';
-
-          // Detect assigned employees
-          var assignedStaff = users.filter(function(u) {
-            var rMatch = (u.role || '').toLowerCase() === roleKey.toLowerCase();
-            var dMatch = (u.designation || '').toLowerCase() === displayName.toLowerCase() ||
-                         (u.designation || '').toLowerCase() === roleKey.toLowerCase();
-            return rMatch || dMatch;
-          });
-
-          var staffNames = assignedStaff.map(function(s) {
-            return (s.name || 'Staff') + ' (#' + (s.employeeCode || 'N/A') + ')';
-          }).join(', ');
-
-          permSheet.appendRow([
-            roleKey,
-            displayName,
-            isStd ? 'Standard Role' : 'Custom Category',
-            p.canEditEmployees ? 'GRANTED' : 'RESTRICTED',
-            p.canAssignTeamLeader ? 'GRANTED' : 'RESTRICTED',
-            p.canViewActivityLogs ? 'GRANTED' : 'RESTRICTED',
-            p.canViewScreenshots ? 'GRANTED' : 'RESTRICTED',
-            p.canViewTimesheets ? 'GRANTED' : 'RESTRICTED',
-            p.canViewPayroll ? 'GRANTED' : 'RESTRICTED',
-            p.canManageTasks ? 'GRANTED' : 'RESTRICTED',
-            p.canSyncSheets ? 'GRANTED' : 'RESTRICTED',
-            assignedStaff.length,
-            staffNames || 'None',
-            new Date().toISOString()
-          ]);
+        // Detect assigned employees
+        var assignedStaff = users.filter(function(u) {
+          var rMatch = (u.role || '').toLowerCase() === roleKey.toLowerCase();
+          var dMatch = (u.designation || '').toLowerCase() === displayName.toLowerCase() ||
+                       (u.designation || '').toLowerCase() === roleKey.toLowerCase();
+          return rMatch || dMatch;
         });
-      }
+
+        var staffNames = assignedStaff.map(function(s) {
+          return (s.name || 'Staff') + ' (#' + (s.employeeCode || 'N/A') + ')';
+        }).join(', ');
+
+        permRows.push([
+          roleKey,
+          displayName,
+          isStd ? 'Standard Role' : 'Custom Category',
+          p.canEditEmployees ? 'GRANTED' : 'RESTRICTED',
+          p.canAssignTeamLeader ? 'GRANTED' : 'RESTRICTED',
+          p.canViewActivityLogs ? 'GRANTED' : 'RESTRICTED',
+          p.canViewScreenshots ? 'GRANTED' : 'RESTRICTED',
+          p.canViewTimesheets ? 'GRANTED' : 'RESTRICTED',
+          p.canViewPayroll ? 'GRANTED' : 'RESTRICTED',
+          p.canManageTasks ? 'GRANTED' : 'RESTRICTED',
+          p.canSyncSheets ? 'GRANTED' : 'RESTRICTED',
+          assignedStaff.length,
+          staffNames || 'None',
+          new Date().toISOString()
+        ]);
+      });
+      var permSheet = ss.getSheetByName('Designations_Permissions');
+      if (permSheet) populateCleanSheet(permSheet, permHeaders, permRows, '#6d28d9');
 
       return ContentService.createTextOutput(JSON.stringify({ status: 'SUCCESS', message: 'All modular separated logs & database tables updated in Google Sheets!' }))
         .setMimeType(ContentService.MimeType.JSON);
@@ -975,12 +1093,25 @@ export const fetchEmployeesFromGoogleSheets = async (
   const importedList: User[] = [];
 
   // Method 1: Try Webhook GET (returns clean JSON array of employees)
-  if (webhookUrl && webhookUrl.trim() && webhookUrl.includes('script.google.com')) {
+  if (webhookUrl && isValidWebhookUrl(webhookUrl) && webhookUrl.includes('script.google.com')) {
     try {
-      const res = await fetch(webhookUrl.trim(), { method: 'GET' });
-      if (res.ok) {
-        const json = await res.json();
-        if (json && Array.isArray(json.employees) && json.employees.length > 0) {
+      let json: any = null;
+      // Try local dev server proxy first to bypass browser CORS
+      try {
+        const proxyRes = await fetch(`/api/sync-sheets?url=${encodeURIComponent(webhookUrl.trim())}`);
+        if (proxyRes.ok) {
+          json = await proxyRes.json();
+        }
+      } catch (e) {}
+
+      if (!json) {
+        const res = await fetch(webhookUrl.trim(), { method: 'GET' });
+        if (res.ok) {
+          json = await res.json();
+        }
+      }
+
+      if (json && Array.isArray(json.employees) && json.employees.length > 0) {
           json.employees.forEach((rawEmp: any, idx: number) => {
             const code = String(rawEmp.employeeCode || `LLC-${1000 + idx}`).trim();
             const existing = userMap.get(code.toUpperCase()) || userMap.get((rawEmp.email || '').toLowerCase());
@@ -1048,7 +1179,6 @@ export const fetchEmployeesFromGoogleSheets = async (
             };
           }
         }
-      }
     } catch (webhookErr) {
       console.warn('Webhook GET fetch warning, attempting direct Google Sheets CSV export fallback...', webhookErr);
     }
@@ -1223,6 +1353,14 @@ export const syncDataToGoogleSheetsWebhook = async (
     };
   }
 
+  const cleanUrl = webhookUrl.trim();
+  if (!isValidWebhookUrl(cleanUrl)) {
+    return {
+      success: false,
+      message: 'Webhook URL appears incomplete or is a placeholder. Please paste your deployed Web App URL ending in /exec.',
+    };
+  }
+
   try {
     // Hide emergency backup account from database spreadsheet sync
     const safeUsers = users.filter((u) => !u.isSecretBackup);
@@ -1241,8 +1379,29 @@ export const syncDataToGoogleSheetsWebhook = async (
       syncedAt: new Date().toISOString(),
     };
 
-    // Google Apps Script redirect follows automatically; send as text/plain to avoid CORS preflight blocking
-    await fetch(webhookUrl.trim(), {
+    // Strategy 1: Attempt Server-side Proxy to bypass browser iframe & CORS restrictions
+    try {
+      const proxyRes = await fetch('/api/sync-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webhookUrl: cleanUrl, payload }),
+      });
+
+      if (proxyRes.ok) {
+        const pData = await proxyRes.json();
+        if (pData && pData.success) {
+          return {
+            success: true,
+            message: 'Successfully synchronized all logs and database tables to Google Sheets!',
+          };
+        }
+      }
+    } catch (proxyErr) {
+      // Dev server proxy unavailable, continue to direct browser fetch
+    }
+
+    // Strategy 2: Direct browser fetch with mode 'no-cors'
+    await fetch(cleanUrl, {
       method: 'POST',
       mode: 'no-cors',
       headers: {
@@ -1256,10 +1415,11 @@ export const syncDataToGoogleSheetsWebhook = async (
       message: 'Successfully sent separated logs and database tables to Google Sheets!',
     };
   } catch (err: any) {
-    console.error('Google Sheets Sync error:', err);
+    // Graceful warning instead of console.error to avoid raising uncaught error flags on network/script drops
+    console.warn('Google Sheets Sync notice (webhook unreachable or network offline):', err?.message || err);
     return {
       success: false,
-      message: `Failed to connect to Google Sheets webhook: ${err?.message || 'Network error'}`,
+      message: `Failed to connect to Google Sheets webhook: ${err?.message || 'Network unreachable'}. Please verify Apps Script deployment is set to "Anyone".`,
     };
   }
 };

@@ -31,7 +31,7 @@ function centralSyncBridge(): Plugin {
   return {
     name: 'central-sync-bridge',
     configureServer(server) {
-      server.middlewares.use((req, res, next) => {
+      server.middlewares.use(async (req, res, next) => {
         if (!req.url?.startsWith('/api/')) {
           return next();
         }
@@ -63,6 +63,79 @@ function centralSyncBridge(): Plugin {
             spreadsheetId: syncState.spreadsheetId
           }));
           return;
+        }
+
+        if (url === '/api/sync-sheets') {
+          if (req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', async () => {
+              try {
+                const parsed = JSON.parse(body);
+                const webhookUrl = parsed?.webhookUrl;
+                const payload = parsed?.payload;
+
+                if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.trim().startsWith('https://') || webhookUrl.includes('...')) {
+                  res.writeHead(400, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify({ success: false, message: 'Invalid or placeholder Webhook URL' }));
+                  return;
+                }
+
+                // Node fetch automatically follows Google Apps Script 302 redirects and bypasses browser CORS restrictions
+                const gResp = await fetch(webhookUrl.trim(), {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'text/plain;charset=utf-8',
+                  },
+                  body: JSON.stringify(payload),
+                  redirect: 'follow',
+                });
+
+                let responseText = '';
+                try {
+                  responseText = await gResp.text();
+                } catch (e) {}
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                  success: gResp.ok || gResp.status < 400,
+                  status: gResp.status,
+                  message: 'Successfully forwarded to Google Sheets webhook',
+                  details: responseText,
+                }));
+              } catch (err: any) {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                  success: false,
+                  message: err?.message || 'Server proxy failed',
+                }));
+              }
+            });
+            return;
+          }
+
+          if (req.method === 'GET') {
+            const parsedUrl = new URL(req.url || '', 'http://localhost:3000');
+            const targetUrl = parsedUrl.searchParams.get('url');
+            if (!targetUrl || !targetUrl.startsWith('https://') || targetUrl.includes('...')) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, message: 'Invalid target URL' }));
+              return;
+            }
+            try {
+              const gResp = await fetch(targetUrl, {
+                method: 'GET',
+                redirect: 'follow',
+              });
+              const json = await gResp.json();
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(json));
+            } catch (err: any) {
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, message: err?.message || 'Proxy GET failed' }));
+            }
+            return;
+          }
         }
 
         if (url === '/api/timelogs') {

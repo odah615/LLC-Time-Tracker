@@ -84,10 +84,15 @@ export const LoginView: React.FC = () => {
     const alphaNumericQuery = query.replace(/[^a-z0-9]/g, '');
     const digitsOnlyQuery = query.replace(/\D/g, '');
 
-    // Search user by username, employee code, or email flexibly
+    // Search user by username, employee code, role, or email flexibly
     let foundUser = users.find((u) => {
-      // 0. Primary username match (e.g. "jdavid", "admin")
+      // 0. Primary username match (e.g. "trainer", "trainer1", "jdavid", "admin")
       if (u.username && u.username.toLowerCase() === cleanUsernameQuery) return true;
+      if (cleanUsernameQuery === 'trainer' && (u.role === 'trainer' || u.username === 'trainer1' || u.employeeCode === 'LLC-0003')) return true;
+      if (cleanUsernameQuery === 'trainer1' && (u.role === 'trainer' || u.employeeCode === 'LLC-0003')) return true;
+
+      // Match by role if unique/standard (e.g. typing "trainer", "teamlead", "payroll", "hr")
+      if (u.role && u.role.toLowerCase() === cleanUsernameQuery) return true;
 
       const uCode = (u.employeeCode || '').toLowerCase();
       const uAlphaNumeric = uCode.replace(/[^a-z0-9]/g, '');
@@ -106,11 +111,13 @@ export const LoginView: React.FC = () => {
       ) {
         return true;
       }
-      // 4. Fallback matches for direct ID or email
+      // 4. Fallback matches for direct ID, email, or first name
+      const firstName = (u.name || '').toLowerCase().split(/\s+/)[0];
       if (
         (u.id && u.id.toLowerCase() === query) ||
         (u.email && u.email.toLowerCase() === query) ||
-        (u.name && u.name.toLowerCase() === query)
+        (u.name && u.name.toLowerCase() === query) ||
+        (firstName && firstName === cleanUsernameQuery)
       ) {
         return true;
       }

@@ -609,11 +609,11 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                   <button
                     disabled={syncingSheets || importingSheets}
                     onClick={async () => {
-                      setGoogleSheetsWebhookUrl(sheetsWebhookInput);
-                      if (!sheetsWebhookInput.trim()) {
-                        setSyncStatusMsg('Please paste a valid Web App URL (ending in /exec)');
+                      if (!sheetsWebhookInput.trim() || sheetsWebhookInput.includes('...') || !sheetsWebhookInput.trim().startsWith('https://')) {
+                        setSyncStatusMsg('Please paste your actual deployed Web App URL (replace the "..." placeholder with your script ID ending in /exec)');
                         return;
                       }
+                      setGoogleSheetsWebhookUrl(sheetsWebhookInput.trim());
                       setSyncingSheets(true);
                       setSyncStatusMsg('Connecting to Google Sheets...');
                       const res = await triggerGoogleSheetsSync(sheetsWebhookInput.trim());
@@ -621,7 +621,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                       if (res && res.success) {
                         setSyncStatusMsg('✓ Successfully pushed and synchronized all tables to Google Sheets!');
                       } else {
-                        setSyncStatusMsg(`Sync attempted. If data does not appear, ensure "Who has access" is set to "Anyone" in Apps Script deployment.`);
+                        setSyncStatusMsg(`Sync attempted: ${res?.message || 'Check Apps Script permissions'}. Ensure "Who has access" is set to "Anyone" in Apps Script deployment.`);
                       }
                     }}
                     className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shrink-0 shadow-sm flex items-center gap-1 disabled:opacity-50"

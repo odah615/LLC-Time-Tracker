@@ -501,10 +501,10 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
               const presence = userPresenceList.find((p) => p.userId === agent.id);
               const now = Date.now();
               const lastHeartbeat = presence ? new Date(presence.lastHeartbeat).getTime() : 0;
-              const isRecent = now - lastHeartbeat < 60000;
-              const isOnline = !!presence && (presence.isOnline || isRecent);
-              const isTracking = isOnline && !!presence?.isTracking;
-              const isIdle = isOnline && (presence?.status === 'idle' || !!presence?.isPaused);
+              const isRecent = now - lastHeartbeat < 5 * 60 * 1000;
+              const isOnline = !!presence && (presence.isOnline || isRecent || !!presence.isTracking);
+              const isTracking = !!presence?.isTracking && (isRecent || presence?.isOnline);
+              const isIdle = isOnline && !isTracking && (presence?.status === 'idle' || !!presence?.isPaused);
               const currentTask = isTracking
                 ? (presence?.currentTask || lastLog?.task || 'Training')
                 : (isOnline ? (presence?.currentTask || 'Available / Standby') : (lastLog?.task || 'Shift Concluded'));

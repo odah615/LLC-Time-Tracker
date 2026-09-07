@@ -582,8 +582,8 @@ export const AuditLogsView: React.FC = () => {
               <button
                 disabled={isSyncing || isPulling}
                 onClick={async () => {
-                  if (!webhookInput.trim()) {
-                    setSyncSuccessMsg('⚠️ Please paste your Apps Script Web App URL (ends with /exec)');
+                  if (!webhookInput.trim() || webhookInput.includes('...') || !webhookInput.trim().startsWith('https://')) {
+                    setSyncSuccessMsg('⚠️ Please paste your actual deployed Apps Script Web App URL (replace "..." placeholder with your script ID ending in /exec)');
                     setTimeout(() => setSyncSuccessMsg(''), 5000);
                     return;
                   }
@@ -595,7 +595,7 @@ export const AuditLogsView: React.FC = () => {
                   if (res.success) {
                     setSyncSuccessMsg('✓ Successfully pushed all separated logs and database tables to Google Sheets!');
                   } else {
-                    setSyncSuccessMsg(`Sync attempted. If tabs are still empty, verify in Apps Script that "Who has access" is set to "Anyone".`);
+                    setSyncSuccessMsg(`Sync attempted: ${res?.message || 'Check deployment'}. If tabs are still empty, verify in Apps Script that "Who has access" is set to "Anyone".`);
                   }
                   setTimeout(() => setSyncSuccessMsg(''), 6000);
                 }}

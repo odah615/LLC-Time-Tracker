@@ -26,6 +26,7 @@ import {
   DEFAULT_SPREADSHEET_URL,
   DEFAULT_SPREADSHEET_ID,
   fetchEmployeesFromGoogleSheets,
+  isValidWebhookUrl,
 } from '../lib/googleSheetsSync';
 import {
   INITIAL_USERS,
@@ -73,28 +74,22 @@ let quotaExhaustedTimeout: any = null;
 export const setCloudQuotaExhausted = () => {
   if (!isQuotaExhaustedGlobal) {
     isQuotaExhaustedGlobal = true;
-    console.warn('[Firestore] Daily Spark quota limit reached. Gracefully disabling network retries and switching to offline-first local mode.');
-    // Shut down Firestore network retry loops completely so SDK stops throwing 'resource-exhausted'
-    disableNetwork(db).catch(() => {});
+    console.warn('[Firestore] Quota backoff activated. Backing off writes briefly.');
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('firestore_quota_status_change'));
     }
   }
   clearTimeout(quotaExhaustedTimeout);
-  // Auto-retry in 30 minutes
+  // Auto-retry in 60 seconds
   quotaExhaustedTimeout = setTimeout(() => {
     isQuotaExhaustedGlobal = false;
-    enableNetwork(db).catch(() => {});
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('firestore_quota_status_change'));
     }
-  }, 30 * 60 * 1000);
+  }, 60 * 1000);
 };
 
 const safeSetDoc = async (docRef: any, data: any, options?: any) => {
-  if (isQuotaExhaustedGlobal) {
-    return Promise.resolve();
-  }
   try {
     const cleanData = sanitizeForFirestore(data);
     return await (options ? setDoc(docRef, cleanData, options) : setDoc(docRef, cleanData));
@@ -259,6 +254,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         mustChangePassword: false,
         screenshotMonitored: false,
         activityMonitored: false,
+      };
+    }
+
+    // Ensure Trainer (Pia / LLC-0003) is permanently preserved with trainer role & trainer username
+    const isTrainer =
+      u.employeeCode?.toUpperCase() === 'LLC-0003' ||
+      u.email?.toLowerCase() === 'piaodahcam@gmail.com' ||
+      u.id === 'usr-llc-0003' ||
+      u.name?.toLowerCase() === 'pia' ||
+      u.designation?.toLowerCase().includes('trainer');
+
+    if (isTrainer) {
+      return {
+        ...u,
+        role: 'trainer' as const,
+        designation: u.designation || 'Trainer',
+        username: u.username && u.username !== 'agent' ? u.username : 'trainer',
+        department: u.department || 'Training',
       };
     }
     return u;
@@ -477,11 +490,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [saveToast, setSaveToast] = useState<string | null>(null);
 
   const [googleSheetsWebhookUrl, setGoogleSheetsWebhookUrlState] = useState<string>(() => {
-    return localStorage.getItem('trackpulse_sheets_webhook') || '';
+    const saved = localStorage.getItem('trackpulse_sheets_webhook') || '';
+    if (saved && !isValidWebhookUrl(saved)) {
+      localStorage.removeItem('trackpulse_sheets_webhook');
+      return '';
+    }
+    return saved;
   });
 
   const setGoogleSheetsWebhookUrl = (url: string) => {
     const cleanUrl = (url || '').trim();
+    if (!cleanUrl || !isValidWebhookUrl(cleanUrl)) {
+      setGoogleSheetsWebhookUrlState('');
+      localStorage.removeItem('trackpulse_sheets_webhook');
+      fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webhookUrl: '' }),
+      }).catch(() => {});
+      return;
+    }
     setGoogleSheetsWebhookUrlState(cleanUrl);
     localStorage.setItem('trackpulse_sheets_webhook', cleanUrl);
     fetch('/api/config', {
@@ -517,12 +545,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedRolePermissions = rolePermissions
     ) => {
       let activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
+      if (activeUrl && !isValidWebhookUrl(activeUrl)) {
+        activeUrl = '';
+      }
+
       if (!activeUrl || !activeUrl.trim()) {
         try {
           const apiRes = await fetch('/api/config');
           if (apiRes.ok) {
             const apiCfg = await apiRes.json();
-            if (apiCfg?.webhookUrl && apiCfg.webhookUrl.trim()) {
+            if (apiCfg?.webhookUrl && isValidWebhookUrl(apiCfg.webhookUrl)) {
               activeUrl = apiCfg.webhookUrl.trim();
               setGoogleSheetsWebhookUrlState(activeUrl);
               localStorage.setItem('trackpulse_sheets_webhook', activeUrl);
@@ -535,16 +567,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const cfgSnap = await getDoc(doc(db, 'system_state', 'config'));
             if (cfgSnap.exists()) {
               const cData = cfgSnap.data();
-              activeUrl = cData?.webhookUrl || cData?.sheetsWebhookUrl || '';
-              if (activeUrl && activeUrl.trim()) {
-                setGoogleSheetsWebhookUrlState(activeUrl.trim());
-                localStorage.setItem('trackpulse_sheets_webhook', activeUrl.trim());
+              const candUrl = (cData?.webhookUrl || cData?.sheetsWebhookUrl || '').trim();
+              if (candUrl && isValidWebhookUrl(candUrl)) {
+                activeUrl = candUrl;
+                setGoogleSheetsWebhookUrlState(activeUrl);
+                localStorage.setItem('trackpulse_sheets_webhook', activeUrl);
               }
             }
           } catch (e) {}
         }
       }
-      if (activeUrl && activeUrl.trim()) {
+
+      if (activeUrl && isValidWebhookUrl(activeUrl)) {
         syncDataToGoogleSheetsWebhook(
           activeUrl.trim(),
           updatedLogs,
@@ -693,6 +727,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Load and subscribe to real-time Firestore updates
   useEffect(() => {
     let unsubTimeLogs = () => {};
+    let unsubLiveTimeLogs = () => {};
     let unsubUsers = () => {};
     let unsubAudit = () => {};
     let unsubScreenshots = () => {};
@@ -708,6 +743,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const unsubAll = () => {
       try { unsubTimeLogs(); } catch (e) {}
+      try { unsubLiveTimeLogs(); } catch (e) {}
       try { unsubUsers(); } catch (e) {}
       try { unsubAudit(); } catch (e) {}
       try { unsubScreenshots(); } catch (e) {}
@@ -729,7 +765,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                       err?.message?.includes('resource-exhausted');
       if (isQuota) {
         setCloudQuotaExhausted();
-        unsubAll();
         return;
       }
       console.warn(`Firestore ${name} listener warning:`, err);
@@ -739,20 +774,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubConfig = onSnapshot(doc(db, 'system_state', 'config'), (snapshot) => {
         if (snapshot.exists()) {
           const cfgData = snapshot.data();
-          const remoteUrl = cfgData?.webhookUrl || cfgData?.sheetsWebhookUrl || '';
-          if (remoteUrl && remoteUrl.trim()) {
-            setGoogleSheetsWebhookUrlState(remoteUrl.trim());
-            localStorage.setItem('trackpulse_sheets_webhook', remoteUrl.trim());
+          const remoteUrl = (cfgData?.webhookUrl || cfgData?.sheetsWebhookUrl || '').trim();
+          if (remoteUrl && isValidWebhookUrl(remoteUrl)) {
+            setGoogleSheetsWebhookUrlState(remoteUrl);
+            localStorage.setItem('trackpulse_sheets_webhook', remoteUrl);
           }
         }
       }, (err) => handleSnapshotError('config', err));
+
+      // Direct collection listener for individual timelog documents
+      unsubLiveTimeLogs = onSnapshot(collection(db, 'timelogs'), (snapshot) => {
+        if (!snapshot.empty) {
+          const fetchedLogs: TimeLog[] = [];
+          snapshot.forEach((d) => {
+            const data = d.data() as TimeLog;
+            if (data && data.id) {
+              fetchedLogs.push(data);
+            }
+          });
+          if (fetchedLogs.length > 0) {
+            setTimeLogs((prev) => {
+              const map = new Map<string, TimeLog>();
+              prev.forEach((l) => map.set(l.id, l));
+              fetchedLogs.forEach((l) => map.set(l.id, l));
+              const merged = Array.from(map.values()).sort((a, b) => {
+                const tA = new Date(a.date + ' ' + (a.startTime || '00:00')).getTime();
+                const tB = new Date(b.date + ' ' + (b.startTime || '00:00')).getTime();
+                return tB - tA;
+              });
+              localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
+              return merged;
+            });
+          }
+        }
+      }, (err) => handleSnapshotError('timelogs_collection', err));
 
       unsubTimeLogs = onSnapshot(doc(db, 'system_state', 'timelogs'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
           const remoteLogs: TimeLog[] = snapshot.data().data;
           if (Array.isArray(remoteLogs)) {
-            setTimeLogs(remoteLogs);
-            localStorage.setItem('trackpulse_timelogs', JSON.stringify(remoteLogs));
+            setTimeLogs((prev) => {
+              const map = new Map<string, TimeLog>();
+              prev.forEach((l) => map.set(l.id, l));
+              remoteLogs.forEach((l) => map.set(l.id, l));
+              const merged = Array.from(map.values()).sort((a, b) => {
+                const tA = new Date(a.date + ' ' + (a.startTime || '00:00')).getTime();
+                const tB = new Date(b.date + ' ' + (b.startTime || '00:00')).getTime();
+                return tB - tA;
+              });
+              localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
+              return merged;
+            });
           }
         }
         setIsFirestoreLoaded(true);
@@ -763,8 +835,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const remoteUsers: User[] = snapshot.data().data;
           if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
             const sanitizedUsers = ensureUsernames(remoteUsers);
-            setUsers(sanitizedUsers);
-            localStorage.setItem('trackpulse_users', JSON.stringify(sanitizedUsers));
+            setUsers((prev) => {
+              const map = new Map<string, User>();
+              prev.forEach((u) => map.set(u.id, u));
+              sanitizedUsers.forEach((u) => map.set(u.id, u));
+              const merged = Array.from(map.values());
+              localStorage.setItem('trackpulse_users', JSON.stringify(merged));
+              return merged;
+            });
           }
         }
       }, (err) => handleSnapshotError('users', err));
@@ -807,8 +885,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               (a: DailyAttendanceLog) =>
                 !(a.firstLoginTime === '08:30:00 AM' && (a.totalLoggedSeconds === 0 || !a.lastLogoutTime))
             );
-            setDailyAttendanceLogs(cleanAtt);
-            localStorage.setItem('trackpulse_attendance', JSON.stringify(cleanAtt));
+            setDailyAttendanceLogs((prev) => {
+              const map = new Map<string, DailyAttendanceLog>();
+              prev.forEach((a) => map.set(`${a.userId}_${a.date}`, a));
+              cleanAtt.forEach((a) => map.set(`${a.userId}_${a.date}`, a));
+              const merged = Array.from(map.values());
+              localStorage.setItem('trackpulse_attendance', JSON.stringify(merged));
+              return merged;
+            });
             if (cleanAtt.length !== remoteAtt.length && !isQuotaExhaustedGlobal) {
               safeSetDoc(doc(db, 'system_state', 'attendance'), { data: cleanAtt }).catch(() => {});
             }
@@ -922,7 +1006,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fetch('/api/config')
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {
-        if (cfg?.webhookUrl && typeof cfg.webhookUrl === 'string' && cfg.webhookUrl.trim()) {
+        if (cfg?.webhookUrl && typeof cfg.webhookUrl === 'string' && isValidWebhookUrl(cfg.webhookUrl)) {
           setGoogleSheetsWebhookUrlState(cfg.webhookUrl.trim());
           localStorage.setItem('trackpulse_sheets_webhook', cfg.webhookUrl.trim());
         }
@@ -1696,9 +1780,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loginTime: nowIso,
     };
 
-    if (!isHeartbeatOnly) {
-      safeSetDoc(doc(db, 'user_presence', snap.currentUser.id), presenceDoc, { merge: true }).catch(() => {});
-    }
+    // Always sync presence to Firestore so Trainer and Admins see live status in real-time
+    safeSetDoc(doc(db, 'user_presence', snap.currentUser.id), presenceDoc, { merge: true }).catch(() => {});
     fetch('/api/presence', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1713,17 +1796,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [isAuthenticated]);
 
-  // Gentle 60-second periodic presence heartbeat (drastically reduces Firestore write quota consumption)
+  // 45-second periodic presence heartbeat to sync live presence, current task, and elapsed seconds
   useEffect(() => {
     if (!isAuthenticated || !currentUser) return;
 
     // Initial broadcast on login / load
     broadcastPresence();
 
-    // 60-second recurring heartbeat (in-memory bridge & local without quota-consuming firestore writes)
+    // 45-second recurring heartbeat
     const interval = setInterval(() => {
-      broadcastPresence(false, true);
-    }, 60000);
+      broadcastPresence(false, false);
+    }, 45000);
 
     // On window unload / close, notify immediately that user went offline
     const handleUnload = () => {
@@ -2273,6 +2356,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       body: JSON.stringify(newLog),
     }).catch(() => {});
 
+    // Save individual time log document to Firestore 'timelogs' collection
+    safeSetDoc(doc(db, 'timelogs', newLog.id), newLog).catch((err) =>
+      console.warn('Timelog collection write warning:', err)
+    );
+
     safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
       console.warn('TimeLogs sync err:', err)
     );
@@ -2578,6 +2666,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ],
       };
       setTimeLogs((prev) => [newLog, ...prev]);
+      safeSetDoc(doc(db, 'timelogs', newLog.id), newLog).catch(() => {});
     }
 
     // Switch task and reset timer
@@ -2985,6 +3074,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       body: JSON.stringify(newLog),
     }).catch(() => {});
 
+    // Save individual time log document to Firestore 'timelogs' collection
+    safeSetDoc(doc(db, 'timelogs', newLog.id), newLog).catch(() => {});
+
     safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
       console.warn('TimeLog add sync error:', err)
     );
@@ -3035,6 +3127,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedLogs = timeLogs.filter((l) => l.id !== id);
     setTimeLogs(updatedLogs);
     localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+    deleteDoc(doc(db, 'timelogs', id)).catch(() => {});
     safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
       console.warn('TimeLog delete sync error:', err)
     );

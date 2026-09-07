@@ -91,7 +91,7 @@ export const INITIAL_USERS: User[] = [
     status: 'active',
     joinDate: '2020-01-01',
     employeeCode: 'LLC-0003',
-    username: 'trainer1',
+    username: 'trainer',
     department: 'Training',
     password: 'Password123!',
     mustChangePassword: true,

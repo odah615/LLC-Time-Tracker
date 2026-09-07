@@ -96,15 +96,18 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
 
       // Determine real-time status
       let calculatedStatus: 'online' | 'idle' | 'offline' = 'offline';
-      if (!presence || !presence.isOnline) {
+      if (!presence || (!presence.isOnline && !presence.isTracking)) {
         calculatedStatus = 'offline';
-      } else if (diffMs > 10 * 60 * 1000) {
+      } else if (diffMs > 10 * 60 * 1000 && !presence.isTracking) {
         // Inactive / unclosed session for > 10 minutes -> Automatically mark OFFLINE
         calculatedStatus = 'offline';
-      } else if (diffMs > 2.5 * 60 * 1000) {
-        // Heartbeat lapsed slightly (2.5 - 10 min)
-        calculatedStatus = 'idle';
       } else if (presence.isPaused) {
+        calculatedStatus = 'idle';
+      } else if (presence.isTracking) {
+        // If actively tracking within grace window, always show online
+        calculatedStatus = 'online';
+      } else if (diffMs > 5 * 60 * 1000) {
+        // Heartbeat lapsed slightly (> 5 min)
         calculatedStatus = 'idle';
       } else {
         calculatedStatus = presence.status || 'online';
