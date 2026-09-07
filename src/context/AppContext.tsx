@@ -310,6 +310,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return localStorage.getItem('trackpulse_auth') === 'true';
   });
   const [loginMode, setLoginMode] = useState<'webapp' | 'software'>(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (
+        urlParams.get('mode') === 'desktop' ||
+        urlParams.get('source') === 'software' ||
+        urlParams.get('appMode') === 'desktop' ||
+        window.navigator.userAgent.includes('Electron')
+      ) {
+        return 'software';
+      }
+    }
     return (localStorage.getItem('trackpulse_login_mode') as 'webapp' | 'software') || 'webapp';
   });
 
@@ -1140,20 +1151,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [currentUser]);
 
-  // Active Timer state
-  const [isTracking, setIsTracking] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [currentDesignation, setCurrentDesignation] = useState<Designation>(currentUser.designation || 'Agent');
+  // Saved Active Tracking Session (restores shift upon minimize, refresh, or process sleep/wake)
+  const savedActiveTracking = (() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = localStorage.getItem('trackpulse_active_tracking');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
 
-  // Automatically sync currentDesignation with active currentUser profile
+  // Active Timer state
+  const [isTracking, setIsTracking] = useState<boolean>(() => !!savedActiveTracking?.isTracking);
+  const [isPaused, setIsPaused] = useState<boolean>(() => !!savedActiveTracking?.isPaused);
+  const [currentDesignation, setCurrentDesignation] = useState<Designation>(() => savedActiveTracking?.designation || currentUser.designation || 'Agent');
+
+  // Automatically sync currentDesignation with active currentUser profile if not actively tracking
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && !savedActiveTracking?.isTracking) {
       setCurrentDesignation(currentUser.designation || 'Agent');
     }
   }, [currentUser]);
-  const [currentTask, setCurrentTask] = useState<TaskCategory>('Email Reachout');
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [startTimeIso, setStartTimeIso] = useState<string | null>(null);
+  const [currentTask, setCurrentTask] = useState<TaskCategory>(() => savedActiveTracking?.task || 'Email Reachout');
+  const [startTimeIso, setStartTimeIso] = useState<string | null>(() => savedActiveTracking?.startTimeIso || null);
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(() => {
+    if (!savedActiveTracking || !savedActiveTracking.isTracking) return 0;
+    if (savedActiveTracking.isPaused) return savedActiveTracking.accumulatedSec || 0;
+    const additional = savedActiveTracking.lastActiveMs > 0 ? Math.floor((Date.now() - savedActiveTracking.lastActiveMs) / 1000) : 0;
+    return (savedActiveTracking.accumulatedSec || 0) + Math.max(0, additional);
+  });
 
   // Desktop App Widget vs Web Dashboard Mode
   const [isDesktopDockView, setIsDesktopDockView] = useState(() => {
@@ -1339,7 +1366,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // - 5 to 10 minutes inactive: Triggers countdown warning (5:00 down to 0:00)
   // - At 10 minutes inactive: Automatic logout on webapp (Desktop Software is exempt)
   useEffect(() => {
-    if (!isAuthenticated || loginMode !== 'webapp') return;
+    if (!isAuthenticated || loginMode !== 'webapp' || isTracking) return;
 
     lastWebActivityTimestampRef.current = Date.now();
     setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
@@ -1363,6 +1390,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     window.addEventListener('wheel', handleWebUserActivity, { passive: true });
 
     const intervalId = setInterval(() => {
+      if (isTracking) {
+        lastWebActivityTimestampRef.current = Date.now();
+        setIsSessionWarningActive(false);
+        setWebSessionWarningCountdown(300);
+        setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
+        return;
+      }
+
       const elapsedInactiveSeconds = Math.floor((Date.now() - lastWebActivityTimestampRef.current) / 1000);
       const remainingTotal = Math.max(0, WEB_SESSION_TOTAL_TIMEOUT_SECONDS - elapsedInactiveSeconds);
       setWebSessionRemainingSeconds(remainingTotal);
@@ -1455,9 +1490,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const keyboardActivityHistoryRef = useRef<number[]>([]);
 
   // Wall-clock tracking refs for exact tracking across background/minimized windows
-  const trackingSessionStartMsRef = useRef<number>(0);
-  const lastActiveIntervalStartMsRef = useRef<number>(0);
-  const trackingAccumulatedSecondsRef = useRef<number>(0);
+  const trackingSessionStartMsRef = useRef<number>(savedActiveTracking?.startMs || 0);
+  const lastActiveIntervalStartMsRef = useRef<number>(
+    savedActiveTracking?.isPaused ? 0 : (savedActiveTracking?.lastActiveMs || (savedActiveTracking?.isTracking ? Date.now() : 0))
+  );
+  const trackingAccumulatedSecondsRef = useRef<number>(savedActiveTracking?.accumulatedSec || 0);
 
   // Compute live elapsed wall-clock seconds accurately, immune to OS/browser background timer throttling
   const getLiveElapsedSeconds = useCallback(() => {
@@ -1602,7 +1639,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     loginMode,
   ]);
 
-  const broadcastPresence = useCallback((overrideOffline?: boolean) => {
+  const broadcastPresence = useCallback((overrideOffline?: boolean, isHeartbeatOnly: boolean = false) => {
     if (!isAuthenticated) return;
     const snap = presenceLatestRef.current;
     if (!snap.currentUser) return;
@@ -1659,7 +1696,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loginTime: nowIso,
     };
 
-    safeSetDoc(doc(db, 'user_presence', snap.currentUser.id), presenceDoc, { merge: true }).catch(() => {});
+    if (!isHeartbeatOnly) {
+      safeSetDoc(doc(db, 'user_presence', snap.currentUser.id), presenceDoc, { merge: true }).catch(() => {});
+    }
     fetch('/api/presence', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1681,9 +1720,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Initial broadcast on login / load
     broadcastPresence();
 
-    // 60-second recurring heartbeat (previously 5s / 1s with thrashing)
+    // 60-second recurring heartbeat (in-memory bridge & local without quota-consuming firestore writes)
     const interval = setInterval(() => {
-      broadcastPresence();
+      broadcastPresence(false, true);
     }, 60000);
 
     // On window unload / close, notify immediately that user went offline
@@ -1815,6 +1854,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       interval = setInterval(() => {
         const liveSecs = getLiveElapsedSeconds();
         setElapsedSeconds(liveSecs);
+
+        // Keep active session saved in localStorage every 5 seconds
+        if (liveSecs % 5 === 0) {
+          localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
+            isTracking: true,
+            isPaused: false,
+            startTimeIso,
+            startMs: trackingSessionStartMsRef.current,
+            lastActiveMs: lastActiveIntervalStartMsRef.current,
+            accumulatedSec: trackingAccumulatedSecondsRef.current,
+            task: currentTask,
+            designation: currentDesignation || currentUser?.designation || 'Agent',
+          }));
+        }
 
         const now = Date.now();
         const ACTIVITY_SUSTAIN_WINDOW_MS = 120000; // 2 minutes (120 seconds)
@@ -2007,6 +2060,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const nowIso = new Date().toISOString();
     setStartTimeIso(nowIso);
 
+    // Save active tracking session to localStorage (immune to minimize, tab throttling, or accidental refresh)
+    localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
+      isTracking: true,
+      isPaused: false,
+      startTimeIso: nowIso,
+      startMs: nowMs,
+      lastActiveMs: nowMs,
+      accumulatedSec: 0,
+      task: currentTask,
+      designation: currentDesignation || currentUser?.designation || 'Agent',
+    }));
+
     // Instant presence broadcast on tracking start
     if (currentUser) {
       const today = getManilaDateString();
@@ -2076,20 +2141,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Pause tracking
   const pauseTracking = () => {
+    let accSec = trackingAccumulatedSecondsRef.current;
     if (lastActiveIntervalStartMsRef.current > 0) {
       const segmentSec = Math.floor((Date.now() - lastActiveIntervalStartMsRef.current) / 1000);
-      trackingAccumulatedSecondsRef.current += Math.max(0, segmentSec);
+      accSec += Math.max(0, segmentSec);
+      trackingAccumulatedSecondsRef.current = accSec;
       lastActiveIntervalStartMsRef.current = 0;
     }
     setIsPaused(true);
+    localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
+      isTracking: true,
+      isPaused: true,
+      startTimeIso,
+      startMs: trackingSessionStartMsRef.current,
+      lastActiveMs: 0,
+      accumulatedSec: accSec,
+      task: currentTask,
+      designation: currentDesignation || currentUser?.designation || 'Agent',
+    }));
   };
 
   // Resume tracking
   const resumeTracking = () => {
-    lastActiveIntervalStartMsRef.current = Date.now();
-    lastMouseActiveTimestampRef.current = Date.now();
-    lastKeyboardActiveTimestampRef.current = Date.now();
+    const nowMs = Date.now();
+    lastActiveIntervalStartMsRef.current = nowMs;
+    lastMouseActiveTimestampRef.current = nowMs;
+    lastKeyboardActiveTimestampRef.current = nowMs;
     setIsPaused(false);
+    localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
+      isTracking: true,
+      isPaused: false,
+      startTimeIso,
+      startMs: trackingSessionStartMsRef.current,
+      lastActiveMs: nowMs,
+      accumulatedSec: trackingAccumulatedSecondsRef.current,
+      task: currentTask,
+      designation: currentDesignation || currentUser?.designation || 'Agent',
+    }));
   };
 
   // Stop tracking and create time log
@@ -2281,6 +2369,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     trackingSessionStartMsRef.current = 0;
     lastActiveIntervalStartMsRef.current = 0;
     trackingAccumulatedSecondsRef.current = 0;
+    localStorage.removeItem('trackpulse_active_tracking');
     setIsTracking(false);
     setIsPaused(false);
     setElapsedSeconds(0);
@@ -2492,10 +2581,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Switch task and reset timer
+    const switchNowIso = new Date().toISOString();
+    const switchNowMs = Date.now();
+    trackingSessionStartMsRef.current = switchNowMs;
+    lastActiveIntervalStartMsRef.current = switchNowMs;
+    trackingAccumulatedSecondsRef.current = 0;
     setCurrentTask(taskSwitchPending.targetTask);
     setElapsedSeconds(0);
-    setStartTimeIso(new Date().toISOString());
+    setStartTimeIso(switchNowIso);
     setTaskSwitchPending(null);
+
+    if (isTracking) {
+      localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
+        isTracking: true,
+        isPaused: false,
+        startTimeIso: switchNowIso,
+        startMs: switchNowMs,
+        lastActiveMs: switchNowMs,
+        accumulatedSec: 0,
+        task: taskSwitchPending.targetTask,
+        designation: currentDesignation || currentUser?.designation || 'Agent',
+      }));
+    }
   };
 
   // Cancel task switch

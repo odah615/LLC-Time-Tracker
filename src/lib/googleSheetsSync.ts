@@ -985,11 +985,32 @@ export const fetchEmployeesFromGoogleSheets = async (
             const code = String(rawEmp.employeeCode || `LLC-${1000 + idx}`).trim();
             const existing = userMap.get(code.toUpperCase()) || userMap.get((rawEmp.email || '').toLowerCase());
 
-            const role = (['admin', 'va_admin', 'team_leader', 'hr', 'payroll', 'employee'].includes(rawEmp.role?.toLowerCase())
-              ? rawEmp.role.toLowerCase()
-              : code.toLowerCase() === 'superadmin' ? 'admin' : 'employee') as any;
+            const rawRole = (rawEmp.role || '').toLowerCase().trim();
+            const rawDesig = (rawEmp.designation || existing?.designation || '').toLowerCase().trim();
+            const isSuperAdmin = code.toLowerCase() === 'superadmin' || rawRole === 'admin' || existing?.role === 'admin';
 
-            const isSuperAdmin = code.toLowerCase() === 'superadmin' || role === 'admin';
+            let role: any = 'agent';
+            if (isSuperAdmin) {
+              role = 'admin';
+            } else if (rawRole === 'va_admin' || existing?.role === 'va_admin') {
+              role = 'va_admin';
+            } else if (rawRole === 'trainer' || rawDesig.includes('trainer') || existing?.role === 'trainer') {
+              role = 'trainer';
+            } else if (rawRole === 'team_leader' || rawRole === 'team_lead' || rawDesig.includes('team lead') || existing?.role === 'team_lead') {
+              role = 'team_lead';
+            } else if (rawRole === 'hr' || rawDesig.includes('hr') || existing?.role === 'hr') {
+              role = 'hr';
+            } else if (rawRole === 'payroll' || rawDesig.includes('payroll') || existing?.role === 'payroll') {
+              role = 'payroll';
+            } else if (rawRole === 'qa' || rawDesig.includes('qa') || existing?.role === 'qa') {
+              role = 'qa';
+            } else if (rawRole === 'writer' || rawDesig.includes('writer') || existing?.role === 'writer') {
+              role = 'writer';
+            } else if (existing?.role && existing.role !== 'agent') {
+              role = existing.role;
+            } else {
+              role = 'agent';
+            }
             const empName = rawEmp.name || existing?.name || (isSuperAdmin ? 'Red' : `Employee ${code}`);
             const username = (rawEmp.username || existing?.username || (isSuperAdmin ? 'admin' : generateUniqueUsername(empName, existingUsers, existing?.id))).toLowerCase();
 
@@ -1103,13 +1124,34 @@ export const fetchEmployeesFromGoogleSheets = async (
 
       if (!code && !name) continue;
 
-      const validRole = (['admin', 'va_admin', 'team_leader', 'hr', 'payroll', 'employee'].includes(roleStr)
-        ? roleStr
-        : code.toLowerCase() === 'superadmin' ? 'admin' : 'employee') as any;
-
-      const isSuperAdmin = code.toLowerCase() === 'superadmin' || validRole === 'admin';
-
       const existing = userMap.get(code.toUpperCase()) || userMap.get(email.toLowerCase());
+      const rawRole = (roleStr || '').toLowerCase().trim();
+      const rawDesig = (designation || existing?.designation || '').toLowerCase().trim();
+      const isSuperAdmin = code.toLowerCase() === 'superadmin' || rawRole === 'admin' || existing?.role === 'admin';
+
+      let validRole: any = 'agent';
+      if (isSuperAdmin) {
+        validRole = 'admin';
+      } else if (rawRole === 'va_admin' || existing?.role === 'va_admin') {
+        validRole = 'va_admin';
+      } else if (rawRole === 'trainer' || rawDesig.includes('trainer') || existing?.role === 'trainer') {
+        validRole = 'trainer';
+      } else if (rawRole === 'team_leader' || rawRole === 'team_lead' || rawDesig.includes('team lead') || existing?.role === 'team_lead') {
+        validRole = 'team_lead';
+      } else if (rawRole === 'hr' || rawDesig.includes('hr') || existing?.role === 'hr') {
+        validRole = 'hr';
+      } else if (rawRole === 'payroll' || rawDesig.includes('payroll') || existing?.role === 'payroll') {
+        validRole = 'payroll';
+      } else if (rawRole === 'qa' || rawDesig.includes('qa') || existing?.role === 'qa') {
+        validRole = 'qa';
+      } else if (rawRole === 'writer' || rawDesig.includes('writer') || existing?.role === 'writer') {
+        validRole = 'writer';
+      } else if (existing?.role && existing.role !== 'agent') {
+        validRole = existing.role;
+      } else {
+        validRole = 'agent';
+      }
+
       const empName = name || existing?.name || (isSuperAdmin ? 'Admin' : `Employee ${code}`);
       const finalUsername = (parsedUsername || existing?.username || (isSuperAdmin ? 'admin' : generateUniqueUsername(empName, existingUsers, existing?.id))).toLowerCase();
 

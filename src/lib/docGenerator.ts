@@ -275,7 +275,71 @@ export function downloadWordDocInstructions(): void {
     </tbody>
   </table>
 
-  <h2>3. Standalone Desktop App: macOS Compatibility & Zero-Redownload Updates</h2>
+  <h2>3. Step-by-Step Guide: Launching, Logging In, Minimizing & Saving Timesheets</h2>
+  
+  <div class="highlight-box">
+    <strong>Quick Summary for Team Members:</strong> You do NOT need to re-download or reinstall the desktop application. Simply launch or refresh it (<code>Ctrl+R</code> or <code>Cmd+R</code>), sign in with your Username or Employee Code, click <strong>Start Shift</strong>, and minimize it to begin your work day.
+  </div>
+
+  <ol>
+    <li>
+      <strong>Step 1: Launch the Desktop Application</strong>
+      <ul>
+        <li><strong>Windows:</strong> Double-click <code>LLC Time Tracker.exe</code> on your Desktop or program folder.</li>
+        <li><strong>macOS:</strong> Double-click <code>LLC Time Tracker.app</code> or run <code>Launch_LLC_Time_Tracker.command</code>.</li>
+        <li><em>Tip:</em> If the application is already open from earlier, press <kbd>Ctrl + R</kbd> (Windows) or <kbd>Cmd + R</kbd> (macOS) to reload and ensure you have the latest cloud updates.</li>
+      </ul>
+    </li>
+    <li>
+      <strong>Step 2: Sign In with Your Credentials</strong>
+      <ul>
+        <li>In the <strong>Username or Employee Code</strong> field, enter either:
+          <ul>
+            <li>Your assigned <strong>Username</strong> (e.g. <code>jdavid</code>, <code>amerc</code>, <code>msant</code>)</li>
+            <li>OR your <strong>Employee Code</strong> (e.g. <code>LLC-0007</code> or simply <code>0007</code>)</li>
+          </ul>
+        </li>
+        <li>In the <strong>Password</strong> field, enter your password (default for agents is <code>agent123</code>).</li>
+        <li>Click the blue <strong>Sign In to Desktop Tracker</strong> button.</li>
+      </ul>
+    </li>
+    <li>
+      <strong>Step 3: Choose Task & Start Tracking</strong>
+      <ul>
+        <li>Confirm your <strong>Designation</strong> from the dropdown (e.g. <em>Virtual Assistant</em>, <em>Cold Caller</em>, <em>Bookkeeper</em>).</li>
+        <li>Select or type your <strong>Active Task</strong> (e.g. <em>CRM Lead Management</em>, <em>Client Inquiries</em>, <em>Outreach</em>).</li>
+        <li>Click the prominent green <strong>"Start Shift / Clock In"</strong> button. The live timer counter will begin incrementing immediately.</li>
+      </ul>
+    </li>
+    <li>
+      <strong>Step 4: Minimize the Desktop App While Working (Safe & Supported)</strong>
+      <ul>
+        <li>Click the <strong>Minimize</strong> button (<code>&minus;</code>) in the top right or simply switch to other windows.</li>
+        <li>You can work freely in Google Chrome, Microsoft Excel, CRM portals, email clients, or dialers.</li>
+        <li><strong>Minimizing is 100% permitted:</strong> The desktop app continuously records your shift in the background using precise system wall-clock synchronization.</li>
+        <li>You will <strong>never</strong> receive the <em>"Inactivity detected without keyboard/mouse input"</em> warning while the tracker is minimized.</li>
+      </ul>
+    </li>
+    <li>
+      <strong>Step 5: Taking Breaks (Lunch, Coffee, Personal Errands)</strong>
+      <ul>
+        <li>Maximize the desktop window from your taskbar or dock.</li>
+        <li>Click the <strong>Pause / Break</strong> button. The timer will freeze and your status will change to "On Break".</li>
+        <li>When returning to work, click <strong>Resume Shift</strong> to resume tracking.</li>
+      </ul>
+    </li>
+    <li>
+      <strong>Step 6: Clocking Out & Saving to Timesheets</strong>
+      <ul>
+        <li>At the end of your shift or task, bring up the desktop window and click <strong>"Stop Shift / Clock Out"</strong>.</li>
+        <li>The system automatically records your logged hours, syncs with Firestore and the central server bridge, and saves the entry to your <strong>Timesheets</strong>.</li>
+        <li>A green banner will confirm: <em>"✓ Saved to Database & Synced to Timesheets!"</em></li>
+        <li>To view your recorded entries, click the <strong>Timesheets</strong> tab to see all your daily logs, duration, and payroll calculations.</li>
+      </ul>
+    </li>
+  </ol>
+
+  <h2>4. Standalone Desktop App: macOS Compatibility & Zero-Redownload Updates</h2>
   
   <div class="highlight-box">
     <strong>Apple / macOS Compatibility:</strong><br>
