@@ -243,6 +243,8 @@ interface AppContextType {
   // Google Sheets Webhook Sync
   googleSheetsWebhookUrl: string;
   setGoogleSheetsWebhookUrl: (url: string) => void;
+  isAutoSyncToSheetsEnabled: boolean;
+  setIsAutoSyncToSheetsEnabled: (val: boolean) => void;
   triggerGoogleSheetsSync: (overrideUrl?: string) => Promise<{ success: boolean; message: string }>;
   importEmployeesFromGoogleSheets: (overrideUrl?: string) => Promise<{ success: boolean; count: number; message: string }>;
   importTimeLogsFromGoogleSheets: (overrideUrl?: string) => Promise<{ success: boolean; count: number; message: string }>;
@@ -632,6 +634,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
   });
 
+  const [isAutoSyncToSheetsEnabled, setIsAutoSyncToSheetsEnabledState] = useState<boolean>(() => {
+    return localStorage.getItem('trackpulse_auto_sync_enabled') === 'true'; // Defaults to false to prevent spreadsheet refreshes
+  });
+
+  const setIsAutoSyncToSheetsEnabled = (enabled: boolean) => {
+    setIsAutoSyncToSheetsEnabledState(enabled);
+    localStorage.setItem('trackpulse_auto_sync_enabled', enabled ? 'true' : 'false');
+  };
+
   // Dedicated automatic sync dispatcher with fallback API Bridge & Firestore config fetch
   const triggerAutoSync = useCallback(
     async (
@@ -645,6 +656,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedDesignationTasks = designationTasks,
       updatedRolePermissions = rolePermissions
     ) => {
+      // If auto-sync is disabled, do not execute background pushes (keeps Google Sheets calm and static without constant reloading)
+      if (!isAutoSyncToSheetsEnabled) {
+        return;
+      }
+
       let activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
       if (activeUrl && !isValidWebhookUrl(activeUrl)) {
         activeUrl = '';
@@ -723,20 +739,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ).catch((err) => console.warn('Auto-sync to Google Sheets warning:', err));
       }
     },
-    [googleSheetsWebhookUrl, users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions, userPresenceList]
+    [isAutoSyncToSheetsEnabled, googleSheetsWebhookUrl, users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions, userPresenceList]
   );
 
-  // Periodic background auto-sync to Google Sheets database (every 45s)
-  // Ensures all time logs from Desktop App and live active sessions reflect in the Google Spreadsheet
-  useEffect(() => {
-    const syncInterval = setInterval(() => {
-      const activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
-      if (!activeUrl || !isValidWebhookUrl(activeUrl)) return;
-      triggerAutoSync();
-    }, 45000);
-
-    return () => clearInterval(syncInterval);
-  }, [googleSheetsWebhookUrl, triggerAutoSync]);
+  // Background auto-refresh timer removed to keep the Google Spreadsheet stable and prevent unexpected sheet refreshing while viewing!
 
   const triggerGoogleSheetsSync = async (overrideUrl?: string): Promise<{ success: boolean; message: string }> => {
     const targetUrl = overrideUrl || googleSheetsWebhookUrl;
@@ -4432,6 +4438,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSaveToast,
         googleSheetsWebhookUrl,
         setGoogleSheetsWebhookUrl,
+        isAutoSyncToSheetsEnabled,
+        setIsAutoSyncToSheetsEnabled,
         triggerGoogleSheetsSync,
         importEmployeesFromGoogleSheets,
         importTimeLogsFromGoogleSheets,

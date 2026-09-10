@@ -63,6 +63,8 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
     logout,
     googleSheetsWebhookUrl,
     setGoogleSheetsWebhookUrl,
+    isAutoSyncToSheetsEnabled,
+    setIsAutoSyncToSheetsEnabled,
     triggerGoogleSheetsSync,
     importEmployeesFromGoogleSheets,
     hasPermission,
@@ -726,6 +728,30 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                     {syncStatusMsg}
                   </p>
                 )}
+
+                <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="font-bold text-slate-800 text-[11px] flex items-center gap-1">
+                      Background Auto-Refresh
+                    </span>
+                    <p className="text-[10px] text-slate-500 max-w-[280px]">
+                      {isAutoSyncToSheetsEnabled
+                        ? 'Active — auto-pushes data to Google Sheets periodically.'
+                        : 'Disabled (Quiet Mode) — spreadsheet will stay completely still and will not refresh or blink while viewing.'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAutoSyncToSheetsEnabled(!isAutoSyncToSheetsEnabled)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                      isAutoSyncToSheetsEnabled
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                    }`}
+                  >
+                    {isAutoSyncToSheetsEnabled ? 'Auto-Sync: ON' : 'Auto-Sync: OFF (Quiet)'}
+                  </button>
+                </div>
               </div>
 
               {/* Direct CSV Export Option */}
@@ -742,8 +768,24 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                     onClick={() => {
                       downloadTableCSV(
                         'Time_Logs',
-                        ['Log ID', 'Employee Name', 'Designation', 'Task', 'Date', 'Start Time', 'End Time', 'Duration (Seconds)', 'Total Time', 'Mouse %', 'Keyboard %', 'Status', 'Notes'],
-                        timeLogs.map((l) => [l.id, l.userName, l.designation, l.task, l.date, l.startTime, l.endTime || 'Running', l.durationSeconds, formatTotalTime(l.durationSeconds), l.mouseActivityAvg, l.keyboardActivityAvg, l.status, l.notes || ''])
+                        ['Log ID', 'Employee Name', 'Designation', 'Task', 'Date', 'Start Time', 'End Time', 'Duration (Seconds)', 'Total Time', 'Idle Deductions', 'Net Work (Seconds)', 'Mouse %', 'Keyboard %', 'Status', 'Notes'],
+                        timeLogs.map((l) => [
+                          l.id,
+                          l.userName,
+                          l.designation,
+                          l.task,
+                          l.date,
+                          l.geoLocalStartTime || l.startTime,
+                          l.endTime === 'Running Live' || !l.endTime ? 'Running Live' : (l.geoLocalEndTime || l.endTime),
+                          l.durationSeconds,
+                          formatTotalTime(l.durationSeconds),
+                          l.idleSeconds ? `${Math.round(l.idleSeconds / 60)} mins` : '0 mins',
+                          Math.max(0, l.durationSeconds - (l.idleSeconds || 0)),
+                          l.mouseActivityAvg != null ? `${l.mouseActivityAvg}%` : '0%',
+                          l.keyboardActivityAvg != null ? `${l.keyboardActivityAvg}%` : '0%',
+                          l.status,
+                          l.notes || '',
+                        ])
                       );
                     }}
                     className="py-1.5 px-3 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 font-medium text-xs flex items-center justify-center gap-1.5 shadow-sm"
