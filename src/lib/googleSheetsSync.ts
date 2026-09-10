@@ -623,7 +623,7 @@ function setupSheetsSchema() {
     {
       tab: 'Monthly_Summary',
       color: '#059669', // Green
-      headers: ['Month Period', 'Employee Code', 'Employee Name', 'Designation', 'Primary Tasks', 'Total Days Rendered', 'Gross Tracked Hours', 'Total Idle / Breaks', 'Net Productive Work', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Estimated Gross Pay (₱)', 'Avg Activity %']
+      headers: ['Month Period', 'Employee Code', 'Employee Name', 'Designation', 'Primary Tasks', 'Total Days Rendered', 'Gross Tracked Hours', 'Total Idle / Breaks', 'Net Productive Work', 'Avg Activity %']
     },
     {
       tab: 'Active_Logs',
@@ -1111,7 +1111,7 @@ function doPost(e) {
       if (!monthlySummarySheet) {
         try { monthlySummarySheet = ss.insertSheet('Monthly_Summary'); } catch(e) {}
       }
-      var monthlyHeaders = ['Month Period', 'Employee Code', 'Employee Name', 'Designation', 'Primary Tasks', 'Total Days Rendered', 'Gross Tracked Hours', 'Total Idle / Breaks', 'Net Productive Work', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Estimated Gross Pay (₱)', 'Avg Activity %'];
+      var monthlyHeaders = ['Month Period', 'Employee Code', 'Employee Name', 'Designation', 'Primary Tasks', 'Total Days Rendered', 'Gross Tracked Hours', 'Total Idle / Breaks', 'Net Productive Work', 'Avg Activity %'];
       var monthlyMap = {};
       rawTimeLogs.forEach(function(t) {
         var dStr = t.date || (t.startTime ? t.startTime.slice(0, 10) : '2026-09-10');
@@ -1125,15 +1125,11 @@ function doPost(e) {
         var mKey = monthLabel + '___' + empName;
 
         if (!monthlyMap[mKey]) {
-          var mRate = matchedUser.monthlyRate !== undefined && matchedUser.monthlyRate !== null ? Number(matchedUser.monthlyRate) : 0;
-          var hRate = matchedUser.hourlyRate !== undefined && matchedUser.hourlyRate !== null ? Number(matchedUser.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
           monthlyMap[mKey] = {
             month: monthLabel,
             code: empCode,
             name: empName,
             designation: t.designation || matchedUser.designation || 'Agent',
-            monthlyRate: mRate,
-            hourlyRate: hRate,
             tasks: {},
             days: {},
             grossSecs: 0,
@@ -1159,8 +1155,6 @@ function doPost(e) {
       Object.keys(monthlyMap).forEach(function(k) {
         var item = monthlyMap[k];
         var netSecs = Math.max(0, item.grossSecs - item.idleSecs);
-        var netHours = netSecs / 3600;
-        var estPay = (netHours * item.hourlyRate).toFixed(2);
         var taskList = Object.keys(item.tasks).join(', ');
         var avgAct = item.count > 0 ? Math.round(((item.mouseSum / item.count) + (item.keyboardSum / item.count)) / 2) : 0;
         monthlyRows.push([
@@ -1173,9 +1167,6 @@ function doPost(e) {
           formatTotalTime(item.grossSecs),
           formatTotalTime(item.idleSecs),
           formatTotalTime(netSecs),
-          '₱' + Number(item.monthlyRate).toLocaleString(),
-          '₱' + Number(item.hourlyRate).toFixed(2),
-          '₱' + Number(estPay).toLocaleString(),
           avgAct + '%'
         ]);
       });
