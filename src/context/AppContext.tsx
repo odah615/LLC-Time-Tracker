@@ -342,22 +342,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Helper to ensure all users have a guaranteed unique username and default rate of 0
   const ensureUsernames = (userList: User[]): User[] => {
-    const isRateDefaultCleaned = typeof window !== 'undefined' && localStorage.getItem('trackpulse_rate_default_v1') === 'true';
     const result: User[] = [];
     for (const rawUser of userList) {
       let norm = normalizeSuperAdmin(rawUser);
       if (!norm.username || norm.username.trim() === '') {
         norm.username = generateUniqueUsername(norm.name, result, norm.id);
       }
-      if (!isRateDefaultCleaned) {
-        if (norm.monthlyRate === 23000 || norm.monthlyRate === 60000 || norm.monthlyRate === 40000 || norm.monthlyRate === 35000 || norm.monthlyRate === 30000 || norm.monthlyRate === undefined) {
-          norm = { ...norm, monthlyRate: 0, hourlyRate: 0 };
-        }
+      // Guarantee legacy default rates (23,000 / 143.75 / 60,000 / 40,000 / 35,000 / 30,000) default to 0
+      const mRate = norm.monthlyRate !== undefined && norm.monthlyRate !== null ? Number(norm.monthlyRate) : 0;
+      const hRate = norm.hourlyRate !== undefined && norm.hourlyRate !== null ? Number(norm.hourlyRate) : 0;
+      if (mRate === 23000 || mRate === 60000 || mRate === 40000 || mRate === 35000 || mRate === 30000 || isNaN(mRate)) {
+        norm = { ...norm, monthlyRate: 0, hourlyRate: 0 };
+      } else if (hRate === 143.75 || hRate === 375 || hRate === 250 || hRate === 218.75 || hRate === 187.5 || isNaN(hRate)) {
+        norm = { ...norm, hourlyRate: norm.monthlyRate ? Number((norm.monthlyRate / 160).toFixed(2)) : 0 };
       }
       result.push(norm);
-    }
-    if (typeof window !== 'undefined' && !isRateDefaultCleaned) {
-      localStorage.setItem('trackpulse_rate_default_v1', 'true');
     }
     return result;
   };

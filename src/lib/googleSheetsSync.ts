@@ -1315,7 +1315,9 @@ function doPost(e) {
           supervisorName = sv ? sv.name + ' (' + (sv.designation || sv.role) + ')' : u.teamLeaderId;
         }
         var mRate = (u.monthlyRate !== undefined && u.monthlyRate !== null) ? Number(u.monthlyRate) : 0;
+        if (mRate === 23000 || mRate === 60000 || mRate === 40000 || mRate === 35000 || mRate === 30000 || isNaN(mRate)) mRate = 0;
         var hRate = (u.hourlyRate !== undefined && u.hourlyRate !== null) ? Number(u.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
+        if (hRate === 143.75 || hRate === 375 || hRate === 250 || hRate === 218.75 || hRate === 187.5 || isNaN(hRate)) hRate = 0;
         empRows.push([
           u.employeeCode || 'N/A',
           u.username || 'agent',
@@ -1370,13 +1372,17 @@ function doPost(e) {
         var dedupeKey = p.id || (p.employeeCode + '_' + p.payPeriod);
         if (paySeen[dedupeKey]) return;
         paySeen[dedupeKey] = true;
+        var pMRate = p.monthlyRate !== undefined && p.monthlyRate !== null ? Number(p.monthlyRate) : 0;
+        if (pMRate === 23000 || pMRate === 60000 || pMRate === 40000 || pMRate === 35000 || pMRate === 30000 || isNaN(pMRate)) pMRate = 0;
+        var pHRate = p.hourlyRate !== undefined && p.hourlyRate !== null ? Number(p.hourlyRate) : 0;
+        if (pHRate === 143.75 || pHRate === 375 || pHRate === 250 || pHRate === 218.75 || pHRate === 187.5 || isNaN(pHRate)) pHRate = 0;
         payRows.push([
           p.payPeriod || 'August 1-15, 2026',
           p.employeeCode || 'LLC-0001',
           p.userName,
           p.designation || 'Agent',
-          p.monthlyRate !== undefined && p.monthlyRate !== null ? Number(p.monthlyRate) : 0,
-          p.hourlyRate !== undefined && p.hourlyRate !== null ? Number(p.hourlyRate) : 0,
+          pMRate,
+          pHRate,
           p.totalTrackedHours || 0,
           p.missingHours || 0,
           p.missingDeductions || 0,
