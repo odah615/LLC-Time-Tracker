@@ -319,6 +319,70 @@ function centralSyncBridge(): Plugin {
           return;
         }
 
+        if (url === '/api/auditlogs') {
+          if (req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', () => {
+              try {
+                const payload = JSON.parse(body);
+                const logsToAdd = Array.isArray(payload) ? payload : [payload];
+                if (!syncState.auditLogs) syncState.auditLogs = [];
+                const existingMap = new Map(syncState.auditLogs.map(l => [l.id, l]));
+                for (const item of logsToAdd) {
+                  if (item && item.id) {
+                    existingMap.set(item.id, item);
+                  }
+                }
+                syncState.auditLogs = Array.from(existingMap.values())
+                  .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                saveSyncState();
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, count: syncState.auditLogs.length }));
+              } catch (err) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Invalid JSON' }));
+              }
+            });
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(syncState.auditLogs || []));
+          return;
+        }
+
+        if (url === '/api/attendance') {
+          if (req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => { body += chunk; });
+            req.on('end', () => {
+              try {
+                const payload = JSON.parse(body);
+                const attToAdd = Array.isArray(payload) ? payload : [payload];
+                if (!syncState.attendance) syncState.attendance = [];
+                const existingMap = new Map(syncState.attendance.map(a => [`${a.userId}_${a.date}`, a]));
+                for (const item of attToAdd) {
+                  if (item && item.userId && item.date) {
+                    const key = `${item.userId}_${item.date}`;
+                    existingMap.set(key, item);
+                  }
+                }
+                syncState.attendance = Array.from(existingMap.values());
+                saveSyncState();
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: true, count: syncState.attendance.length }));
+              } catch (err) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Invalid JSON' }));
+              }
+            });
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(syncState.attendance || []));
+          return;
+        }
+
         if (url === '/api/presence') {
           const now = Date.now();
           if (!syncState.presence) syncState.presence = {};

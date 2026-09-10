@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { getManilaDateString } from '../../lib/dateUtils';
+import { getManilaDateString, formatTotalTime } from '../../lib/dateUtils';
 import {
   Calendar,
   Trash2,
@@ -436,7 +436,8 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
       'Task',
       'Date',
       'GEO Start Time',
-      'Total Logged Sec',
+      'Duration (Seconds)',
+      'Total Time',
       'Idle Sec',
       'Net Recorded Sec',
       'Activity Score %',
@@ -451,6 +452,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
       l.date,
       `"${l.geoLocalStartTime}"`,
       l.durationSeconds,
+      `"${formatTotalTime(l.durationSeconds)}"`,
       l.idleSeconds || 0,
       Math.max(0, l.durationSeconds - (l.idleSeconds || 0)),
       Math.round((l.mouseActivityAvg + l.keyboardActivityAvg) / 2),
@@ -1130,7 +1132,8 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                   {!isPersonalOnly && <th className="py-3 px-4">Agent</th>}
                   <th className="py-3 px-4">Task Category</th>
                   <th className="py-3 px-4">Date & Start Time</th>
-                  <th className="py-3 px-4">Duration</th>
+                  <th className="py-3 px-4">Duration (s)</th>
+                  <th className="py-3 px-4 text-slate-800">Total Time</th>
                   <th className="py-3 px-4">Activity Score</th>
                   <th className="py-3 px-4">Notes</th>
                   {!isPersonalOnly && currentUser.role === 'admin' && (
@@ -1152,8 +1155,13 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                     <td className="py-3 px-4 font-mono">
                       {log.date} • {log.geoLocalStartTime}
                     </td>
-                    <td className="py-3 px-4 font-mono font-bold">
-                      {formatDuration(log.durationSeconds)}
+                    <td className="py-3 px-4 font-mono text-slate-500">
+                      {log.durationSeconds}s
+                    </td>
+                    <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                      <span className="bg-blue-50 text-blue-800 border border-blue-200/60 px-2 py-0.5 rounded font-mono font-bold">
+                        {formatTotalTime(log.durationSeconds)}
+                      </span>
                     </td>
                     <td className="py-3 px-4 font-mono font-bold text-emerald-600">
                       {Math.round((log.mouseActivityAvg + log.keyboardActivityAvg) / 2)}%

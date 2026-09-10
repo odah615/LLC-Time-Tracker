@@ -18,6 +18,27 @@ export const maskPassword = (pwd?: string): string => {
 };
 
 /**
+ * Mathematically accurate Total Time conversion:
+ * - >= 1 hour: "Xh Ym Zs" (e.g. 27529s -> "7h 38m 49s")
+ * - < 1 hour: "Ym Zs" (e.g. 1121s -> "18m 41s", 2147s -> "35m 47s")
+ * - < 1 min: "Zs" (e.g. 14s -> "14s")
+ */
+export const formatTotalTime = (totalSeconds: number | string | undefined | null): string => {
+  const secs = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+
+  if (h > 0) {
+    return `${h}h ${m}m ${s}s`;
+  } else if (m > 0) {
+    return `${m}m ${s}s`;
+  } else {
+    return `${s}s`;
+  }
+};
+
+/**
  * Validates that a Google Apps Script webhook URL is valid, uses HTTPS, and is not a placeholder
  */
 export const isValidWebhookUrl = (url?: string | null): boolean => {
@@ -89,7 +110,7 @@ export const SPREADSHEET_SCHEMA = [
   },
   {
     tabName: 'Time_Logs',
-    description: 'Master time tracker log for all work sessions from Desktop App & Web Portal, tasks, start/end timestamps in Manila time (GMT+8), net duration, and live status.',
+    description: 'Master time tracker log for all work sessions from Desktop App & Web Portal, tasks, start/end timestamps in Manila time (GMT+8), duration in raw seconds, human-readable total time, and live status.',
     headers: [
       'Session ID',
       'Employee Code',
@@ -99,7 +120,8 @@ export const SPREADSHEET_SCHEMA = [
       'Date',
       'Start Time (Manila GMT+8)',
       'End Time (Manila GMT+8)',
-      'Net Active Duration (HH:MM:SS)',
+      'Duration (Seconds)',
+      'Total Time',
       'Idle Deductions (Mins)',
       'Mouse Avg %',
       'Keyboard Avg %',
@@ -109,7 +131,7 @@ export const SPREADSHEET_SCHEMA = [
   },
   {
     tabName: 'Active_Logs',
-    description: 'Compatibility alias for Time_Logs. Dedicated log of all active shift work sessions, assigned tasks, start/end timestamps, net duration, and activity %.',
+    description: 'Compatibility alias for Time_Logs. Dedicated log of all active shift work sessions, assigned tasks, start/end timestamps, duration in seconds, human-readable total time, and activity %.',
     headers: [
       'Session ID',
       'Employee Code',
@@ -119,7 +141,8 @@ export const SPREADSHEET_SCHEMA = [
       'Date',
       'Start Time',
       'End Time',
-      'Net Active Duration (HH:MM:SS)',
+      'Duration (Seconds)',
+      'Total Time',
       'Idle Deductions (Mins)',
       'Mouse Avg %',
       'Keyboard Avg %',
@@ -262,6 +285,9 @@ export const SPREADSHEET_SCHEMA = [
 /**
  * Generates ready-to-paste Google Apps Script code for Google Sheets (Extensions -> Apps Script)
  */
+/**
+ * Robust Google Apps Script generator for multi-tab time tracking and database sync
+ */
 export const generateAppsScriptCode = (spreadsheetId: string = DEFAULT_SPREADSHEET_ID) => {
   return `/**
  * LLC TIME TRACKER - MODULAR SEPARATED LOGS & DATABASE SYNC SCRIPT
@@ -272,9 +298,11 @@ export const generateAppsScriptCode = (spreadsheetId: string = DEFAULT_SPREADSHE
  * - Separate Tab for Logout Logs (Logout_Logs)
  * - Separate Tab for Idle Logs (Idle_Logs)
  * - Separate Tab for Active Work Logs (Active_Logs)
+ * - Separate Tab for Time Logs (Time_Logs) with Duration (Seconds) & Total Time (Human Readable)
  * - Separate Tab for Inactivity Events (Inactive_Logs)
  * - Separate Tab for Administrative & Security Audit Logs (Admin_Audit_Logs)
  * - Plus Attendance, Employee Directory, Leave Requests, and Payroll Summary
+ * - Smart Record Merging: Preserves history from all devices & agents across sessions
  * 
  * Instructions:
  * 1. In your Google Sheet (https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit),
@@ -319,8 +347,28 @@ function maskPassword(pwd) {
 }
 
 /**
+ * Mathematically accurate Total Time conversion:
+ * - >= 1 hour: "Xh Ym Zs" (e.g. 27529s -> "7h 38m 49s")
+ * - < 1 hour: "Ym Zs" (e.g. 1121s -> "18m 41s", 2147s -> "35m 47s")
+ * - < 1 min: "Zs" (e.g. 14s -> "14s")
+ */
+function formatTotalTime(totalSecs) {
+  var secs = Math.max(0, Math.floor(Number(totalSecs) || 0));
+  var h = Math.floor(secs / 3600);
+  var m = Math.floor((secs % 3600) / 60);
+  var s = secs % 60;
+  if (h > 0) {
+    return h + 'h ' + m + 'm ' + s + 's';
+  } else if (m > 0) {
+    return m + 'm ' + s + 's';
+  } else {
+    return s + 's';
+  }
+}
+
+/**
  * Run this function directly in Apps Script editor (Select createAllTabsNow -> click Run)
- * to immediately initialize and format all 10 tabs in your Google Sheet!
+ * to immediately initialize and format all tabs in your Google Sheet!
  */
 function createAllTabsNow() {
   var ss = getSpreadsheet();
@@ -355,17 +403,96 @@ function repairAndCleanAllTabs() {
 }
 
 /**
- * Atomic batch writer:
- * 1. Automatically removes any active filter that was hiding rows.
- * 2. Clears previous contents.
- * 3. Writes Row 1 (Headers) followed directly by data rows in ONE single setValues call (no blank gaps!).
- * 4. Freezes Row 1 and applies header styling.
- * 5. Trims excess empty ghost rows at the bottom.
+ * Populates a sheet by merging existing rows with incoming rows based on a unique key column.
+ * Guarantees that records from other agents/trainees are preserved and not wiped out during sync.
+ */
+function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColIdx, dateSortColIdx) {
+  if (!sheet) return;
+
+  try {
+    var existingFilter = sheet.getFilter();
+    if (existingFilter) existingFilter.remove();
+  } catch (fErr) {}
+
+  var rowMap = {};
+  var keyIdx = (keyColIdx !== undefined && keyColIdx !== null) ? keyColIdx : 0;
+
+  // Read existing rows from sheet
+  try {
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+    if (lastRow > 1 && lastCol > 0) {
+      var existingData = sheet.getRange(2, 1, lastRow - 1, Math.max(lastCol, headers.length)).getValues();
+      for (var r = 0; r < existingData.length; r++) {
+        var exRow = existingData[r];
+        var k = String(exRow[keyIdx] || '').trim();
+        if (k && k !== 'N/A') {
+          var normalized = [];
+          for (var c = 0; c < headers.length; c++) {
+            normalized.push(exRow[c] !== undefined ? exRow[c] : '');
+          }
+          rowMap[k] = normalized;
+        }
+      }
+    }
+  } catch (readErr) {}
+
+  // Merge incoming rows
+  if (incomingRows && incomingRows.length > 0) {
+    for (var i = 0; i < incomingRows.length; i++) {
+      var inRow = incomingRows[i];
+      var inKey = String(inRow[keyIdx] || '').trim();
+      if (inKey && inKey !== 'N/A') {
+        rowMap[inKey] = inRow;
+      } else {
+        rowMap['auto_' + i + '_' + (inRow[1] || '') + '_' + (inRow[2] || '')] = inRow;
+      }
+    }
+  }
+
+  var mergedList = Object.keys(rowMap).map(function(k) { return rowMap[k]; });
+
+  // Optional date sort descending
+  if (dateSortColIdx !== undefined && dateSortColIdx !== null) {
+    mergedList.sort(function(a, b) {
+      var valA = a[dateSortColIdx] ? new Date(a[dateSortColIdx]).getTime() : 0;
+      var valB = b[dateSortColIdx] ? new Date(b[dateSortColIdx]).getTime() : 0;
+      if (isNaN(valA)) valA = 0;
+      if (isNaN(valB)) valB = 0;
+      return valB - valA;
+    });
+  }
+
+  sheet.clear();
+  var allData = [headers];
+  if (mergedList.length > 0) {
+    allData = allData.concat(mergedList);
+  }
+
+  var numRows = allData.length;
+  var numCols = headers.length;
+  sheet.getRange(1, 1, numRows, numCols).setValues(allData);
+
+  sheet.getRange(1, 1, 1, numCols)
+    .setFontWeight('bold')
+    .setBackground(headerColor || '#0f172a')
+    .setFontColor('#ffffff');
+  sheet.setFrozenRows(1);
+
+  try {
+    var maxRows = sheet.getMaxRows();
+    if (maxRows > numRows + 5 && maxRows > 25) {
+      sheet.deleteRows(numRows + 6, maxRows - (numRows + 5));
+    }
+  } catch (rErr) {}
+}
+
+/**
+ * Overwrite batch writer for directory and configuration tabs
  */
 function populateCleanSheet(sheet, headers, rows, headerColor) {
   if (!sheet) return;
 
-  // 1. Remove active filter so data rows are never hidden or displaced
   try {
     var existingFilter = sheet.getFilter();
     if (existingFilter) {
@@ -373,10 +500,8 @@ function populateCleanSheet(sheet, headers, rows, headerColor) {
     }
   } catch (fErr) {}
 
-  // 2. Clear entire sheet
   sheet.clear();
 
-  // 3. Assemble complete 2D matrix
   var allData = [headers];
   if (rows && rows.length > 0) {
     allData = allData.concat(rows);
@@ -385,18 +510,15 @@ function populateCleanSheet(sheet, headers, rows, headerColor) {
   var numRows = allData.length;
   var numCols = headers.length;
 
-  // 4. Atomic batch write: Starts strictly at Row 1, Col 1 (No gaps between header & row 2!)
   var targetRange = sheet.getRange(1, 1, numRows, numCols);
   targetRange.setValues(allData);
 
-  // 5. Header formatting
   sheet.getRange(1, 1, 1, numCols)
     .setFontWeight('bold')
     .setBackground(headerColor || '#0f172a')
     .setFontColor('#ffffff');
   sheet.setFrozenRows(1);
 
-  // 6. Delete ghost blank rows at the bottom (leave clean 5 buffer rows)
   try {
     var maxRows = sheet.getMaxRows();
     if (maxRows > numRows + 5 && maxRows > 25) {
@@ -426,12 +548,12 @@ function setupSheetsSchema() {
     {
       tab: 'Time_Logs',
       color: '#059669', // Emerald
-      headers: ['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Net Active Duration (HH:MM:SS)', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes']
+      headers: ['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Duration (Seconds)', 'Total Time', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes']
     },
     {
       tab: 'Active_Logs',
       color: '#059669', // Emerald
-      headers: ['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Net Active Duration (HH:MM:SS)', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes']
+      headers: ['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Duration (Seconds)', 'Total Time', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes']
     },
     {
       tab: 'Inactive_Logs',
@@ -584,9 +706,9 @@ function doPost(e) {
       });
 
       var loginSheet = ss.getSheetByName('Login_Logs');
-      if (loginSheet) populateCleanSheet(loginSheet, loginHeaders, loginRows, '#1e3a8a');
+      if (loginSheet) populateMergedSheet(loginSheet, loginHeaders, loginRows, '#1e3a8a', 0, 1);
       var loginSessionSheet = ss.getSheetByName('Login_Session_Logs');
-      if (loginSessionSheet) populateCleanSheet(loginSessionSheet, loginHeaders, loginRows, '#1e3a8a');
+      if (loginSessionSheet) populateMergedSheet(loginSessionSheet, loginHeaders, loginRows, '#1e3a8a', 0, 1);
 
       // ==========================================
       // 2. POPULATE LOGOUT LOGS (Dedicated Tab)
@@ -629,7 +751,7 @@ function doPost(e) {
       });
 
       var logoutSheet = ss.getSheetByName('Logout_Logs');
-      if (logoutSheet) populateCleanSheet(logoutSheet, logoutHeaders, logoutRows, '#334155');
+      if (logoutSheet) populateMergedSheet(logoutSheet, logoutHeaders, logoutRows, '#334155', 0, 1);
 
       // ==========================================
       // 3. POPULATE IDLE LOGS (Dedicated Tab)
@@ -660,12 +782,12 @@ function doPost(e) {
       });
 
       var idleSheet = ss.getSheetByName('Idle_Logs');
-      if (idleSheet) populateCleanSheet(idleSheet, idleHeaders, idleRows, '#b45309');
+      if (idleSheet) populateMergedSheet(idleSheet, idleHeaders, idleRows, '#b45309', 0, 1);
 
       // ==========================================
       // 4. POPULATE TIME LOGS (Timesheet Sessions & Live Tracking)
       // ==========================================
-      var activeHeaders = ['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Net Active Duration (HH:MM:SS)', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes'];
+      var activeHeaders = ['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Duration (Seconds)', 'Total Time', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes'];
       var activeSeen = {};
       var activeRows = [];
       rawTimeLogs.forEach(function(t) {
@@ -674,9 +796,18 @@ function doPost(e) {
         activeSeen[dedupeKey] = true;
 
         var matchedUser = userMap[t.userId] || userMap[t.userName] || {};
-        var durStr = typeof t.durationSeconds === 'number' 
-          ? Math.floor(t.durationSeconds / 3600).toString().padStart(2, '0') + ':' + Math.floor((t.durationSeconds % 3600) / 60).toString().padStart(2, '0') + ':' + (t.durationSeconds % 60).toString().padStart(2, '0')
-          : (t.duration || '00:00:00');
+        
+        var rawSecs = typeof t.durationSeconds === 'number' ? Math.max(0, Math.floor(t.durationSeconds)) : 0;
+        if (!rawSecs && t.startTime && t.endTime && t.endTime !== 'Running Live') {
+          try {
+            var diffMs = new Date(t.endTime).getTime() - new Date(t.startTime).getTime();
+            if (!isNaN(diffMs) && diffMs > 0) {
+              rawSecs = Math.floor(diffMs / 1000) - (t.idleSeconds || 0);
+              if (rawSecs < 0) rawSecs = 0;
+            }
+          } catch(e) {}
+        }
+        var totalTimeHuman = formatTotalTime(rawSecs);
         var idleMins = t.idleSeconds ? Math.round(t.idleSeconds / 60) + ' mins' : '0 mins';
 
         // Format start and end times in Philippine Timezone (Asia/Manila GMT+8)
@@ -708,7 +839,8 @@ function doPost(e) {
           t.date || '',
           sTime,
           eTime,
-          durStr,
+          rawSecs,
+          totalTimeHuman,
           idleMins,
           (t.mouseActivityAvg != null ? t.mouseActivityAvg : 0) + '%',
           (t.keyboardActivityAvg != null ? t.keyboardActivityAvg : 0) + '%',
@@ -726,14 +858,14 @@ function doPost(e) {
       });
 
       var timeLogsSheet = ss.getSheetByName('Time_Logs');
-      if (timeLogsSheet) populateCleanSheet(timeLogsSheet, activeHeaders, activeRows, '#047857');
+      if (timeLogsSheet) populateMergedSheet(timeLogsSheet, activeHeaders, activeRows, '#047857', 0, 5);
 
       var activeSheet = ss.getSheetByName('Active_Logs');
-      if (activeSheet) populateCleanSheet(activeSheet, activeHeaders, activeRows, '#047857');
+      if (activeSheet) populateMergedSheet(activeSheet, activeHeaders, activeRows, '#047857', 0, 5);
 
       if (!timeLogsSheet && !activeSheet) {
         timeLogsSheet = ss.insertSheet('Time_Logs');
-        populateCleanSheet(timeLogsSheet, activeHeaders, activeRows, '#047857');
+        populateMergedSheet(timeLogsSheet, activeHeaders, activeRows, '#047857', 0, 5);
       }
 
       // ==========================================
@@ -759,7 +891,7 @@ function doPost(e) {
       });
 
       var inactiveSheet = ss.getSheetByName('Inactive_Logs');
-      if (inactiveSheet) populateCleanSheet(inactiveSheet, inactiveHeaders, inactiveRows, '#c2410c');
+      if (inactiveSheet) populateMergedSheet(inactiveSheet, inactiveHeaders, inactiveRows, '#c2410c', 0, 1);
 
       // ==========================================
       // 6. POPULATE ADMIN AUDIT LOGS & AUDIT LOGS
@@ -790,7 +922,7 @@ function doPost(e) {
       fullAuditRows.sort(function(a, b) {
         return new Date(b[1] || 0).getTime() - new Date(a[1] || 0).getTime();
       });
-      if (fullAuditSheet) populateCleanSheet(fullAuditSheet, auditHeaders, fullAuditRows, '#312e81');
+      if (fullAuditSheet) populateMergedSheet(fullAuditSheet, auditHeaders, fullAuditRows, '#312e81', 0, 1);
 
       var adminRows = [];
       var adminEvents = rawAuditLogs.filter(function(l) {
@@ -822,7 +954,7 @@ function doPost(e) {
       adminRows.sort(function(a, b) {
         return new Date(b[1] || 0).getTime() - new Date(a[1] || 0).getTime();
       });
-      if (adminAuditSheet) populateCleanSheet(adminAuditSheet, auditHeaders, adminRows, '#4338ca');
+      if (adminAuditSheet) populateMergedSheet(adminAuditSheet, auditHeaders, adminRows, '#4338ca', 0, 1);
 
       // ==========================================
       // 7. POPULATE DAILY ATTENDANCE LOGS
@@ -854,7 +986,7 @@ function doPost(e) {
         return (dB || 0) - (dA || 0);
       });
       var attSheet = ss.getSheetByName('Daily_Attendance_Logs');
-      if (attSheet) populateCleanSheet(attSheet, attHeaders, attRows, '#0e7490');
+      if (attSheet) populateMergedSheet(attSheet, attHeaders, attRows, '#0e7490', 0, 1);
 
       // ==========================================
       // 8. POPULATE EMPLOYEE DIRECTORY

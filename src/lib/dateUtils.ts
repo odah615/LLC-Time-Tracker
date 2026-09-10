@@ -160,6 +160,27 @@ export function formatDurationDetailed(totalSec: number): string {
 }
 
 /**
+ * Mathematically accurate Total Time conversion:
+ * - >= 1 hour: "Xh Ym Zs" (e.g. 27529s -> "7h 38m 49s")
+ * - < 1 hour: "Ym Zs" (e.g. 1121s -> "18m 41s", 2147s -> "35m 47s")
+ * - < 1 min: "Zs" (e.g. 14s -> "14s")
+ */
+export function formatTotalTime(totalSeconds: number | string | undefined | null): string {
+  const secs = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+
+  if (h > 0) {
+    return `${h}h ${m}m ${s}s`;
+  } else if (m > 0) {
+    return `${m}m ${s}s`;
+  } else {
+    return `${s}s`;
+  }
+}
+
+/**
  * Standard HH:MM:SS format
  */
 export function formatDurationHHMMSS(totalSec: number): string {

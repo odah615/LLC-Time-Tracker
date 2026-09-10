@@ -1273,6 +1273,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         })
         .catch(() => {});
+
+      // 2d. Sync Audit Logs across sessions (login/logout/trainee activity logs)
+      fetch('/api/auditlogs')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((remoteAudit: AuditLog[]) => {
+          if (Array.isArray(remoteAudit) && remoteAudit.length > 0) {
+            setAuditLogs((prev) => {
+              const map = new Map<string, AuditLog>(prev.map((a) => [a.id, a]));
+              let hasNew = false;
+              for (const item of remoteAudit) {
+                if (item && item.id && !map.has(item.id)) {
+                  map.set(item.id, item);
+                  hasNew = true;
+                }
+              }
+              if (hasNew) {
+                const merged = Array.from(map.values()).sort(
+                  (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+                );
+                localStorage.setItem('trackpulse_auditlogs', JSON.stringify(merged));
+                return merged;
+              }
+              return prev;
+            });
+          }
+        })
+        .catch(() => {});
+
+      // 2e. Sync Daily Attendance logs across sessions
+      fetch('/api/attendance')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((remoteAtt: DailyAttendanceLog[]) => {
+          if (Array.isArray(remoteAtt) && remoteAtt.length > 0) {
+            setDailyAttendanceLogs((prev) => {
+              const map = new Map<string, DailyAttendanceLog>(prev.map((a) => [`${a.userId}_${a.date}`, a]));
+              let hasNew = false;
+              for (const item of remoteAtt) {
+                if (item && item.userId && item.date) {
+                  const k = `${item.userId}_${item.date}`;
+                  if (!map.has(k)) {
+                    map.set(k, item);
+                    hasNew = true;
+                  }
+                }
+              }
+              if (hasNew) {
+                const merged = Array.from(map.values());
+                localStorage.setItem('trackpulse_attendance', JSON.stringify(merged));
+                return merged;
+              }
+              return prev;
+            });
+          }
+        })
+        .catch(() => {});
     };
 
     fetchCentralSync();
@@ -1364,6 +1419,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         safeSetDoc(doc(db, 'system_state', 'auditlogs'), { data: updated }).catch((err) =>
           console.warn('AuditLogs sync warning:', err)
         );
+        fetch('/api/auditlogs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newLog),
+        }).catch(() => {});
         return updated;
       });
     },
