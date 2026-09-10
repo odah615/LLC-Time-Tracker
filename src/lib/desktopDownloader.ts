@@ -197,101 +197,38 @@ fi
 echo "Detected Mac architecture: $MAC_ARCH"
 
 echo "[1/4] Writing package.json..."
-cat << 'EOF' > package.json
-{
-  "name": "llc-time-tracker-desktop",
-  "version": "1.0.0",
-  "description": "LLC Time Tracker Desktop Software",
-  "author": "LLC Time Tracker",
-  "main": "main.js",
-  "scripts": {
-    "start": "electron .",
-    "build": "electron-packager . \"LLC Time Tracker\" --platform=darwin --arch=x64 --overwrite --out=dist"
-  },
-  "devDependencies": {
-    "electron": "^28.2.0",
-    "electron-packager": "^17.1.2"
-  }
-}
-EOF
+node -e "require('fs').writeFileSync('package.json', Buffer.from('${b64PackageJson}', 'base64').toString('utf8'))"
 
 # Update architecture in package.json for Apple Silicon if applicable
 if [ "$MAC_ARCH" = "arm64" ]; then
-  sed -i '' 's/--arch=x64/--arch=arm64/g' package.json 2>/dev/null || true
+  node -e "const p = require('./package.json'); p.scripts.build = p.scripts.build.replace('win32', 'darwin').replace('x64', 'arm64'); require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2));" 2>/dev/null || true
+else
+  node -e "const p = require('./package.json'); p.scripts.build = p.scripts.build.replace('win32', 'darwin'); require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2));" 2>/dev/null || true
 fi
 
 echo "[2/4] Writing main.js and preload.js (with dual-monitor OS idle tracking)..."
-cat << 'EOF' > preload.js
-const { contextBridge, ipcRenderer } = require('electron');
-
-contextBridge.exposeInMainWorld('electronAPI', {
-  getSystemIdleTime: () => ipcRenderer.invoke('get-system-idle-time'),
-  isDesktopApp: true
-});
-EOF
-
-cat << 'EOF' > main.js
-const { app, BrowserWindow, powerMonitor, ipcMain } = require('electron');
-const path = require('path');
-
-// OS-Level hardware idle tracking: queries true system-wide keyboard/mouse activity across all monitors & applications
-ipcMain.handle('get-system-idle-time', () => {
-  try {
-    return powerMonitor.getSystemIdleTime();
-  } catch (err) {
-    return 0;
-  }
-});
-
-function createWindow() {
-  const mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 840,
-    minWidth: 400,
-    minHeight: 600,
-    title: 'LLC Time Tracker Desktop Software',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
-      backgroundThrottling: false
-    }
-  });
-
-  mainWindow.loadURL('${SOFTWARE_APP_URL}');
-}
-
-app.whenReady().then(createWindow);
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-EOF
+node -e "require('fs').writeFileSync('preload.js', Buffer.from('${b64PreloadJs}', 'base64').toString('utf8'))"
+node -e "require('fs').writeFileSync('main.js', Buffer.from('${b64MainJs}', 'base64').toString('utf8'))"
 
 echo "[3/4] Installing Electron dependencies..."
 npm install --no-audit
 
-echo "[4/4] Building macOS Standalone App Bundle..."
-npm run build || npx electron-packager . "LLC Time Tracker" --platform=darwin --arch="$MAC_ARCH" --overwrite --out=dist || echo "Packager finished or skipped, launcher ready!"
-
+echo "[4/4] Launching standalone desktop tracker window..."
 # Create an instant launch script for macOS users
 cat << 'EOF' > Launch_LLC_Time_Tracker.command
 #!/bin/bash
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 cd "$(dirname "$0")"
-if [ -d "dist/LLC Time Tracker-darwin-arm64/LLC Time Tracker.app" ]; then
-  open "dist/LLC Time Tracker-darwin-arm64/LLC Time Tracker.app"
-elif [ -d "dist/LLC Time Tracker-darwin-x64/LLC Time Tracker.app" ]; then
-  open "dist/LLC Time Tracker-darwin-x64/LLC Time Tracker.app"
-else
-  npx electron .
-fi
+npx electron .
 EOF
 chmod +x Launch_LLC_Time_Tracker.command
 
 echo ""
 echo "========================================================"
 echo "SUCCESS! Your macOS Application is ready!"
-echo "You can double-click 'Launch_LLC_Time_Tracker.command' to run anytime."
+echo "Launching desktop window now..."
 echo "========================================================"
-open Launch_LLC_Time_Tracker.command 2>/dev/null || true
+npx electron . &
 `;
     const element = document.createElement('a');
     const file = new Blob([shContent], { type: 'text/plain' });
@@ -310,92 +247,30 @@ echo "Working directory: $(pwd)"
 echo ""
 
 echo "[1/4] Writing package.json..."
-cat << 'EOF' > package.json
-{
-  "name": "llc-time-tracker-desktop",
-  "version": "1.0.0",
-  "description": "LLC Time Tracker Desktop Software",
-  "author": "LLC Time Tracker",
-  "main": "main.js",
-  "scripts": {
-    "start": "electron .",
-    "build": "electron-packager . \"LLC Time Tracker\" --platform=linux --arch=x64 --overwrite --out=dist"
-  },
-  "devDependencies": {
-    "electron": "^28.2.0",
-    "electron-packager": "^17.1.2"
-  }
-}
-EOF
+node -e "require('fs').writeFileSync('package.json', Buffer.from('${b64PackageJson}', 'base64').toString('utf8'))"
+node -e "const p = require('./package.json'); p.scripts.build = p.scripts.build.replace('win32', 'linux'); require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2));" 2>/dev/null || true
 
 echo "[2/4] Writing main.js and preload.js (with dual-monitor OS idle tracking)..."
-cat << 'EOF' > preload.js
-const { contextBridge, ipcRenderer } = require('electron');
-
-contextBridge.exposeInMainWorld('electronAPI', {
-  getSystemIdleTime: () => ipcRenderer.invoke('get-system-idle-time'),
-  isDesktopApp: true
-});
-EOF
-
-cat << 'EOF' > main.js
-const { app, BrowserWindow, powerMonitor, ipcMain } = require('electron');
-const path = require('path');
-
-// OS-Level hardware idle tracking: queries true system-wide keyboard/mouse activity across all monitors & applications
-ipcMain.handle('get-system-idle-time', () => {
-  try {
-    return powerMonitor.getSystemIdleTime();
-  } catch (err) {
-    return 0;
-  }
-});
-
-function createWindow() {
-  const mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 840,
-    minWidth: 400,
-    minHeight: 600,
-    title: 'LLC Time Tracker Desktop Software',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
-      backgroundThrottling: false
-    }
-  });
-
-  mainWindow.loadURL('${SOFTWARE_APP_URL}');
-}
-
-app.whenReady().then(createWindow);
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-EOF
+node -e "require('fs').writeFileSync('preload.js', Buffer.from('${b64PreloadJs}', 'base64').toString('utf8'))"
+node -e "require('fs').writeFileSync('main.js', Buffer.from('${b64MainJs}', 'base64').toString('utf8'))"
 
 echo "[3/4] Installing Electron dependencies..."
 npm install --no-audit
 
-echo "[4/4] Building Linux Executable..."
-npm run build
-
+echo "[4/4] Launching standalone desktop tracker..."
 cat << 'EOF' > Launch_LLC_Time_Tracker.sh
 #!/bin/bash
 cd "$(dirname "$0")"
-if [ -f "dist/LLC Time Tracker-linux-x64/LLC Time Tracker" ]; then
-  "./dist/LLC Time Tracker-linux-x64/LLC Time Tracker"
-else
-  npx electron .
-fi
+npx electron .
 EOF
 chmod +x Launch_LLC_Time_Tracker.sh
 
 echo ""
 echo "========================================================"
-echo "SUCCESS! Your Linux Application is built!"
-echo "Look inside folder: $(pwd)/dist/LLC Time Tracker-linux-x64/"
-echo "Run './Launch_LLC_Time_Tracker.sh' to launch!"
+echo "SUCCESS! Your Linux Application is ready!"
+echo "Launching desktop window now..."
 echo "========================================================"
+npx electron . &
 `;
     const element = document.createElement('a');
     const file = new Blob([shContent], { type: 'text/plain' });

@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { UserRole } from '../types';
 import { getGoogleAppsScriptTemplate, downloadTableCSV, DEFAULT_SPREADSHEET_ID, DEFAULT_SPREADSHEET_URL } from '../lib/googleSheetsSync';
+import { formatTotalTime } from '../lib/dateUtils';
 import { downloadDesktopSoftwarePackage, DesktopOS } from '../lib/desktopDownloader';
 import { downloadWordDocInstructions } from '../lib/docGenerator';
 import { UserAvatar } from './UserAvatar';
@@ -476,8 +477,20 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-[11px]">
                 <span className="font-bold text-slate-800">Quick Installation Steps:</span>
                 <ol className="list-decimal pl-4 space-y-1 text-slate-600">
-                  <li>Download the builder script above to your desktop folder.</li>
-                  <li>Run the script ({headerSelectedOS === 'windows' ? 'double-click the .bat file' : 'run bash Build_LLC_Time_Tracker_*.sh in terminal'}).</li>
+                  <li>Download the builder script above.</li>
+                  <li>
+                    {headerSelectedOS === 'windows' && 'Double-click the .bat file to build LLC Time Tracker.exe.'}
+                    {headerSelectedOS === 'mac' && (
+                      <span>
+                        Open Terminal and run: <code className="bg-slate-200 px-1.5 py-0.5 rounded font-mono text-slate-800 font-bold">bash ~/Downloads/Build_LLC_Time_Tracker_Mac.command</code> (or run <code className="bg-slate-200 px-1.5 py-0.5 rounded font-mono text-slate-800">chmod +x</code> first).
+                      </span>
+                    )}
+                    {headerSelectedOS === 'linux' && (
+                      <span>
+                        Open Terminal and run: <code className="bg-slate-200 px-1.5 py-0.5 rounded font-mono text-slate-800 font-bold">bash ~/Downloads/Build_LLC_Time_Tracker_Linux.sh</code>.
+                      </span>
+                    )}
+                  </li>
                   <li>Launch your native desktop application and log in to track your shift.</li>
                 </ol>
               </div>
@@ -728,9 +741,9 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                   <button
                     onClick={() => {
                       downloadTableCSV(
-                        'Time_Logs.csv',
-                        ['Log ID', 'Employee Name', 'Designation', 'Task', 'Date', 'Start Time', 'End Time', 'Duration (s)', 'Mouse %', 'Keyboard %', 'Status', 'Notes'],
-                        timeLogs.map((l) => [l.id, l.userName, l.designation, l.task, l.date, l.startTime, l.endTime || 'Running', l.durationSeconds, l.mouseActivityAvg, l.keyboardActivityAvg, l.status, l.notes || ''])
+                        'Time_Logs',
+                        ['Log ID', 'Employee Name', 'Designation', 'Task', 'Date', 'Start Time', 'End Time', 'Duration (Seconds)', 'Total Time', 'Mouse %', 'Keyboard %', 'Status', 'Notes'],
+                        timeLogs.map((l) => [l.id, l.userName, l.designation, l.task, l.date, l.startTime, l.endTime || 'Running', l.durationSeconds, formatTotalTime(l.durationSeconds), l.mouseActivityAvg, l.keyboardActivityAvg, l.status, l.notes || ''])
                       );
                     }}
                     className="py-1.5 px-3 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-800 font-medium text-xs flex items-center justify-center gap-1.5 shadow-sm"
@@ -740,7 +753,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                   <button
                     onClick={() => {
                       downloadTableCSV(
-                        'Payroll_Summary.csv',
+                        'Payroll_Summary',
                         ['Pay Period', 'Employee Code', 'Employee Name', 'Designation', 'Total Hours', 'Regular Hours', 'Overtime Hours', 'Gross Pay', 'Net Pay', 'Status'],
                         payrollRecords.map((p) => [p.payPeriod, p.employeeCode, p.userName, p.designation, p.totalTrackedHours, p.regularHours, p.overtimeHours, p.grossPay, p.netPay, p.status])
                       );

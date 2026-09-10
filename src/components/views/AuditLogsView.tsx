@@ -8,7 +8,7 @@ import {
   generateAppsScriptCode,
   downloadTableCSV,
 } from '../../lib/googleSheetsSync';
-import { formatLogStartTime, formatLogEndTime } from '../../lib/dateUtils';
+import { formatLogStartTime, formatLogEndTime, formatTotalTime } from '../../lib/dateUtils';
 import {
   ShieldAlert,
   FileSpreadsheet,
@@ -269,7 +269,6 @@ export const AuditLogsView: React.FC = () => {
       case 'active': {
         const rows = timeLogs.map((t) => {
           const usr = userMap.get(t.userId) || userMap.get(t.userName.toLowerCase());
-          const durStr = `${Math.floor(t.durationSeconds / 3600)}h ${Math.floor((t.durationSeconds % 3600) / 60)}m ${t.durationSeconds % 60}s`;
           return [
             t.id,
             usr?.employeeCode || 'N/A',
@@ -279,7 +278,8 @@ export const AuditLogsView: React.FC = () => {
             t.date,
             t.geoLocalStartTime || formatLogStartTime(t.startTime, 'Asia/Manila'),
             t.endTime === 'Running Live' || !t.endTime ? 'Running Live' : (t.geoLocalEndTime || formatLogEndTime(t.endTime, 'Asia/Manila')),
-            durStr,
+            t.durationSeconds,
+            formatTotalTime(t.durationSeconds),
             t.idleSeconds ? `${Math.round(t.idleSeconds / 60)} mins` : '0 mins',
             `${t.mouseActivityAvg}%`,
             `${t.keyboardActivityAvg}%`,
@@ -390,7 +390,6 @@ export const AuditLogsView: React.FC = () => {
     // 4. Export Active Logs
     const activeRows = timeLogs.map((t) => {
       const usr = userMap.get(t.userId) || userMap.get(t.userName.toLowerCase());
-      const durStr = `${Math.floor(t.durationSeconds / 3600)}h ${Math.floor((t.durationSeconds % 3600) / 60)}m ${t.durationSeconds % 60}s`;
       return [
         t.id,
         usr?.employeeCode || 'N/A',
@@ -400,7 +399,8 @@ export const AuditLogsView: React.FC = () => {
         t.date,
         t.geoLocalStartTime || formatLogStartTime(t.startTime, 'Asia/Manila'),
         t.endTime === 'Running Live' || !t.endTime ? 'Running Live' : (t.geoLocalEndTime || formatLogEndTime(t.endTime, 'Asia/Manila')),
-        durStr,
+        t.durationSeconds,
+        formatTotalTime(t.durationSeconds),
         t.idleSeconds ? `${Math.round(t.idleSeconds / 60)} mins` : '0 mins',
         `${t.mouseActivityAvg}%`,
         `${t.keyboardActivityAvg}%`,
