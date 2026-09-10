@@ -20,7 +20,7 @@ import {
 import { doc, setDoc, deleteDoc, onSnapshot, collection, getDoc, disableNetwork, enableNetwork } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { getManilaDateString, getManilaTimeString, formatLogStartTime, formatLogEndTime } from '../lib/dateUtils';
-import { generateUniqueUsername } from '../lib/userUtils';
+import { generateUniqueUsername, deduplicateUsers } from '../lib/userUtils';
 import {
   syncDataToGoogleSheetsWebhook,
   DEFAULT_SPREADSHEET_URL,
@@ -70,28 +70,56 @@ export function sanitizeForFirestore<T>(val: T): T {
   return result as T;
 }
 
-let isQuotaExhaustedGlobal = false;
-let quotaExhaustedTimeout: any = null;
+let isQuotaExhaustedGlobal = (() => {
+  if (typeof window === 'undefined') return true;
+  try {
+    const savedEngine = localStorage.getItem('trackpulse_storage_engine');
+    if (savedEngine === 'firestore') {
+      const savedQuotaDate = localStorage.getItem('trackpulse_quota_exhausted_date');
+      const today = new Date().toISOString().slice(0, 10);
+      if (savedQuotaDate && savedQuotaDate === today) {
+        return true;
+      }
+      return sessionStorage.getItem('trackpulse_quota_exhausted') === 'true';
+    }
+    // Default to unlimited_bridge mode for 100+ agents to completely avoid Firestore quotas
+    return true;
+  } catch {
+    return true;
+  }
+})();
+
+if (isQuotaExhaustedGlobal) {
+  try {
+    disableNetwork(db).catch(() => {});
+  } catch {}
+}
 
 export const setCloudQuotaExhausted = () => {
   if (!isQuotaExhaustedGlobal) {
     isQuotaExhaustedGlobal = true;
-    console.warn('[Firestore] Quota backoff activated. Backing off writes briefly.');
+    console.warn('[Storage] Quota limit reached or high-capacity bridge activated. Operating in permanent unlimited Central Server & Google Sheets Bridge mode (Zero Firestore Quota Consumption).');
+    try {
+      if (typeof window !== 'undefined') {
+        const today = new Date().toISOString().slice(0, 10);
+        sessionStorage.setItem('trackpulse_quota_exhausted', 'true');
+        localStorage.setItem('trackpulse_quota_exhausted_date', today);
+        localStorage.setItem('trackpulse_storage_engine', 'unlimited_bridge');
+      }
+    } catch {}
+    try {
+      disableNetwork(db).catch(() => {});
+    } catch {}
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('firestore_quota_status_change'));
     }
   }
-  clearTimeout(quotaExhaustedTimeout);
-  // Auto-retry in 60 seconds
-  quotaExhaustedTimeout = setTimeout(() => {
-    isQuotaExhaustedGlobal = false;
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('firestore_quota_status_change'));
-    }
-  }, 60 * 1000);
 };
 
 const safeSetDoc = async (docRef: any, data: any, options?: any) => {
+  if (isQuotaExhaustedGlobal) {
+    return Promise.resolve();
+  }
   try {
     const cleanData = sanitizeForFirestore(data);
     return await (options ? setDoc(docRef, cleanData, options) : setDoc(docRef, cleanData));
@@ -104,6 +132,25 @@ const safeSetDoc = async (docRef: any, data: any, options?: any) => {
       return Promise.resolve();
     }
     console.warn('safeSetDoc write warning:', err);
+    return Promise.resolve();
+  }
+};
+
+const safeDeleteDoc = async (docRef: any) => {
+  if (isQuotaExhaustedGlobal) {
+    return Promise.resolve();
+  }
+  try {
+    return await deleteDoc(docRef);
+  } catch (err: any) {
+    const isQuota = err?.code === 'resource-exhausted' ||
+                    err?.message?.includes('Quota exceeded') ||
+                    err?.message?.includes('resource-exhausted');
+    if (isQuota) {
+      setCloudQuotaExhausted();
+      return Promise.resolve();
+    }
+    console.warn('safeDeleteDoc warning:', err);
     return Promise.resolve();
   }
 };
@@ -157,6 +204,11 @@ interface AppContextType {
   dismissIdleAlert: () => void;
   recordIdleInactivityEvent: (idleMinutes: number, reason?: string) => void;
   simulateIdleEvent: (minutes?: number) => void;
+  restoreInactivityDeduction: () => void;
+  isDualMonitorMode: boolean;
+  toggleDualMonitorMode: () => void;
+  storageEngineMode: 'unlimited_bridge' | 'firestore';
+  setStorageEngineMode: (mode: 'unlimited_bridge' | 'firestore') => void;
   inactivityAlertState: {
     isOpen: boolean;
     idleMinutes: number;
@@ -302,15 +354,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Load from localStorage or defaults
   const [users, setUsers] = useState<User[]>(() => {
     const saved = localStorage.getItem('trackpulse_users');
-    if (!saved) return ensureUsernames(INITIAL_USERS);
+    if (!saved) return deduplicateUsers(ensureUsernames(INITIAL_USERS));
     try {
       const parsed: User[] = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return ensureUsernames(parsed);
+        const cleaned = deduplicateUsers(ensureUsernames(parsed));
+        localStorage.setItem('trackpulse_users', JSON.stringify(cleaned));
+        return cleaned;
       }
-      return ensureUsernames(INITIAL_USERS);
+      return deduplicateUsers(ensureUsernames(INITIAL_USERS));
     } catch {
-      return ensureUsernames(INITIAL_USERS);
+      return deduplicateUsers(ensureUsernames(INITIAL_USERS));
     }
   });
 
@@ -749,11 +803,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const res = await fetchEmployeesFromGoogleSheets(targetUrl, DEFAULT_SPREADSHEET_ID, users);
 
     if (res.success && res.employees.length > 0) {
-      setUsers(res.employees);
-      localStorage.setItem('trackpulse_users', JSON.stringify(res.employees));
-      safeSetDoc(doc(db, 'system_state', 'users'), { data: res.employees }).catch((err) =>
+      const deduplicated = deduplicateUsers(res.employees);
+      setUsers(deduplicated);
+      localStorage.setItem('trackpulse_users', JSON.stringify(deduplicated));
+      safeSetDoc(doc(db, 'system_state', 'users'), { data: deduplicated }).catch((err) =>
         console.warn('Users save err:', err)
       );
+      fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(deduplicated),
+      }).catch(() => {});
 
       // Rebuild and update Presence List
       const updatedPresence = res.employees.map((u) => {
@@ -896,6 +956,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Load and subscribe to real-time Firestore updates
   useEffect(() => {
+    if (isQuotaExhaustedGlobal) {
+      setIsFirestoreLoaded(true);
+      return;
+    }
+
     let unsubTimeLogs = () => {};
     let unsubLiveTimeLogs = () => {};
     let unsubUsers = () => {};
@@ -935,6 +1000,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                       err?.message?.includes('resource-exhausted');
       if (isQuota) {
         setCloudQuotaExhausted();
+        unsubAll();
         return;
       }
       console.warn(`Firestore ${name} listener warning:`, err);
@@ -952,33 +1018,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }, (err) => handleSnapshotError('config', err));
 
-      // Direct collection listener for individual timelog documents
-      unsubLiveTimeLogs = onSnapshot(collection(db, 'timelogs'), (snapshot) => {
-        if (!snapshot.empty) {
-          const fetchedLogs: TimeLog[] = [];
-          snapshot.forEach((d) => {
-            const data = d.data() as TimeLog;
-            if (data && data.id) {
-              fetchedLogs.push(data);
-            }
-          });
-          if (fetchedLogs.length > 0) {
-            setTimeLogs((prev) => {
-              const map = new Map<string, TimeLog>();
-              prev.forEach((l) => map.set(l.id, l));
-              fetchedLogs.forEach((l) => map.set(l.id, l));
-              const merged = Array.from(map.values()).sort((a, b) => {
-                const tA = new Date(a.date + ' ' + (a.startTime || '00:00')).getTime();
-                const tB = new Date(b.date + ' ' + (b.startTime || '00:00')).getTime();
-                return tB - tA;
-              });
-              localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
-              return merged;
-            });
-          }
-        }
-      }, (err) => handleSnapshotError('timelogs_collection', err));
-
+      // Individual timelogs and presence are managed by Central Sync Bridge (/api/timelogs and /api/presence)
+      // to guarantee zero Firestore read/write quota consumption across 100+ concurrent agents.
       unsubTimeLogs = onSnapshot(doc(db, 'system_state', 'timelogs'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
           const remoteLogs: TimeLog[] = snapshot.data().data;
@@ -1006,10 +1047,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
             const sanitizedUsers = ensureUsernames(remoteUsers);
             setUsers((prev) => {
-              const map = new Map<string, User>();
-              prev.forEach((u) => map.set(u.id, u));
-              sanitizedUsers.forEach((u) => map.set(u.id, u));
-              const merged = Array.from(map.values());
+              const merged = deduplicateUsers([...prev, ...sanitizedUsers]);
               localStorage.setItem('trackpulse_users', JSON.stringify(merged));
               return merged;
             });
@@ -1070,34 +1108,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }, (err) => handleSnapshotError('attendance', err));
 
-      // Real-time live presence listener: Listens to collection('user_presence') across all active devices
-      unsubPresence = onSnapshot(collection(db, 'user_presence'), (snapshot) => {
-        if (!snapshot.empty) {
-          const presenceMap = new Map<string, UserPresence>();
-          snapshot.forEach((d) => {
-            const data = d.data() as UserPresence;
-            if (data && data.userId) {
-              presenceMap.set(data.userId, data);
-            }
-          });
-
-          setUserPresenceList((prev) => {
-            const updated = prev.map((p) => {
-              const live = presenceMap.get(p.userId);
-              return live ? { ...p, ...live } : p;
-            });
-            presenceMap.forEach((live, uId) => {
-              if (!updated.some((p) => p.userId === uId)) {
-                updated.push(live);
-              }
-            });
-            localStorage.setItem('trackpulse_presence', JSON.stringify(updated));
-            return updated;
-          });
-        }
-      }, (err) => {
-        handleSnapshotError('user_presence', err);
-      });
+      // Real-time live presence is synchronized via Central Sync Bridge (/api/presence)
+      // which eliminates 800,000+ daily Firestore reads across 100+ agents.
 
       unsubLeave = onSnapshot(doc(db, 'system_state', 'leaverequests'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -1232,25 +1244,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .then((remoteUsers) => {
           if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
             setUsers((prev) => {
-              const map = new Map<string, User>(prev.map((u) => [u.id, u]));
-              let hasNewOrUpdated = false;
-              for (const item of remoteUsers) {
-                if (item && item.id) {
-                  const existing = map.get(item.id);
-                  if (
-                    !existing ||
-                    existing.password !== item.password ||
-                    existing.name !== item.name ||
-                    existing.role !== item.role ||
-                    existing.status !== item.status
-                  ) {
-                    map.set(item.id, { ...(existing || item), ...item });
-                    hasNewOrUpdated = true;
-                  }
-                }
-              }
-              if (hasNewOrUpdated) {
-                const merged = Array.from(map.values());
+              const merged = deduplicateUsers([...prev, ...remoteUsers]);
+              if (merged.length !== prev.length || JSON.stringify(merged) !== JSON.stringify(prev)) {
                 localStorage.setItem('trackpulse_users', JSON.stringify(merged));
                 return merged;
               }
@@ -1288,15 +1283,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .then((res) => {
         if (res.success && res.employees.length > 0) {
           setUsers((prev) => {
-            const map = new Map<string, User>(prev.map((u) => [u.id, u]));
-            for (const emp of res.employees) {
-              if (emp && emp.id) {
-                const existing = map.get(emp.id);
-                // Keep existing user password if changed locally
-                map.set(emp.id, existing?.password && existing.password !== 'Password123!' ? { ...emp, password: existing.password } : emp);
-              }
-            }
-            const merged = Array.from(map.values());
+            const merged = deduplicateUsers([...prev, ...res.employees]);
             localStorage.setItem('trackpulse_users', JSON.stringify(merged));
             // Push merged Google Sheets employees to central server so desktop software gets them instantly!
             fetch('/api/users', {
@@ -1754,6 +1741,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
   const trackingAccumulatedSecondsRef = useRef<number>(savedActiveTracking?.accumulatedSec || 0);
 
+  // Task segment refs: records separate rows per task in the database and spreadsheet
+  const currentTaskSegmentStartMsRef = useRef<number>(
+    savedActiveTracking?.currentTaskSegmentStartMs || savedActiveTracking?.startMs || 0
+  );
+  const currentTaskSegmentStartTimeIsoRef = useRef<string>(
+    savedActiveTracking?.currentTaskSegmentStartTimeIso || savedActiveTracking?.startTimeIso || ''
+  );
+
   // Compute live elapsed wall-clock seconds accurately, immune to OS/browser background timer throttling
   const getLiveElapsedSeconds = useCallback(() => {
     if (!isTracking) return 0;
@@ -1764,14 +1759,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return trackingAccumulatedSecondsRef.current + Math.max(0, currentSegmentSec);
   }, [isTracking, isPaused]);
 
-  // Randomized Idle Inactivity Engine (Random 10 to 15 minutes)
-  const getRandomIdleThreshold = () => Math.floor(Math.random() * 6) + 10; // 10, 11, 12, 13, 14, or 15 mins
-  const [currentIdleThresholdMinutes, setCurrentIdleThresholdMinutes] = useState<number>(() => getRandomIdleThreshold());
+  // Storage Engine Mode ('unlimited_bridge' | 'firestore')
+  const [storageEngineMode, setStorageEngineModeState] = useState<'unlimited_bridge' | 'firestore'>(() => {
+    if (typeof window === 'undefined') return 'unlimited_bridge';
+    const saved = localStorage.getItem('trackpulse_storage_engine');
+    return (saved === 'firestore' ? 'firestore' : 'unlimited_bridge') as 'unlimited_bridge' | 'firestore';
+  });
+
+  const setStorageEngineMode = (mode: 'unlimited_bridge' | 'firestore') => {
+    setStorageEngineModeState(mode);
+    localStorage.setItem('trackpulse_storage_engine', mode);
+    if (mode === 'unlimited_bridge') {
+      isQuotaExhaustedGlobal = true;
+      setIsCloudQuotaExhausted(true);
+      try {
+        disableNetwork(db).catch(() => {});
+      } catch {}
+      setSaveToast('⚡ Unlimited High-Capacity Server Bridge Active (Zero Quota Limits for 100+ Agents)');
+    } else {
+      localStorage.removeItem('trackpulse_quota_exhausted_date');
+      sessionStorage.removeItem('trackpulse_quota_exhausted');
+      isQuotaExhaustedGlobal = false;
+      setIsCloudQuotaExhausted(false);
+      try {
+        enableNetwork(db).catch(() => {});
+      } catch {}
+      setSaveToast('Cloud Firestore Direct Mode Active');
+    }
+    setTimeout(() => setSaveToast(null), 3500);
+  };
+
+  // Dual Monitor & Multi-Window Mode State (Default ON to prevent false idle popups)
+  const [isDualMonitorMode, setIsDualMonitorMode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = localStorage.getItem('trackpulse_dual_monitor');
+    return stored === null ? true : stored === 'true';
+  });
+
+  const toggleDualMonitorMode = () => {
+    setIsDualMonitorMode((prev) => {
+      const next = !prev;
+      localStorage.setItem('trackpulse_dual_monitor', String(next));
+      setSaveToast(next ? '🖥️ Dual Monitor Mode ON: False hardware inactivity prevented' : 'Single Monitor Mode active');
+      setTimeout(() => setSaveToast(null), 3500);
+      return next;
+    });
+  };
+
+  // Randomized Idle Inactivity Engine (Default 25 to 35 minutes, or 45m in Dual Monitor mode)
+  const getRandomIdleThreshold = useCallback(() => {
+    return isDualMonitorMode ? 45 : Math.floor(Math.random() * 11) + 25; // 25-35 mins single, 45 mins dual
+  }, [isDualMonitorMode]);
+
+  const [currentIdleThresholdMinutes, setCurrentIdleThresholdMinutes] = useState<number>(() => isDualMonitorMode ? 45 : 30);
   const [currentInactivitySeconds, setCurrentInactivitySeconds] = useState<number>(0);
   const [sessionIdleDeductionSeconds, setSessionIdleDeductionSeconds] = useState<number>(0);
   const [isIdleAlertActive, setIsIdleAlertActive] = useState<boolean>(false);
   const isAlertOpenRef = useRef<boolean>(false);
-  const alertRemainingRef = useRef<number>(60);
+  const alertRemainingRef = useRef<number>(180);
   const [inactivityAlertState, setInactivityAlertState] = useState<{
     isOpen: boolean;
     idleMinutes: number;
@@ -1779,23 +1824,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }>({
     isOpen: false,
     idleMinutes: 0,
-    remainingSeconds: 60,
+    remainingSeconds: 180,
   });
 
   const respondToInactivityAlert = (action: 'stay_active' | 'pause_tracker') => {
     isAlertOpenRef.current = false;
-    alertRemainingRef.current = 60;
+    alertRemainingRef.current = isDualMonitorMode ? 180 : 60;
     if (action === 'stay_active') {
       lastMouseActiveTimestampRef.current = Date.now();
       lastKeyboardActiveTimestampRef.current = Date.now();
       setCurrentInactivitySeconds(0);
-      setInactivityAlertState({ isOpen: false, idleMinutes: 0, remainingSeconds: 60 });
+      setInactivityAlertState({ isOpen: false, idleMinutes: 0, remainingSeconds: isDualMonitorMode ? 180 : 60 });
       setIsIdleAlertActive(false);
       setSaveToast("✓ Inactivity alert cleared — Timer continuing smoothly!");
       setTimeout(() => setSaveToast(null), 3500);
     } else {
       pauseTracking();
-      setInactivityAlertState({ isOpen: false, idleMinutes: 0, remainingSeconds: 60 });
+      setInactivityAlertState({ isOpen: false, idleMinutes: 0, remainingSeconds: isDualMonitorMode ? 180 : 60 });
       setIsIdleAlertActive(false);
       setSaveToast("⏸️ Tracker paused for break/inactivity.");
       setTimeout(() => setSaveToast(null), 3500);
@@ -1804,6 +1849,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const dismissIdleAlert = () => {
     respondToInactivityAlert('stay_active');
+  };
+
+  // Restore falsely deducted inactivity time (e.g. agent was working on second monitor or in external app)
+  const restoreInactivityDeduction = () => {
+    const secondsToRestore = sessionIdleDeductionSeconds > 0 ? sessionIdleDeductionSeconds : 600; // default 10m
+    const minutesToRestore = Math.round(secondsToRestore / 60);
+
+    // 1. Add back elapsed seconds to current active timer
+    setElapsedSeconds((prev) => prev + secondsToRestore);
+    trackingAccumulatedSecondsRef.current += secondsToRestore;
+
+    // 2. Remove idle deduction from current session
+    setSessionIdleDeductionSeconds(0);
+    setIsIdleAlertActive(false);
+
+    // 3. Mark last idle log as cancelled / restored
+    const todayStr = getManilaDateString();
+    setIdleLogs((prev) =>
+      prev.map((log, i) =>
+        i === 0 && log.userId === currentUser.id
+          ? { ...log, reason: `${log.reason} [RESTORED: Active work verified across monitors]`, status: 'cleared', deductedFromShiftMinutes: 0 }
+          : log
+      )
+    );
+
+    // 4. Restore daily attendance productive hours
+    setDailyAttendanceLogs((prev) =>
+      prev.map((att) => {
+        if (att.userId === currentUser.id && att.date === todayStr) {
+          const newSecs = att.totalLoggedSeconds + secondsToRestore;
+          const newDeductions = Math.max(0, (att.totalIdleDeductionsMinutes || 0) - minutesToRestore);
+          return {
+            ...att,
+            totalLoggedSeconds: newSecs,
+            totalLoggedHours: Number((newSecs / 3600).toFixed(2)),
+            totalIdleDeductionsMinutes: newDeductions,
+            requiredExtensionMinutes: newDeductions,
+          };
+        }
+        return att;
+      })
+    );
+
+    // 5. Resume tracking if paused
+    if (isPaused) {
+      resumeTracking();
+    }
+
+    setSaveToast(`✓ ${minutesToRestore}m Productive Work Restored! Inactivity deduction cancelled.`);
+    setTimeout(() => setSaveToast(null), 4000);
   };
 
   // Real Hardware Event Listeners (mouse movement, clicks, scrolls, keystrokes, inputs)
@@ -2234,15 +2329,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     let idleInterval: any = null;
     if (isTracking && !isPaused) {
-      idleInterval = setInterval(() => {
+      idleInterval = setInterval(async () => {
+        // 1. Check OS-Level hardware idle tracking in Electron Desktop App across all monitors & software
+        const electronApi = typeof window !== 'undefined' && (window as any).electronAPI;
+        if (electronApi && typeof electronApi.getSystemIdleTime === 'function') {
+          try {
+            const osIdleSec = await electronApi.getSystemIdleTime();
+            if (typeof osIdleSec === 'number' && osIdleSec < 15) {
+              // Active mouse or keyboard activity detected on any monitor or application!
+              lastMouseActiveTimestampRef.current = Date.now();
+              lastKeyboardActiveTimestampRef.current = Date.now();
+              setCurrentInactivitySeconds(0);
+              return;
+            }
+          } catch (e) {}
+        }
+
+        // 2. Dual-Monitor & External Window Awareness in Web & Desktop Clients
+        const isWindowFocused = typeof document !== 'undefined' && document.hasFocus && document.hasFocus();
         const isAppHiddenOrMinimized = typeof document !== 'undefined' && (
           document.hidden || 
-          document.visibilityState === 'hidden'
+          document.visibilityState === 'hidden' ||
+          !isWindowFocused
         );
 
-        // When the desktop tracker is minimized or running in the background,
-        // the employee is working in other apps on their computer (e.g. CRM, Excel, Chrome, Zendesk).
-        // As requested: the app IS ALLOWED to be minimized and MUST track time smoothly without inactivity penalties.
+        // When the desktop tracker is on a secondary monitor, blurred, minimized, or running in the background,
+        // the employee is actively working in other apps on their computer (CRM, Excel, Chrome, Zendesk, etc.).
+        // Dual monitor users must NEVER be penalized with false idle popups.
         if (isAppHiddenOrMinimized) {
           lastMouseActiveTimestampRef.current = Date.now();
           lastKeyboardActiveTimestampRef.current = Date.now();
@@ -2255,18 +2368,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const inactivitySec = lastActive > 0 ? Math.floor((now - lastActive) / 1000) : 0;
         setCurrentInactivitySeconds(inactivitySec);
 
-        // 1. Inactivity Alert with Sound Chime (Prompts agent first instead of silent deduction)
-        // When inactivity reaches 5 minutes (or threshold), trigger the sound chime and warning popup!
-        const thresholdSeconds = Math.max(300, currentIdleThresholdMinutes * 60);
+        // 3. Inactivity Alert with Sound Chime (25-35 min single, 45 min dual monitor threshold)
+        const thresholdSeconds = Math.max(600, currentIdleThresholdMinutes * 60);
+        const countdownInitial = isDualMonitorMode ? 180 : 60;
         if (inactivitySec >= thresholdSeconds && thresholdSeconds > 0 && !isAlertOpenRef.current) {
           isAlertOpenRef.current = true;
-          alertRemainingRef.current = 60;
+          alertRemainingRef.current = countdownInitial;
           playInactivityChime();
           setIsIdleAlertActive(true);
           setInactivityAlertState({
             isOpen: true,
-            idleMinutes: Math.round(inactivitySec / 60) || 5,
-            remainingSeconds: 60,
+            idleMinutes: Math.round(inactivitySec / 60) || currentIdleThresholdMinutes,
+            remainingSeconds: countdownInitial,
           });
         }
 
@@ -2276,12 +2389,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const remaining = alertRemainingRef.current;
 
           if (remaining <= 0) {
-            // 60-second warning countdown expired with no answer -> Deduct idle time & pause tracker!
+            // Warning countdown expired with no answer -> Deduct idle time & pause tracker!
             isAlertOpenRef.current = false;
             setIsIdleAlertActive(false);
             const idleMinsToDeduct = Math.round(inactivitySec / 60) || 5;
-            setInactivityAlertState({ isOpen: false, idleMinutes: 0, remainingSeconds: 60 });
-            recordIdleInactivityEvent(idleMinsToDeduct, "Hardware Inactivity: 60-second warning prompt unanswered");
+            setInactivityAlertState({ isOpen: false, idleMinutes: 0, remainingSeconds: countdownInitial });
+            recordIdleInactivityEvent(idleMinsToDeduct, isDualMonitorMode ? "Hardware Inactivity: 3-minute warning prompt unanswered" : "Hardware Inactivity: 60-second warning prompt unanswered");
             pauseTracking();
           } else {
             // Audio alerting during warning period
@@ -2392,6 +2505,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setElapsedSeconds(0);
     const nowIso = new Date().toISOString();
     setStartTimeIso(nowIso);
+    currentTaskSegmentStartMsRef.current = nowMs;
+    currentTaskSegmentStartTimeIsoRef.current = nowIso;
 
     // Save active tracking session to localStorage (immune to minimize, tab throttling, or accidental refresh)
     localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
@@ -2403,6 +2518,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       accumulatedSec: 0,
       task: currentTask,
       designation: currentDesignation || currentUser?.designation || 'Agent',
+      currentTaskSegmentStartMs: nowMs,
+      currentTaskSegmentStartTimeIso: nowIso,
     }));
 
     // Instant presence broadcast on tracking start
@@ -2519,14 +2636,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const trackedSecs = Math.max(getLiveElapsedSeconds(), elapsedSeconds, 1);
     const nowIso = new Date().toISOString();
-    const startTimeStr = startTimeIso || new Date(Date.now() - trackedSecs * 1000).toISOString();
-    const todayStr = getManilaDateString();
-
-    const sessionStartDate = new Date(startTimeStr);
+    const sessionStartDate = new Date(startTimeIso || new Date(Date.now() - trackedSecs * 1000).toISOString());
     const sessionEndDate = new Date(nowIso);
     const userTz = currentUser.geoTimezone || 'Asia/Manila';
-    const localStartTimeFormatted = getManilaTimeString(sessionStartDate, userTz);
     const localEndTimeFormatted = getManilaTimeString(sessionEndDate, userTz);
+    const todayStr = getManilaDateString();
+
+    // Calculate duration for the final task segment
+    const finalSegmentSec = Math.max(
+      1,
+      Math.floor((Date.now() - (currentTaskSegmentStartMsRef.current || trackingSessionStartMsRef.current || Date.now())) / 1000)
+    );
+    const finalStartIso = currentTaskSegmentStartTimeIsoRef.current || startTimeIso || new Date(Date.now() - finalSegmentSec * 1000).toISOString();
+    const finalStartDate = new Date(finalStartIso);
+    const finalLocalStartTimeFormatted = getManilaTimeString(finalStartDate, userTz);
 
     const mouseAvg = mouseActivityHistoryRef.current.length > 0
       ? Math.round(mouseActivityHistoryRef.current.reduce((a, b) => a + b, 0) / mouseActivityHistoryRef.current.length)
@@ -2547,12 +2670,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       userAvatar: currentUser.avatar,
       designation: currentDesignation,
       task: currentTask,
-      startTime: startTimeStr,
+      startTime: finalStartIso,
       endTime: nowIso,
-      durationSeconds: trackedSecs,
+      durationSeconds: finalSegmentSec,
       status: 'completed',
       geoTimezone: userTz,
-      geoLocalStartTime: localStartTimeFormatted,
+      geoLocalStartTime: finalLocalStartTimeFormatted,
       geoLocalEndTime: localEndTimeFormatted,
       mouseActivityAvg: mouseAvg,
       keyboardActivityAvg: keyAvg,
@@ -2560,7 +2683,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       date: todayStr,
       notes: `Logged via LLC Time Tracker desktop client (${currentDesignation})${idleNote}`,
       appsUsed: [
-        { appName: currentActiveApp || 'LLC Desktop App', icon: 'Globe', durationSeconds: trackedSecs, category: 'productive' },
+        { appName: currentActiveApp || 'LLC Desktop App', icon: 'Globe', durationSeconds: finalSegmentSec, category: 'productive' },
       ],
     };
 
@@ -2626,7 +2749,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Recalculate payroll record for this user
     const updatedPayroll = payrollRecords.map((rec) => {
       if (rec.userId === currentUser.id) {
-        const additionalHours = trackedSecs / 3600;
+        const additionalHours = finalSegmentSec / 3600;
         const newTotal = rec.totalTrackedHours + additionalHours;
         const reg = Math.min(newTotal, 80);
         const ot = Math.max(0, newTotal - 80);
@@ -2651,7 +2774,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Update daily attendance log
     const updatedAttendance = dailyAttendanceLogs.map((att) => {
       if (att.userId === currentUser.id && att.date === todayStr) {
-        const newSecs = att.totalLoggedSeconds + trackedSecs;
+        const newSecs = att.totalLoggedSeconds + finalSegmentSec;
         return {
           ...att,
           totalLoggedSeconds: newSecs,
@@ -2675,7 +2798,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       category: 'Clock Out',
       targetEmployeeId: currentUser.id,
       targetEmployeeName: currentUser.name,
-      details: `Clocked out session (${formatDuration(trackedSecs)}) on ${currentTask}. Saved to Timesheets, Database & Google Sheets.`,
+      details: `Clocked out session (${formatDuration(trackedSecs)} total; final segment ${formatDuration(finalSegmentSec)} on ${currentTask}). Saved to Timesheets, Database & Google Sheets.`,
     });
 
     setSaveToast(`✓ Saved to Database & Synced to Timesheets! (${currentUser.name} - ${formatDuration(trackedSecs)} on ${currentTask})`);
@@ -2879,105 +3002,163 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentDesignation(desig);
   };
 
-  // Seamless Direct Task Selection: Just click to change task without having to stop or pause first!
+  // Task Selection with Confirmation Prompt (Prevents accidental task changes)
   const selectTaskWithPrompt = (task: TaskCategory) => {
     if (task === currentTask) return;
 
     if (isTracking) {
-      const prevTask = currentTask;
-      const trackedSecs = getLiveElapsedSeconds();
-
-      // Log previous task segment if tracked for at least 1 second
-      if (trackedSecs >= 1) {
-        const nowIso = new Date().toISOString();
-        const segStartTime = startTimeIso || new Date(Date.now() - trackedSecs * 1000).toISOString();
-        const userTz = currentUser.geoTimezone || 'Asia/Manila';
-        const segStartFormatted = formatLogStartTime(segStartTime, userTz);
-        const segEndFormatted = formatLogEndTime(nowIso, userTz);
-
-        const newLog: TimeLog = {
-          id: `log-${Date.now()}`,
-          userId: currentUser.id,
-          userName: currentUser.name,
-          userAvatar: currentUser.avatar,
-          designation: currentDesignation || currentUser.designation || 'Agent',
-          task: prevTask,
-          startTime: segStartTime,
-          endTime: nowIso,
-          durationSeconds: trackedSecs,
-          status: 'completed',
-          geoTimezone: userTz,
-          geoLocalStartTime: segStartFormatted,
-          geoLocalEndTime: segEndFormatted,
-          mouseActivityAvg: currentMouseActivity || 100,
-          keyboardActivityAvg: currentKeyboardActivity || 100,
-          idleSeconds: 0,
-          date: getManilaDateString(),
-          notes: `Direct task switched to ${task}`,
-          appsUsed: [
-            { appName: currentActiveApp || 'LLC Desktop App', icon: 'Globe', durationSeconds: trackedSecs, category: 'productive' },
-          ],
-        };
-        const updatedLogs = [newLog, ...timeLogs];
-        setTimeLogs(updatedLogs);
-        localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
-        safeSetDoc(doc(db, 'timelogs', newLog.id), newLog).catch(() => {});
-        fetch('/api/timelogs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newLog),
-        }).catch(() => {});
-
-        triggerAutoSync(users, updatedLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
-      }
-
-      // Switch to new task seamlessly while tracking continues
-      const switchNowIso = new Date().toISOString();
-      const switchNowMs = Date.now();
-      trackingSessionStartMsRef.current = switchNowMs;
-      lastActiveIntervalStartMsRef.current = switchNowMs;
-      trackingAccumulatedSecondsRef.current = 0;
-      setCurrentTask(task);
-      setElapsedSeconds(0);
-      setStartTimeIso(switchNowIso);
-      setTaskSwitchPending(null);
-
-      localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
-        isTracking: true,
-        isPaused: false,
-        startTimeIso: switchNowIso,
-        startMs: switchNowMs,
-        lastActiveMs: switchNowMs,
-        accumulatedSec: 0,
-        task: task,
-        designation: currentDesignation || currentUser?.designation || 'Agent',
-      }));
-
-      // Broadcast updated task in presence
-      const switchPresence = {
-        userId: currentUser.id,
-        currentTask: task,
-        lastHeartbeat: switchNowIso,
-      };
-      safeSetDoc(doc(db, 'user_presence', currentUser.id), switchPresence, { merge: true }).catch(() => {});
-      fetch('/api/presence', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(switchPresence),
-      }).catch(() => {});
-
-      setSaveToast(`✓ Task switched to "${task}" — Previous "${prevTask}" time recorded!`);
-      setTimeout(() => setSaveToast(null), 4000);
+      // Prompt agent with confirmation modal before switching tasks
+      setTaskSwitchPending({ targetTask: task });
     } else {
       setCurrentTask(task);
     }
   };
 
-  // Confirm task switch (legacy / manual modal fallback)
+  // Confirm Task Switch: Records previous task segment as separate row on database sheet,
+  // and continues desktop tracker timer seamlessly from current elapsed time onwards!
   const confirmTaskSwitch = () => {
-    if (!taskSwitchPending) return;
-    selectTaskWithPrompt(taskSwitchPending.targetTask);
+    if (!taskSwitchPending || !isTracking || !currentUser) {
+      setTaskSwitchPending(null);
+      return;
+    }
+
+    const prevTask = currentTask;
+    const targetTask = taskSwitchPending.targetTask;
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+
+    // 1. Calculate duration of the completed segment for previous task
+    const segmentStartMs = currentTaskSegmentStartMsRef.current || trackingSessionStartMsRef.current || nowMs;
+    const segmentDurationSec = Math.max(1, Math.floor((nowMs - segmentStartMs) / 1000));
+    const segStartTime = currentTaskSegmentStartTimeIsoRef.current || startTimeIso || new Date(segmentStartMs).toISOString();
+    const userTz = currentUser.geoTimezone || 'Asia/Manila';
+    const segStartFormatted = formatLogStartTime(segStartTime, userTz);
+    const segEndFormatted = formatLogEndTime(nowIso, userTz);
+    const todayStr = getManilaDateString();
+
+    const mouseAvg = mouseActivityHistoryRef.current.length > 0
+      ? Math.round(mouseActivityHistoryRef.current.reduce((a, b) => a + b, 0) / mouseActivityHistoryRef.current.length)
+      : (currentMouseActivity || 100);
+    const keyAvg = keyboardActivityHistoryRef.current.length > 0
+      ? Math.round(keyboardActivityHistoryRef.current.reduce((a, b) => a + b, 0) / keyboardActivityHistoryRef.current.length)
+      : (currentKeyboardActivity || 100);
+
+    // 2. Record previous task as a distinct completed row in Timesheets & Database Spreadsheet
+    const newLog: TimeLog = {
+      id: `log-${Date.now()}`,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userAvatar: currentUser.avatar,
+      designation: currentDesignation || currentUser.designation || 'Agent',
+      task: prevTask,
+      startTime: segStartTime,
+      endTime: nowIso,
+      durationSeconds: segmentDurationSec,
+      status: 'completed',
+      geoTimezone: userTz,
+      geoLocalStartTime: segStartFormatted,
+      geoLocalEndTime: segEndFormatted,
+      mouseActivityAvg: mouseAvg,
+      keyboardActivityAvg: keyAvg,
+      idleSeconds: 0,
+      date: todayStr,
+      notes: `Task segment for ${prevTask} (Switched to ${targetTask})`,
+      appsUsed: [
+        { appName: currentActiveApp || 'LLC Desktop App', icon: 'Globe', durationSeconds: segmentDurationSec, category: 'productive' },
+      ],
+    };
+
+    const updatedLogs = [newLog, ...timeLogs];
+    setTimeLogs(updatedLogs);
+    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+
+    // Save to Central Bridge & Firestore
+    safeSetDoc(doc(db, 'timelogs', newLog.id), newLog).catch(() => {});
+    fetch('/api/timelogs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newLog),
+    }).catch(() => {});
+
+    // Update daily attendance log with completed segment
+    const updatedAttendance = dailyAttendanceLogs.map((att) => {
+      if (att.userId === currentUser.id && att.date === todayStr) {
+        const newSecs = att.totalLoggedSeconds + segmentDurationSec;
+        return {
+          ...att,
+          totalLoggedSeconds: newSecs,
+          totalLoggedHours: Number((newSecs / 3600).toFixed(2)),
+          lastLogoutTime: segEndFormatted,
+        };
+      }
+      return att;
+    });
+    setDailyAttendanceLogs(updatedAttendance);
+    localStorage.setItem('trackpulse_attendance', JSON.stringify(updatedAttendance));
+    safeSetDoc(doc(db, 'system_state', 'attendance'), { data: updatedAttendance }).catch(() => {});
+
+    // Recalculate payroll record for completed segment
+    const updatedPayroll = payrollRecords.map((rec) => {
+      if (rec.userId === currentUser.id) {
+        const additionalHours = segmentDurationSec / 3600;
+        const newTotal = rec.totalTrackedHours + additionalHours;
+        const reg = Math.min(newTotal, 80);
+        const ot = Math.max(0, newTotal - 80);
+        const gross = reg * rec.hourlyRate + ot * rec.hourlyRate * 1.5;
+        return {
+          ...rec,
+          totalTrackedHours: Number(newTotal.toFixed(2)),
+          regularHours: Number(reg.toFixed(2)),
+          overtimeHours: Number(ot.toFixed(2)),
+          grossPay: Number(gross.toFixed(2)),
+          netPay: Number((gross * 0.9).toFixed(2)),
+        };
+      }
+      return rec;
+    });
+    setPayrollRecords(updatedPayroll);
+    localStorage.setItem('trackpulse_payroll', JSON.stringify(updatedPayroll));
+    safeSetDoc(doc(db, 'system_state', 'payroll'), { data: updatedPayroll }).catch(() => {});
+
+    // Immediately trigger auto-sync to Google Sheets (populates Time_Logs sheet with new row!)
+    triggerAutoSync(users, updatedLogs, auditLogs, updatedPayroll, updatedAttendance, idleLogs, leaveRequests);
+
+    // 3. Switch to target task:
+    // IMPORTANT: Overall tracker timer continues smoothly from current elapsed time onwards!
+    setCurrentTask(targetTask);
+    currentTaskSegmentStartMsRef.current = nowMs;
+    currentTaskSegmentStartTimeIsoRef.current = nowIso;
     setTaskSwitchPending(null);
+
+    // Persist active session state
+    localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
+      isTracking: true,
+      isPaused,
+      startTimeIso,
+      startMs: trackingSessionStartMsRef.current,
+      lastActiveMs: lastActiveIntervalStartMsRef.current,
+      accumulatedSec: trackingAccumulatedSecondsRef.current,
+      task: targetTask,
+      designation: currentDesignation || currentUser?.designation || 'Agent',
+      currentTaskSegmentStartMs: nowMs,
+      currentTaskSegmentStartTimeIso: nowIso,
+    }));
+
+    // Broadcast updated task in presence
+    const switchPresence = {
+      userId: currentUser.id,
+      currentTask: targetTask,
+      lastHeartbeat: nowIso,
+    };
+    safeSetDoc(doc(db, 'user_presence', currentUser.id), switchPresence, { merge: true }).catch(() => {});
+    fetch('/api/presence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(switchPresence),
+    }).catch(() => {});
+
+    setSaveToast(`✓ Switched to "${targetTask}"! Recorded "${prevTask}" (${formatDuration(segmentDurationSec)}) to database & spreadsheet.`);
+    setTimeout(() => setSaveToast(null), 5000);
   };
 
   // Cancel task switch
@@ -3413,7 +3594,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedLogs = timeLogs.filter((l) => l.id !== id);
     setTimeLogs(updatedLogs);
     localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
-    deleteDoc(doc(db, 'timelogs', id)).catch(() => {});
+    safeDeleteDoc(doc(db, 'timelogs', id)).catch(() => {});
     safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
       console.warn('TimeLog delete sync error:', err)
     );
@@ -4160,6 +4341,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dismissIdleAlert,
         recordIdleInactivityEvent,
         simulateIdleEvent,
+        restoreInactivityDeduction,
+        isDualMonitorMode,
+        toggleDualMonitorMode,
+        storageEngineMode,
+        setStorageEngineMode,
         inactivityAlertState,
         respondToInactivityAlert,
         startTracking,

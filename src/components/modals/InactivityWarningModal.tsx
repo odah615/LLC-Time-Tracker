@@ -14,6 +14,7 @@ export const InactivityWarningModal: React.FC = () => {
     logout,
     inactivityAlertState,
     respondToInactivityAlert,
+    isDualMonitorMode,
   } = useApp();
 
   const isTrackerInactivity = Boolean(inactivityAlertState?.isOpen);
@@ -23,10 +24,11 @@ export const InactivityWarningModal: React.FC = () => {
     return null;
   }
 
-  // --- Render Case 1: Desktop Tracker Hardware Inactivity Alert (Sound alert + 60s countdown) ---
+  // --- Render Case 1: Desktop Tracker Hardware Inactivity Alert (Sound alert + 60s/180s countdown) ---
   if (isTrackerInactivity) {
+    const totalMax = isDualMonitorMode ? 180 : 60;
     const remainingSeconds = inactivityAlertState.remainingSeconds;
-    const percentRemaining = Math.max(0, Math.min(100, (remainingSeconds / 60) * 100));
+    const percentRemaining = Math.max(0, Math.min(100, (remainingSeconds / totalMax) * 100));
 
     return (
       <AnimatePresence>

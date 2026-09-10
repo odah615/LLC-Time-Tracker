@@ -66,6 +66,8 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
     importEmployeesFromGoogleSheets,
     hasPermission,
     isCloudQuotaExhausted,
+    storageEngineMode,
+    setStorageEngineMode,
   } = useApp();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
@@ -340,16 +342,20 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
             </div>
           </div>
 
-          {/* Cloud Quota Status Notice */}
-          {isCloudQuotaExhausted && (
-            <div 
-              className="p-1.5 px-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 flex items-center gap-1.5 text-xs font-semibold"
-              title="Daily Firestore write/read quota reached. Local-first mode is active: all punches, logs, and screenshots are preserved safely in your browser and will sync back to Firestore automatically once reset."
-            >
-              <Database className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">Local Storage Mode</span>
-            </div>
-          )}
+          {/* Storage Architecture Engine Status Badge */}
+          <button 
+            onClick={() => currentUser.role === 'admin' ? setShowSheetsModal(true) : null}
+            className="p-1.5 px-3 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/40 text-blue-300 flex items-center gap-1.5 text-xs font-semibold transition-colors shadow-sm cursor-pointer"
+            title={storageEngineMode === 'unlimited_bridge' 
+              ? "High-Capacity Server Bridge Active: Zero Firestore quota limits. Unlimited throughput for 100+ agents with real-time Google Sheets sync."
+              : "Firestore Direct Mode: Subject to standard daily Spark read/write quotas."
+            }
+          >
+            <Database className="w-3.5 h-3.5 text-blue-400" />
+            <span className="hidden sm:inline">
+              {storageEngineMode === 'unlimited_bridge' ? '⚡ 100+ Agent Unlimited Bridge' : 'Cloud Firestore'}
+            </span>
+          </button>
 
           {/* Google Sheets Integration Sync Button - Restricted to Super Admin (admin role) only */}
           {currentUser.role === 'admin' && (
@@ -538,6 +544,58 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
             </div>
 
             <div className="space-y-3 text-xs text-slate-600">
+              {/* Storage Engine Architecture Selector for 100+ Agents */}
+              <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-blue-900 flex items-center gap-1.5">
+                    <Database className="w-4 h-4 text-blue-600" /> Database & Storage Architecture
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-300">
+                    High Capacity
+                  </span>
+                </div>
+                <p className="text-[11px] text-blue-800 leading-relaxed">
+                  Select your storage engine. For teams with 20 to 100+ agents, the <b>Unlimited Server & Google Sheets Bridge</b> provides zero quota limits, instant sub-millisecond writes, and seamless Google Sheets auto-sync.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setStorageEngineMode('unlimited_bridge')}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      storageEngineMode === 'unlimited_bridge'
+                        ? 'bg-blue-600 text-white border-blue-700 shadow-sm ring-2 ring-blue-400/40'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="font-bold text-xs flex items-center justify-between">
+                      <span>⚡ Unlimited Bridge</span>
+                      {storageEngineMode === 'unlimited_bridge' && <Check className="w-3.5 h-3.5 text-white" />}
+                    </div>
+                    <p className={`text-[10px] mt-0.5 ${storageEngineMode === 'unlimited_bridge' ? 'text-blue-100' : 'text-slate-500'}`}>
+                      Zero quota limits • 100+ agents • Google Sheets Sync
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setStorageEngineMode('firestore')}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      storageEngineMode === 'firestore'
+                        ? 'bg-blue-600 text-white border-blue-700 shadow-sm ring-2 ring-blue-400/40'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="font-bold text-xs flex items-center justify-between">
+                      <span>Direct Firestore Cloud</span>
+                      {storageEngineMode === 'firestore' && <Check className="w-3.5 h-3.5 text-white" />}
+                    </div>
+                    <p className={`text-[10px] mt-0.5 ${storageEngineMode === 'firestore' ? 'text-blue-100' : 'text-slate-500'}`}>
+                      Spark Free Tier (50k daily reads limit)
+                    </p>
+                  </button>
+                </div>
+              </div>
+
               {/* Linked Google Spreadsheet Quick Access */}
               <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 space-y-2">
                 <div className="flex items-center justify-between">

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getManilaDateString } from '../../lib/dateUtils';
 import {
@@ -20,6 +20,8 @@ import {
   X,
   Users,
   Play,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import {
   BarChart,
@@ -300,6 +302,36 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
 
     return Array.from(map.values()).sort((a, b) => b.netSeconds - a.netSeconds);
   }, [filteredLogs]);
+
+  // Pagination for Whole Shift Record: Daily, Weekly, and Monthly views (10 per page)
+  const [summaryPage, setSummaryPage] = useState(1);
+  const summaryPageSize = 10;
+
+  useEffect(() => {
+    setSummaryPage(1);
+  }, [viewTab, selectedTaskFilter, agentSearch, anchorDate, weekStartDate, weekEndDate, selectedMonth, selectedYear]);
+
+  const totalSummaryPages = Math.ceil(userSummaryList.length / summaryPageSize) || 1;
+  const safeSummaryPage = Math.min(summaryPage, totalSummaryPages);
+  const paginatedUserSummaryList = useMemo(() => {
+    const start = (safeSummaryPage - 1) * summaryPageSize;
+    return userSummaryList.slice(start, start + summaryPageSize);
+  }, [userSummaryList, safeSummaryPage, summaryPageSize]);
+
+  // Pagination for Detailed Itemized Session Logs Table (10 per page)
+  const [logsPage, setLogsPage] = useState(1);
+  const logsPageSize = 10;
+
+  useEffect(() => {
+    setLogsPage(1);
+  }, [viewTab, selectedTaskFilter, agentSearch, anchorDate, weekStartDate, weekEndDate, selectedMonth, selectedYear]);
+
+  const totalLogsPages = Math.ceil(filteredLogs.length / logsPageSize) || 1;
+  const safeLogsPage = Math.min(logsPage, totalLogsPages);
+  const paginatedLogs = useMemo(() => {
+    const start = (safeLogsPage - 1) * logsPageSize;
+    return filteredLogs.slice(start, start + logsPageSize);
+  }, [filteredLogs, safeLogsPage, logsPageSize]);
 
   // Table 2: Task Category Breakdown across filtered logs
   const taskBreakdownList = useMemo(() => {
@@ -906,7 +938,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
-                  {userSummaryList.map((userSum) => (
+                  {paginatedUserSummaryList.map((userSum) => (
                     <tr key={userSum.userId} className="hover:bg-slate-50 transition-colors">
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2.5">
@@ -948,6 +980,53 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                   ))}
                 </tbody>
               </table>
+
+              {/* Pagination Controls for Whole Shift Record (10 items per page) */}
+              {totalSummaryPages > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-slate-50 border-t border-slate-200">
+                  <span className="text-xs text-slate-500 font-medium">
+                    Showing <strong className="text-slate-800 font-bold">{(safeSummaryPage - 1) * summaryPageSize + 1}</strong> to{' '}
+                    <strong className="text-slate-800 font-bold">{Math.min(safeSummaryPage * summaryPageSize, userSummaryList.length)}</strong> of{' '}
+                    <strong className="text-slate-800 font-bold">{userSummaryList.length}</strong> agents ({viewTab.toUpperCase()} shift records - 10 per page)
+                  </span>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setSummaryPage((p) => Math.max(1, p - 1))}
+                      disabled={safeSummaryPage === 1}
+                      className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      <span>Previous</span>
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalSummaryPages }, (_, idx) => idx + 1).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => setSummaryPage(p)}
+                          className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                            p === safeSummaryPage
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      onClick={() => setSummaryPage((p) => Math.min(totalSummaryPages, p + 1))}
+                      disabled={safeSummaryPage === totalSummaryPages}
+                      className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all"
+                    >
+                      <span>Next</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1060,7 +1139,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-800">
-                {filteredLogs.map((log) => (
+                {paginatedLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
                     {!isPersonalOnly && (
                       <td className="py-3 px-4 font-medium text-slate-900">
@@ -1097,6 +1176,53 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                 ))}
               </tbody>
             </table>
+
+            {/* Pagination Controls for Detailed Itemized Session Logs Table (10 per page) */}
+            {totalLogsPages > 1 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 bg-slate-50 border-t border-slate-200">
+                <span className="text-xs text-slate-500 font-medium">
+                  Showing <strong className="text-slate-800 font-bold">{(safeLogsPage - 1) * logsPageSize + 1}</strong> to{' '}
+                  <strong className="text-slate-800 font-bold">{Math.min(safeLogsPage * logsPageSize, filteredLogs.length)}</strong> of{' '}
+                  <strong className="text-slate-800 font-bold">{filteredLogs.length}</strong> log entries (10 per page)
+                </span>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setLogsPage((p) => Math.max(1, p - 1))}
+                    disabled={safeLogsPage === 1}
+                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Previous</span>
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalLogsPages }, (_, idx) => idx + 1).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setLogsPage(p)}
+                        className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                          p === safeLogsPage
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => setLogsPage((p) => Math.min(totalLogsPages, p + 1))}
+                    disabled={safeLogsPage === totalLogsPages}
+                    className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all"
+                  >
+                    <span>Next</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

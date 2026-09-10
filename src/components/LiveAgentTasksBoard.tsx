@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { User, TaskCategory, TimeLog } from '../types';
 import { UserAvatar } from './UserAvatar';
@@ -290,6 +290,21 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
       return true;
     });
   }, [liveAgents, statusFilter, selectedTaskFilter, searchTerm]);
+
+  // Pagination for Current Live Agent Sessions (10 agents per page)
+  const [currentAgentsPage, setCurrentAgentsPage] = useState(1);
+  const agentsPageSize = 10;
+
+  useEffect(() => {
+    setCurrentAgentsPage(1);
+  }, [searchTerm, statusFilter, selectedTaskFilter]);
+
+  const totalAgentsPages = Math.ceil(filteredLiveAgents.length / agentsPageSize) || 1;
+  const safeAgentsPage = Math.min(currentAgentsPage, totalAgentsPages);
+  const paginatedLiveAgents = useMemo(() => {
+    const start = (safeAgentsPage - 1) * agentsPageSize;
+    return filteredLiveAgents.slice(start, start + agentsPageSize);
+  }, [filteredLiveAgents, safeAgentsPage, agentsPageSize]);
 
   // Graph Data 1: "How many agents are doing this task today" (Headcount per task)
   const agentsPerTaskTodayData = useMemo(() => {
@@ -706,7 +721,7 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredLiveAgents.map((agent) => {
+            {paginatedLiveAgents.map((agent) => {
               const isOnline = agent.calculatedStatus === 'online';
               const isIdle = agent.calculatedStatus === 'idle';
               const isOffline = agent.calculatedStatus === 'offline';
@@ -873,6 +888,63 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination Controls for Current Live Agent Sessions (10 items per page) */}
+        {totalAgentsPages > 1 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-100">
+            <span className="text-xs text-slate-500 font-medium">
+              Showing{' '}
+              <strong className="text-slate-800 font-bold">
+                {(safeAgentsPage - 1) * agentsPageSize + 1}
+              </strong>{' '}
+              to{' '}
+              <strong className="text-slate-800 font-bold">
+                {Math.min(safeAgentsPage * agentsPageSize, filteredLiveAgents.length)}
+              </strong>{' '}
+              of{' '}
+              <strong className="text-slate-800 font-bold">
+                {filteredLiveAgents.length}
+              </strong>{' '}
+              agent sessions (10 per page)
+            </span>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setCurrentAgentsPage((p) => Math.max(1, p - 1))}
+                disabled={safeAgentsPage === 1}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                <span>Previous</span>
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalAgentsPages }, (_, idx) => idx + 1).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setCurrentAgentsPage(p)}
+                    className={`w-8 h-8 rounded-xl text-xs font-bold transition-all ${
+                      p === safeAgentsPage
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setCurrentAgentsPage((p) => Math.min(totalAgentsPages, p + 1))}
+                disabled={safeAgentsPage === totalAgentsPages}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all"
+              >
+                <span>Next</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>

@@ -64,6 +64,9 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
     retryConnection,
     designationList,
     getTasksForDesignation,
+    isDualMonitorMode,
+    toggleDualMonitorMode,
+    restoreInactivityDeduction,
   } = useApp();
 
   const isFloatingDock = isDesktopDockView && !isFullPage;
@@ -112,6 +115,24 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Dual Monitor Mode Toggle */}
+          <button
+            type="button"
+            onClick={toggleDualMonitorMode}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all border ${
+              isDualMonitorMode
+                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
+                : isFloatingDock
+                ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+            }`}
+            title="Dual Monitor & Multi-Window Mode: Keeps timer active without idle alerts when working across multiple screens or software applications"
+          >
+            <Monitor className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Dual Monitor:</span>
+            <span className="font-bold">{isDualMonitorMode ? 'ON' : 'OFF'}</span>
+          </button>
+
           {/* Dock / Undock view toggle */}
           <button
             onClick={() => setIsDesktopDockView(!isDesktopDockView)}
@@ -186,22 +207,44 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
 
       {/* Idle Inactivity Alert Banner */}
       {isIdleAlertActive && (
-        <div className="mb-4 bg-amber-500/15 border border-amber-500/40 rounded-xl p-3.5 flex items-start gap-3">
+        <div className="mb-4 bg-amber-500/15 border border-amber-500/40 rounded-xl p-3.5 flex flex-col sm:flex-row items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="flex-1 text-xs text-amber-900">
-            <p className="font-bold flex items-center gap-1.5">
+            <p className="font-bold flex items-center gap-1.5 flex-wrap">
               <span>Hardware Inactivity Deducted</span>
               <span className="bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded text-[10px] border border-amber-300">
                 Shift Extended
               </span>
+              {isDualMonitorMode && (
+                <span className="bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded text-[10px] border border-blue-300">
+                  Dual Monitor Mode Active
+                </span>
+              )}
             </p>
             <p className="mt-0.5 text-slate-700 leading-relaxed">
-              Inactivity detected without keyboard/mouse input. Time was subtracted from your daily productive log and saved to Google Sheets. You must extend your shift by the equivalent minutes to cover up.
+              Inactivity detected without keyboard/mouse input in this window. If you were actively working in another monitor or software, you can immediately restore your productive time below:
             </p>
+            <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={restoreInactivityDeduction}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>I Was Working (Restore Time)</span>
+              </button>
+              <button
+                type="button"
+                onClick={dismissIdleAlert}
+                className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg text-xs font-medium transition-all"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
           <button
             onClick={dismissIdleAlert}
-            className="text-amber-700 hover:text-amber-900 p-1 rounded-lg hover:bg-amber-200/50 transition-colors"
+            className="text-amber-700 hover:text-amber-900 p-1 rounded-lg hover:bg-amber-200/50 transition-colors shrink-0"
             title="Dismiss Alert"
           >
             <X className="w-4 h-4" />

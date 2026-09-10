@@ -70,8 +70,25 @@ export const downloadDesktopSoftwarePackage = (os: DesktopOS = 'windows') => {
     2
   );
 
-  const mainJsContent = `const { app, BrowserWindow } = require('electron');
+  const preloadJsContent = `const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  getSystemIdleTime: () => ipcRenderer.invoke('get-system-idle-time'),
+  isDesktopApp: true
+});
+`;
+
+  const mainJsContent = `const { app, BrowserWindow, powerMonitor, ipcMain } = require('electron');
 const path = require('path');
+
+// OS-Level hardware idle tracking: queries true system-wide keyboard/mouse activity across all monitors & applications
+ipcMain.handle('get-system-idle-time', () => {
+  try {
+    return powerMonitor.getSystemIdleTime();
+  } catch (err) {
+    return 0;
+  }
+});
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -82,6 +99,7 @@ function createWindow() {
     title: 'LLC Time Tracker Desktop Software',
     autoHideMenuBar: true,
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
       backgroundThrottling: false
@@ -102,6 +120,7 @@ app.on('window-all-closed', () => {
   // Encode safely to Base64 to guarantee zero shell escaping issues in Windows Batch
   const b64PackageJson = typeof btoa !== 'undefined' ? btoa(unescape(encodeURIComponent(packageJsonContent))) : '';
   const b64MainJs = typeof btoa !== 'undefined' ? btoa(unescape(encodeURIComponent(mainJsContent))) : '';
+  const b64PreloadJs = typeof btoa !== 'undefined' ? btoa(unescape(encodeURIComponent(preloadJsContent))) : '';
 
   if (os === 'windows') {
     const batContent = `@echo off
@@ -119,8 +138,9 @@ echo.
 echo [1/4] Generating desktop configuration (package.json)...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "[System.IO.File]::WriteAllBytes('package.json', [System.Convert]::FromBase64String('${b64PackageJson}'))"
 
-echo [2/4] Generating main.js ...
+echo [2/4] Generating main.js and preload.js with Dual-Monitor OS Idle Detection...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "[System.IO.File]::WriteAllBytes('main.js', [System.Convert]::FromBase64String('${b64MainJs}'))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[System.IO.File]::WriteAllBytes('preload.js', [System.Convert]::FromBase64String('${b64PreloadJs}'))"
 
 echo.
 echo [3/4] Installing Electron dependencies (npm install)...
@@ -200,9 +220,28 @@ if [ "$MAC_ARCH" = "arm64" ]; then
   sed -i '' 's/--arch=x64/--arch=arm64/g' package.json 2>/dev/null || true
 fi
 
-echo "[2/4] Writing main.js..."
+echo "[2/4] Writing main.js and preload.js (with dual-monitor OS idle tracking)..."
+cat << 'EOF' > preload.js
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  getSystemIdleTime: () => ipcRenderer.invoke('get-system-idle-time'),
+  isDesktopApp: true
+});
+EOF
+
 cat << 'EOF' > main.js
-const { app, BrowserWindow, powerMonitor } = require('electron');
+const { app, BrowserWindow, powerMonitor, ipcMain } = require('electron');
+const path = require('path');
+
+// OS-Level hardware idle tracking: queries true system-wide keyboard/mouse activity across all monitors & applications
+ipcMain.handle('get-system-idle-time', () => {
+  try {
+    return powerMonitor.getSystemIdleTime();
+  } catch (err) {
+    return 0;
+  }
+});
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -212,6 +251,7 @@ function createWindow() {
     minHeight: 600,
     title: 'LLC Time Tracker Desktop Software',
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
       backgroundThrottling: false
@@ -288,9 +328,28 @@ cat << 'EOF' > package.json
 }
 EOF
 
-echo "[2/4] Writing main.js..."
+echo "[2/4] Writing main.js and preload.js (with dual-monitor OS idle tracking)..."
+cat << 'EOF' > preload.js
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('electronAPI', {
+  getSystemIdleTime: () => ipcRenderer.invoke('get-system-idle-time'),
+  isDesktopApp: true
+});
+EOF
+
 cat << 'EOF' > main.js
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, powerMonitor, ipcMain } = require('electron');
+const path = require('path');
+
+// OS-Level hardware idle tracking: queries true system-wide keyboard/mouse activity across all monitors & applications
+ipcMain.handle('get-system-idle-time', () => {
+  try {
+    return powerMonitor.getSystemIdleTime();
+  } catch (err) {
+    return 0;
+  }
+});
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -300,6 +359,7 @@ function createWindow() {
     minHeight: 600,
     title: 'LLC Time Tracker Desktop Software',
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
       backgroundThrottling: false

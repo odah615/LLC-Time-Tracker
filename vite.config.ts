@@ -4,6 +4,96 @@ import path from 'path';
 import fs from 'fs';
 import {defineConfig, Plugin} from 'vite';
 
+function deduplicateUsersHelper(rawUsers: any[]): any[] {
+  if (!Array.isArray(rawUsers) || rawUsers.length === 0) return [];
+  const codeMap = new Map<string, number>();
+  const emailMap = new Map<string, number>();
+  const idMap = new Map<string, number>();
+  const result: any[] = [];
+
+  const isPlaceholderName = (name?: string) => {
+    if (!name) return true;
+    return /^Agent[_\s]?\d+$/i.test(name.trim()) || /^Trainer\d*$/i.test(name.trim());
+  };
+
+  for (const u of rawUsers) {
+    if (!u) continue;
+    const isSuperAdmin =
+      u.employeeCode?.toLowerCase() === 'superadmin' ||
+      u.id === 'usr-superadmin-red' ||
+      u.id === 'usr-superadmin-root' ||
+      u.email?.toLowerCase() === 'admin@llc.com' ||
+      (u.role === 'admin' && (u.name === 'Admin' || u.name === 'Red'));
+
+    if (isSuperAdmin) {
+      const existingAdminIdx = result.findIndex(
+        (x) => x.employeeCode?.toLowerCase() === 'superadmin' || x.id === 'usr-superadmin-red'
+      );
+      const canonicalAdmin = {
+        ...u,
+        id: 'usr-superadmin-red',
+        employeeCode: 'SuperAdmin',
+        email: 'admin@llc.com',
+        name: u.name === 'Red' ? 'Red' : 'Admin',
+        role: 'admin',
+        designation: 'Admin',
+        username: u.username || 'admin',
+      };
+      if (existingAdminIdx >= 0) {
+        result[existingAdminIdx] = { ...result[existingAdminIdx], ...canonicalAdmin };
+      } else {
+        result.unshift(canonicalAdmin);
+      }
+      continue;
+    }
+
+    const normCode = (u.employeeCode || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const normEmail = (u.email || '').toLowerCase().trim();
+    const rawId = (u.id || '').trim();
+
+    let existingIndex = -1;
+    if (normCode && codeMap.has(normCode)) {
+      existingIndex = codeMap.get(normCode)!;
+    } else if (normEmail && emailMap.has(normEmail)) {
+      existingIndex = emailMap.get(normEmail)!;
+    } else if (rawId && idMap.has(rawId)) {
+      existingIndex = idMap.get(rawId)!;
+    }
+
+    if (existingIndex >= 0) {
+      const existing = result[existingIndex];
+      const existingIsPlaceholder = isPlaceholderName(existing.name);
+      const uIsPlaceholder = isPlaceholderName(u.name);
+
+      let merged: any;
+      if (existingIsPlaceholder && !uIsPlaceholder) {
+        merged = {
+          ...existing,
+          ...u,
+          password: existing.password && existing.password !== 'Password123!' ? existing.password : u.password || existing.password,
+          customPermissions: existing.customPermissions || u.customPermissions,
+        };
+      } else {
+        merged = {
+          ...u,
+          ...existing,
+          name: !existingIsPlaceholder ? existing.name : u.name || existing.name,
+          password: existing.password && existing.password !== 'Password123!' ? existing.password : u.password || existing.password,
+          customPermissions: existing.customPermissions || u.customPermissions,
+        };
+      }
+      result[existingIndex] = merged;
+    } else {
+      const newIndex = result.length;
+      result.push(u);
+      if (normCode) codeMap.set(normCode, newIndex);
+      if (normEmail) emailMap.set(normEmail, newIndex);
+      if (rawId) idMap.set(rawId, newIndex);
+    }
+  }
+  return result;
+}
+
 function centralSyncBridge(): Plugin {
   const syncFilePath = path.resolve(__dirname, '.sync_bridge.json');
   
@@ -13,12 +103,15 @@ function centralSyncBridge(): Plugin {
     timeLogs: [] as any[],
     users: [] as any[],
     presence: {} as Record<string, any>,
+    auditLogs: [] as any[],
+    attendance: [] as any[],
   };
 
   try {
     if (fs.existsSync(syncFilePath)) {
       const data = JSON.parse(fs.readFileSync(syncFilePath, 'utf-8'));
       syncState = { ...syncState, ...data };
+      syncState.users = deduplicateUsersHelper(syncState.users);
     }
   } catch (e) {}
 
@@ -210,13 +303,7 @@ function centralSyncBridge(): Plugin {
               try {
                 const payload = JSON.parse(body);
                 const usersToMerge = Array.isArray(payload) ? payload : [payload];
-                const userMap = new Map(syncState.users.map(u => [u.id, u]));
-                for (const u of usersToMerge) {
-                  if (u && u.id) {
-                    userMap.set(u.id, { ...(userMap.get(u.id) || {}), ...u });
-                  }
-                }
-                syncState.users = Array.from(userMap.values());
+                syncState.users = deduplicateUsersHelper([...syncState.users, ...usersToMerge]);
                 saveSyncState();
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: true, count: syncState.users.length }));
