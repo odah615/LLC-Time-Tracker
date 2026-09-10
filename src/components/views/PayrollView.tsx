@@ -87,15 +87,15 @@ export const PayrollView: React.FC = () => {
       p.employeeCode,
       `"${p.userName}"`,
       `"${p.designation}"`,
-      p.monthlyRate || 23000,
-      p.dailyRate || 1150,
-      p.hourlyRate || 143.75,
+      p.monthlyRate || 0,
+      p.dailyRate || 0,
+      p.hourlyRate || 0,
       p.totalTrackedHours,
       p.missingHours || 0,
       p.missingDeductions || 0,
-      p.grossPay || 23000,
+      p.grossPay || 0,
       p.incentiveBonus || 0,
-      p.netPay,
+      p.netPay || 0,
       `"${p.remarks || p.status}"`,
     ]);
 
@@ -259,13 +259,13 @@ export const PayrollView: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-800">
                 {filteredPayroll.map((rec) => {
-                  const mRate = rec.monthlyRate || (rec.designation.includes('Lead') || rec.designation.includes('Admin') || rec.designation.includes('Trainer') ? 27000 : 23000);
-                  const dRate = rec.dailyRate || mRate / 20;
-                  const hRate = rec.hourlyRate || mRate / 160;
+                  const mRate = Number(rec.monthlyRate) >= 0 ? Number(rec.monthlyRate) : 0;
+                  const dRate = rec.dailyRate || (mRate > 0 ? mRate / 20 : 0);
+                  const hRate = rec.hourlyRate || (mRate > 0 ? mRate / 160 : 0);
                   const missingHrs = Math.max(0, (rec.expectedHours || 160) - rec.totalTrackedHours);
                   const missingDed = missingHrs * hRate;
                   const bonus = rec.incentiveBonus || 0;
-                  const net = mRate + bonus - missingDed;
+                  const net = mRate > 0 ? Math.max(0, mRate + bonus - missingDed) : 0;
 
                   return (
                     <tr key={rec.id} className="hover:bg-slate-50/80 transition-colors">
@@ -420,7 +420,7 @@ export const PayrollView: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {users.map((usr) => {
               const userPayroll = payrollRecords.find((p) => p.userId === usr.id);
-              const mRate = usr.monthlyRate || (usr.role === 'agent' ? 23000 : 27000);
+              const mRate = Number(usr.monthlyRate) >= 0 ? Number(usr.monthlyRate) : 0;
               const netDisplay = userPayroll ? userPayroll.netPay : mRate;
 
               return (
@@ -547,15 +547,15 @@ export const PayrollView: React.FC = () => {
                   <tbody className="divide-y divide-slate-200 font-mono text-slate-800">
                     <tr>
                       <td className="py-2.5 px-3 font-bold text-slate-900">
-                        ₱{(selectedPayslip.monthlyRate || 23000).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        ₱{(Number(selectedPayslip.monthlyRate) >= 0 ? Number(selectedPayslip.monthlyRate) : 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-2.5 px-3 text-center">20 Days</td>
                       <td className="py-2.5 px-3 text-center">
-                        ₱{(selectedPayslip.dailyRate || 1150).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        ₱{(Number(selectedPayslip.dailyRate) >= 0 ? Number(selectedPayslip.dailyRate) : ((selectedPayslip.monthlyRate || 0) > 0 ? (selectedPayslip.monthlyRate || 0) / 20 : 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-2.5 px-3 text-center">160.0 Hours</td>
                       <td className="py-2.5 px-3 text-right font-bold text-emerald-700">
-                        ₱{(selectedPayslip.hourlyRate || 143.75).toFixed(2)}/hr
+                        ₱{(Number(selectedPayslip.hourlyRate) >= 0 ? Number(selectedPayslip.hourlyRate) : ((selectedPayslip.monthlyRate || 0) > 0 ? (selectedPayslip.monthlyRate || 0) / 160 : 0)).toFixed(2)}/hr
                       </td>
                     </tr>
                   </tbody>
@@ -572,7 +572,7 @@ export const PayrollView: React.FC = () => {
                 <div className="flex justify-between text-slate-700">
                   <span>Gross Base Monthly Salary:</span>
                   <span className="font-bold text-slate-900">
-                    ₱{(selectedPayslip.monthlyRate || 23000).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    ₱{(Number(selectedPayslip.monthlyRate) >= 0 ? Number(selectedPayslip.monthlyRate) : 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </span>
                 </div>
 
@@ -583,7 +583,7 @@ export const PayrollView: React.FC = () => {
 
                 <div className="flex justify-between text-rose-600 font-semibold">
                   <span>
-                    Missing / Absent Hours Deduction ({selectedPayslip.missingHours || 0} hrs @ ₱{(selectedPayslip.hourlyRate || 143.75).toFixed(2)}/hr):
+                    Missing / Absent Hours Deduction ({selectedPayslip.missingHours || 0} hrs @ ₱{(Number(selectedPayslip.hourlyRate) >= 0 ? Number(selectedPayslip.hourlyRate) : 0).toFixed(2)}/hr):
                   </span>
                   <span>
                     -₱{(selectedPayslip.missingDeductions || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

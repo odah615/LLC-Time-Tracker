@@ -127,7 +127,7 @@ export const EmployeeCrudModal: React.FC<EmployeeCrudModalProps> = ({
   if (!isOpen) return null;
 
   const executeSave = () => {
-    const mRate = isEditingSuperAdmin ? (monthlyRate > 0 ? monthlyRate : 60000) : (Number(monthlyRate) >= 0 ? Number(monthlyRate) : 0);
+    const mRate = Number(monthlyRate) >= 0 ? Number(monthlyRate) : 0;
     const calcHourly = mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0;
     const finalJoinDate = joinDate.trim() || '2020-01-01';
     const finalRole = isEditingSuperAdmin ? 'admin' : role;

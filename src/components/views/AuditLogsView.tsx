@@ -225,7 +225,8 @@ export const AuditLogsView: React.FC = () => {
             'Authenticated (Active)',
           ];
         });
-        downloadTableCSV('Login_Logs', SPREADSHEET_SCHEMA[0].headers, rows);
+        const headers = SPREADSHEET_SCHEMA.find((s) => s.tabName === 'Login_Logs')?.headers || [];
+        downloadTableCSV('Login_Logs', headers, rows);
         break;
       }
       case 'logout': {
@@ -244,7 +245,8 @@ export const AuditLogsView: React.FC = () => {
             'Logged Out (Complete)',
           ];
         });
-        downloadTableCSV('Logout_Logs', SPREADSHEET_SCHEMA[1].headers, rows);
+        const headers = SPREADSHEET_SCHEMA.find((s) => s.tabName === 'Logout_Logs')?.headers || [];
+        downloadTableCSV('Logout_Logs', headers, rows);
         break;
       }
       case 'idle': {
@@ -263,7 +265,8 @@ export const AuditLogsView: React.FC = () => {
             i.status,
           ];
         });
-        downloadTableCSV('Idle_Logs', SPREADSHEET_SCHEMA[2].headers, rows);
+        const headers = SPREADSHEET_SCHEMA.find((s) => s.tabName === 'Idle_Logs')?.headers || [];
+        downloadTableCSV('Idle_Logs', headers, rows);
         break;
       }
       case 'active': {
@@ -287,7 +290,8 @@ export const AuditLogsView: React.FC = () => {
             t.notes || '',
           ];
         });
-        downloadTableCSV('Active_Logs', SPREADSHEET_SCHEMA[3].headers, rows);
+        const headers = SPREADSHEET_SCHEMA.find((s) => s.tabName === 'Time_Logs' || s.tabName === 'Active_Logs')?.headers || [];
+        downloadTableCSV('Active_Logs', headers, rows);
         break;
       }
       case 'inactive': {
@@ -305,7 +309,8 @@ export const AuditLogsView: React.FC = () => {
             `Shift Extended by +${i.requiredExtensionMinutes || i.durationMinutes} mins`,
           ];
         });
-        downloadTableCSV('Inactive_Logs', SPREADSHEET_SCHEMA[4].headers, rows);
+        const headers = SPREADSHEET_SCHEMA.find((s) => s.tabName === 'Inactive_Logs')?.headers || [];
+        downloadTableCSV('Inactive_Logs', headers, rows);
         break;
       }
       case 'admin':
@@ -323,7 +328,8 @@ export const AuditLogsView: React.FC = () => {
           l.toValue || '-',
           l.details,
         ]);
-        downloadTableCSV(activeTab === 'admin' ? 'Admin_Audit_Logs' : 'System_Audit_Logs', SPREADSHEET_SCHEMA[5].headers, rows);
+        const headers = SPREADSHEET_SCHEMA.find((s) => s.tabName === 'Admin_Audit_Logs')?.headers || [];
+        downloadTableCSV(activeTab === 'admin' ? 'Admin_Audit_Logs' : 'System_Audit_Logs', headers, rows);
         break;
       }
     }
@@ -349,7 +355,8 @@ export const AuditLogsView: React.FC = () => {
         'Authenticated (Active)',
       ];
     });
-    downloadTableCSV('Login_Logs', SPREADSHEET_SCHEMA[0].headers, loginRows);
+    const loginHeaders = SPREADSHEET_SCHEMA.find((s) => s.tabName === 'Login_Logs')?.headers || [];
+    downloadTableCSV('Login_Logs', loginHeaders, loginRows);
 
     // 2. Export Logout Logs
     const logoutRows = logoutLogs.map((l) => {
@@ -367,7 +374,8 @@ export const AuditLogsView: React.FC = () => {
         'Logged Out (Complete)',
       ];
     });
-    downloadTableCSV('Logout_Logs', SPREADSHEET_SCHEMA[1].headers, logoutRows);
+    const logoutHeaders = SPREADSHEET_SCHEMA.find((s) => s.tabName === 'Logout_Logs')?.headers || [];
+    downloadTableCSV('Logout_Logs', logoutHeaders, logoutRows);
 
     // 3. Export Idle Logs
     const idleRows = idleLogs.map((i) => {
@@ -385,7 +393,8 @@ export const AuditLogsView: React.FC = () => {
         i.status,
       ];
     });
-    downloadTableCSV('Idle_Logs', SPREADSHEET_SCHEMA[2].headers, idleRows);
+    const idleHeaders = SPREADSHEET_SCHEMA.find((s) => s.tabName === 'Idle_Logs')?.headers || [];
+    downloadTableCSV('Idle_Logs', idleHeaders, idleRows);
 
     // 4. Export Active Logs
     const activeRows = timeLogs.map((t) => {
@@ -408,7 +417,8 @@ export const AuditLogsView: React.FC = () => {
         t.notes || '',
       ];
     });
-    downloadTableCSV('Active_Logs', SPREADSHEET_SCHEMA[3].headers, activeRows);
+    const activeHeaders = SPREADSHEET_SCHEMA.find((s) => s.tabName === 'Active_Logs' || s.tabName === 'Time_Logs')?.headers || [];
+    downloadTableCSV('Active_Logs', activeHeaders, activeRows);
 
     // 5. Export Inactive Logs
     const inactRows = idleLogs.map((i) => {
@@ -425,7 +435,8 @@ export const AuditLogsView: React.FC = () => {
         `Shift Extended by +${i.requiredExtensionMinutes || i.durationMinutes} mins`,
       ];
     });
-    downloadTableCSV('Inactive_Logs', SPREADSHEET_SCHEMA[4].headers, inactRows);
+    const inactHeaders = SPREADSHEET_SCHEMA.find((s) => s.tabName === 'Inactive_Logs')?.headers || [];
+    downloadTableCSV('Inactive_Logs', inactHeaders, inactRows);
 
     // 6. Export Admin Audit Logs
     const adminRows = adminAuditLogs.map((l) => [
@@ -440,9 +451,68 @@ export const AuditLogsView: React.FC = () => {
       l.toValue || '-',
       l.details,
     ]);
-    downloadTableCSV('Admin_Audit_Logs', SPREADSHEET_SCHEMA[5].headers, adminRows);
+    const adminHeaders = SPREADSHEET_SCHEMA.find((s) => s.tabName === 'Admin_Audit_Logs')?.headers || [];
+    downloadTableCSV('Admin_Audit_Logs', adminHeaders, adminRows);
 
-    setSyncSuccessMsg('Exported all modular separated tables to CSV files successfully!');
+    // 7. Export Daily Summary
+    const dailyMap = new Map<string, { date: string; code: string; name: string; desig: string; tasks: Set<string>; firstIn: string; lastOut: string; grossSecs: number; idleSecs: number; mouseSum: number; kbdSum: number; count: number; hasLive: boolean }>();
+    timeLogs.forEach((t) => {
+      const usr = userMap.get(t.userId) || userMap.get(t.userName.toLowerCase());
+      const d = t.date || (t.startTime ? t.startTime.slice(0, 10) : '2026-09-10');
+      const key = `${d}___${t.userName}`;
+      if (!dailyMap.has(key)) {
+        dailyMap.set(key, {
+          date: d,
+          code: usr?.employeeCode || 'N/A',
+          name: t.userName,
+          desig: t.designation || usr?.designation || 'Agent',
+          tasks: new Set(),
+          firstIn: t.geoLocalStartTime || t.startTime || '',
+          lastOut: t.geoLocalEndTime || t.endTime || '',
+          grossSecs: 0,
+          idleSecs: 0,
+          mouseSum: 0,
+          kbdSum: 0,
+          count: 0,
+          hasLive: false,
+        });
+      }
+      const entry = dailyMap.get(key)!;
+      if (t.task) entry.tasks.add(t.task);
+      entry.grossSecs += (t.durationSeconds || 0);
+      entry.idleSecs += (t.idleSeconds || 0);
+      entry.mouseSum += (t.mouseActivityAvg || 0);
+      entry.kbdSum += (t.keyboardActivityAvg || 0);
+      entry.count += 1;
+      if (t.endTime === 'Running Live' || !t.endTime) entry.hasLive = true;
+    });
+
+    const dailySummaryRows = Array.from(dailyMap.values()).map((item) => {
+      const netSecs = Math.max(0, item.grossSecs - item.idleSecs);
+      const avgAct = item.count > 0 ? Math.round(((item.mouseSum / item.count) + (item.kbdSum / item.count)) / 2) : 0;
+      return [
+        item.date,
+        item.code,
+        item.name,
+        item.desig,
+        Array.from(item.tasks).join(', ') || 'General Work',
+        item.firstIn || '--:--',
+        item.hasLive ? 'Running Live' : (item.lastOut || '--:--'),
+        formatTotalTime(item.grossSecs),
+        formatTotalTime(item.idleSecs),
+        formatTotalTime(netSecs),
+        netSecs,
+        `${avgAct}%`,
+        item.hasLive ? 'Active Live' : 'Completed',
+        `${item.count} logs`,
+      ];
+    });
+    const dailyHeaders = SPREADSHEET_SCHEMA.find((s) => s.tabName === 'Daily_Summary')?.headers || [];
+    if (dailySummaryRows.length > 0 && dailyHeaders.length > 0) {
+      downloadTableCSV('Daily_Summary', dailyHeaders, dailySummaryRows);
+    }
+
+    setSyncSuccessMsg('Exported all modular separated tables and executive summaries to CSV files successfully!');
     setTimeout(() => setSyncSuccessMsg(''), 4000);
   };
 
@@ -738,17 +808,17 @@ export const AuditLogsView: React.FC = () => {
         {/* Separate Schema Tabs Overview */}
         <div className="mt-5">
           <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
-            Active Modular Database Tabs (Separated Google Sheet Tabs)
+            Active Modular Database Tabs in Google Sheets ({SPREADSHEET_SCHEMA.length} Structured Tabs)
           </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
-            {SPREADSHEET_SCHEMA.slice(0, 6).map((tab, idx) => (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+            {SPREADSHEET_SCHEMA.map((tab, idx) => (
               <div
                 key={idx}
                 onClick={() => {
                   if (tab.tabName === 'Login_Logs') setActiveTab('login');
                   if (tab.tabName === 'Logout_Logs') setActiveTab('logout');
                   if (tab.tabName === 'Idle_Logs') setActiveTab('idle');
-                  if (tab.tabName === 'Active_Logs') setActiveTab('active');
+                  if (tab.tabName === 'Active_Logs' || tab.tabName === 'Time_Logs') setActiveTab('active');
                   if (tab.tabName === 'Inactive_Logs') setActiveTab('inactive');
                   if (tab.tabName === 'Admin_Audit_Logs') setActiveTab('admin');
                 }}
@@ -756,7 +826,7 @@ export const AuditLogsView: React.FC = () => {
                   (activeTab === 'login' && tab.tabName === 'Login_Logs') ||
                   (activeTab === 'logout' && tab.tabName === 'Logout_Logs') ||
                   (activeTab === 'idle' && tab.tabName === 'Idle_Logs') ||
-                  (activeTab === 'active' && tab.tabName === 'Active_Logs') ||
+                  (activeTab === 'active' && (tab.tabName === 'Active_Logs' || tab.tabName === 'Time_Logs')) ||
                   (activeTab === 'inactive' && tab.tabName === 'Inactive_Logs') ||
                   (activeTab === 'admin' && tab.tabName === 'Admin_Audit_Logs')
                     ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-500/20'

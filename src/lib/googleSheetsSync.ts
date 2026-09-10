@@ -130,6 +130,63 @@ export const SPREADSHEET_SCHEMA = [
     ],
   },
   {
+    tabName: 'Daily_Summary',
+    description: 'Instant Executive Daily Timesheet Summary — pre-calculated total shift hours, break deductions, and net productive rendered time per agent per day.',
+    headers: [
+      'Date',
+      'Employee Code',
+      'Employee Name',
+      'Designation',
+      'Tasks Worked On',
+      'First Clock-In (Manila GMT+8)',
+      'Last Clock-Out (Manila GMT+8)',
+      'Gross Tracked Shift',
+      'Total Idle / Breaks',
+      'Net Productive Work',
+      'Duration (Seconds)',
+      'Avg Activity %',
+      'Shift Status',
+      'Log Entries',
+    ],
+  },
+  {
+    tabName: 'Weekly_Summary',
+    description: 'Instant Executive Weekly Timesheet Summary — pre-calculated Monday-to-Sunday weekly rendered hours, tasks breakdown, and regular vs overtime hours per agent.',
+    headers: [
+      'Week Period (Mon-Sun)',
+      'Employee Code',
+      'Employee Name',
+      'Designation',
+      'Tasks Breakdown',
+      'Days Rendered',
+      'Gross Tracked Hours',
+      'Total Idle / Breaks',
+      'Net Productive Work',
+      'Regular Hours',
+      'Overtime Hours',
+      'Avg Activity %',
+    ],
+  },
+  {
+    tabName: 'Monthly_Summary',
+    description: 'Instant Executive Monthly Timesheet Summary — pre-calculated monthly rendered hours, total working days, estimated pay, and activity performance.',
+    headers: [
+      'Month Period',
+      'Employee Code',
+      'Employee Name',
+      'Designation',
+      'Primary Tasks',
+      'Total Days Rendered',
+      'Gross Tracked Hours',
+      'Total Idle / Breaks',
+      'Net Productive Work',
+      'Monthly Rate (₱)',
+      'Hourly Rate (₱)',
+      'Estimated Gross Pay (₱)',
+      'Avg Activity %',
+    ],
+  },
+  {
     tabName: 'Active_Logs',
     description: 'Compatibility alias for Time_Logs. Dedicated log of all active shift work sessions, assigned tasks, start/end timestamps, duration in seconds, human-readable total time, and activity %.',
     headers: [
@@ -294,6 +351,9 @@ export const generateAppsScriptCode = (spreadsheetId: string = DEFAULT_SPREADSHE
  * Linked Spreadsheet ID: ${spreadsheetId}
  * 
  * Features:
+ * - Separate Tab for Instant Daily Timesheet Summary (Daily_Summary) - Rendered hours, tasks & deductions per agent
+ * - Separate Tab for Instant Weekly Timesheet Summary (Weekly_Summary) - Rendered hours, overtime & regular breakdown
+ * - Separate Tab for Instant Monthly Timesheet Summary (Monthly_Summary) - Days worked, total hours, estimated gross pay
  * - Separate Tab for Login Logs (Login_Logs)
  * - Separate Tab for Logout Logs (Logout_Logs)
  * - Separate Tab for Idle Logs (Idle_Logs)
@@ -549,6 +609,21 @@ function setupSheetsSchema() {
       tab: 'Time_Logs',
       color: '#059669', // Emerald
       headers: ['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Duration (Seconds)', 'Total Time', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes']
+    },
+    {
+      tab: 'Daily_Summary',
+      color: '#0284c7', // Sky Blue
+      headers: ['Date', 'Employee Code', 'Employee Name', 'Designation', 'Tasks Worked On', 'First Clock-In (Manila)', 'Last Clock-Out (Manila)', 'Gross Tracked Shift', 'Total Idle / Breaks', 'Net Productive Work', 'Duration (Seconds)', 'Avg Activity %', 'Shift Status', 'Log Entries']
+    },
+    {
+      tab: 'Weekly_Summary',
+      color: '#0d9488', // Teal
+      headers: ['Week Period (Mon-Sun)', 'Employee Code', 'Employee Name', 'Designation', 'Tasks Breakdown', 'Days Rendered', 'Gross Tracked Hours', 'Total Idle / Breaks', 'Net Productive Work', 'Regular Hours', 'Overtime Hours', 'Avg Activity %']
+    },
+    {
+      tab: 'Monthly_Summary',
+      color: '#059669', // Green
+      headers: ['Month Period', 'Employee Code', 'Employee Name', 'Designation', 'Primary Tasks', 'Total Days Rendered', 'Gross Tracked Hours', 'Total Idle / Breaks', 'Net Productive Work', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Estimated Gross Pay (₱)', 'Avg Activity %']
     },
     {
       tab: 'Active_Logs',
@@ -869,6 +944,244 @@ function doPost(e) {
       }
 
       // ==========================================
+      // 4b. POPULATE DAILY SUMMARY (Dedicated Tab)
+      // ==========================================
+      var dailySummarySheet = ss.getSheetByName('Daily_Summary');
+      if (!dailySummarySheet) {
+        try { dailySummarySheet = ss.insertSheet('Daily_Summary'); } catch(e) {}
+      }
+      var dailyHeaders = ['Date', 'Employee Code', 'Employee Name', 'Designation', 'Tasks Worked On', 'First Clock-In (Manila)', 'Last Clock-Out (Manila)', 'Gross Tracked Shift', 'Total Idle / Breaks', 'Net Productive Work', 'Duration (Seconds)', 'Avg Activity %', 'Shift Status', 'Log Entries'];
+      var dailyMap = {};
+      rawTimeLogs.forEach(function(t) {
+        var d = t.date || (t.startTime ? t.startTime.slice(0, 10) : '2026-09-10');
+        var matchedUser = userMap[t.userId] || userMap[t.userName] || {};
+        var empCode = matchedUser.employeeCode || 'N/A';
+        var empName = t.userName || 'Unknown';
+        var dKey = d + '___' + empName;
+
+        if (!dailyMap[dKey]) {
+          dailyMap[dKey] = {
+            date: d,
+            code: empCode,
+            name: empName,
+            designation: t.designation || matchedUser.designation || 'Agent',
+            tasks: {},
+            firstClockIn: t.geoLocalStartTime || '',
+            lastClockOut: t.geoLocalEndTime || '',
+            grossSecs: 0,
+            idleSecs: 0,
+            mouseSum: 0,
+            keyboardSum: 0,
+            count: 0,
+            hasLive: false
+          };
+        }
+
+        var entry = dailyMap[dKey];
+        if (t.task) entry.tasks[t.task] = true;
+        if (!entry.firstClockIn && (t.geoLocalStartTime || t.startTime)) {
+          entry.firstClockIn = t.geoLocalStartTime || t.startTime;
+        }
+        if (t.geoLocalEndTime || t.endTime) {
+          entry.lastClockOut = t.geoLocalEndTime || t.endTime;
+        }
+        var sSecs = typeof t.durationSeconds === 'number' ? Math.max(0, Math.floor(t.durationSeconds)) : 0;
+        entry.grossSecs += sSecs;
+        entry.idleSecs += (t.idleSeconds || 0);
+        entry.mouseSum += (t.mouseActivityAvg || 0);
+        entry.keyboardSum += (t.keyboardActivityAvg || 0);
+        entry.count += 1;
+        if (t.endTime === 'Running Live' || !t.endTime) entry.hasLive = true;
+      });
+
+      var dailyRows = [];
+      Object.keys(dailyMap).forEach(function(k) {
+        var item = dailyMap[k];
+        var netSecs = Math.max(0, item.grossSecs - item.idleSecs);
+        var taskList = Object.keys(item.tasks).join(', ') || 'General Work';
+        var avgAct = item.count > 0 ? Math.round(((item.mouseSum / item.count) + (item.keyboardSum / item.count)) / 2) : 0;
+        dailyRows.push([
+          item.date,
+          item.code,
+          item.name,
+          item.designation,
+          taskList,
+          item.firstClockIn || '--:--',
+          item.hasLive ? 'Running Live' : (item.lastClockOut || '--:--'),
+          formatTotalTime(item.grossSecs),
+          formatTotalTime(item.idleSecs),
+          formatTotalTime(netSecs),
+          netSecs,
+          avgAct + '%',
+          item.hasLive ? 'Active Live' : 'Completed',
+          item.count + ' logs'
+        ]);
+      });
+      dailyRows.sort(function(a, b) {
+        return new Date(b[0] || 0).getTime() - new Date(a[0] || 0).getTime();
+      });
+      if (dailySummarySheet) populateCleanSheet(dailySummarySheet, dailyHeaders, dailyRows, '#0284c7');
+
+      // ==========================================
+      // 4c. POPULATE WEEKLY SUMMARY (Dedicated Tab)
+      // ==========================================
+      var weeklySummarySheet = ss.getSheetByName('Weekly_Summary');
+      if (!weeklySummarySheet) {
+        try { weeklySummarySheet = ss.insertSheet('Weekly_Summary'); } catch(e) {}
+      }
+      var weeklyHeaders = ['Week Period (Mon-Sun)', 'Employee Code', 'Employee Name', 'Designation', 'Tasks Breakdown', 'Days Rendered', 'Gross Tracked Hours', 'Total Idle / Breaks', 'Net Productive Work', 'Regular Hours', 'Overtime Hours', 'Avg Activity %'];
+      var weeklyMap = {};
+      rawTimeLogs.forEach(function(t) {
+        var dStr = t.date || (t.startTime ? t.startTime.slice(0, 10) : '2026-09-10');
+        var logD = new Date(dStr);
+        var dayOfWeek = logD.getDay();
+        var diffToMon = (dayOfWeek === 0 ? -6 : 1) - dayOfWeek;
+        var monDate = new Date(logD);
+        monDate.setDate(logD.getDate() + diffToMon);
+        var sunDate = new Date(monDate);
+        sunDate.setDate(monDate.getDate() + 6);
+        var monStr = (monDate.getMonth() + 1) + '/' + monDate.getDate() + '/' + monDate.getFullYear();
+        var sunStr = (sunDate.getMonth() + 1) + '/' + sunDate.getDate() + '/' + sunDate.getFullYear();
+        var weekLabel = 'Week (' + monStr + ' - ' + sunStr + ')';
+
+        var matchedUser = userMap[t.userId] || userMap[t.userName] || {};
+        var empCode = matchedUser.employeeCode || 'N/A';
+        var empName = t.userName || 'Unknown';
+        var wKey = weekLabel + '___' + empName;
+
+        if (!weeklyMap[wKey]) {
+          weeklyMap[wKey] = {
+            week: weekLabel,
+            code: empCode,
+            name: empName,
+            designation: t.designation || matchedUser.designation || 'Agent',
+            tasks: {},
+            days: {},
+            grossSecs: 0,
+            idleSecs: 0,
+            mouseSum: 0,
+            keyboardSum: 0,
+            count: 0
+          };
+        }
+
+        var wEntry = weeklyMap[wKey];
+        if (t.task) wEntry.tasks[t.task] = (wEntry.tasks[t.task] || 0) + (t.durationSeconds || 0);
+        if (t.date) wEntry.days[t.date] = true;
+        var sSecs = typeof t.durationSeconds === 'number' ? Math.max(0, Math.floor(t.durationSeconds)) : 0;
+        wEntry.grossSecs += sSecs;
+        wEntry.idleSecs += (t.idleSeconds || 0);
+        wEntry.mouseSum += (t.mouseActivityAvg || 0);
+        wEntry.keyboardSum += (t.keyboardActivityAvg || 0);
+        wEntry.count += 1;
+      });
+
+      var weeklyRows = [];
+      Object.keys(weeklyMap).forEach(function(k) {
+        var item = weeklyMap[k];
+        var netSecs = Math.max(0, item.grossSecs - item.idleSecs);
+        var netHours = netSecs / 3600;
+        var regHours = Math.min(40, netHours);
+        var otHours = Math.max(0, netHours - 40);
+        var taskBreakdown = Object.keys(item.tasks).map(function(tName) {
+          return tName + ' (' + formatTotalTime(item.tasks[tName]) + ')';
+        }).join(', ');
+        var avgAct = item.count > 0 ? Math.round(((item.mouseSum / item.count) + (item.keyboardSum / item.count)) / 2) : 0;
+        weeklyRows.push([
+          item.week,
+          item.code,
+          item.name,
+          item.designation,
+          taskBreakdown || 'General Work',
+          Object.keys(item.days).length + ' days',
+          formatTotalTime(item.grossSecs),
+          formatTotalTime(item.idleSecs),
+          formatTotalTime(netSecs),
+          regHours.toFixed(2) + ' hrs',
+          otHours.toFixed(2) + ' hrs',
+          avgAct + '%'
+        ]);
+      });
+      if (weeklySummarySheet) populateCleanSheet(weeklySummarySheet, weeklyHeaders, weeklyRows, '#0d9488');
+
+      // ==========================================
+      // 4d. POPULATE MONTHLY SUMMARY (Dedicated Tab)
+      // ==========================================
+      var monthlySummarySheet = ss.getSheetByName('Monthly_Summary');
+      if (!monthlySummarySheet) {
+        try { monthlySummarySheet = ss.insertSheet('Monthly_Summary'); } catch(e) {}
+      }
+      var monthlyHeaders = ['Month Period', 'Employee Code', 'Employee Name', 'Designation', 'Primary Tasks', 'Total Days Rendered', 'Gross Tracked Hours', 'Total Idle / Breaks', 'Net Productive Work', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Estimated Gross Pay (₱)', 'Avg Activity %'];
+      var monthlyMap = {};
+      rawTimeLogs.forEach(function(t) {
+        var dStr = t.date || (t.startTime ? t.startTime.slice(0, 10) : '2026-09-10');
+        var logD = new Date(dStr);
+        var monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        var monthLabel = monthNames[logD.getMonth()] + ' ' + logD.getFullYear();
+
+        var matchedUser = userMap[t.userId] || userMap[t.userName] || {};
+        var empCode = matchedUser.employeeCode || 'N/A';
+        var empName = t.userName || 'Unknown';
+        var mKey = monthLabel + '___' + empName;
+
+        if (!monthlyMap[mKey]) {
+          var mRate = matchedUser.monthlyRate !== undefined && matchedUser.monthlyRate !== null ? Number(matchedUser.monthlyRate) : 0;
+          var hRate = matchedUser.hourlyRate !== undefined && matchedUser.hourlyRate !== null ? Number(matchedUser.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
+          monthlyMap[mKey] = {
+            month: monthLabel,
+            code: empCode,
+            name: empName,
+            designation: t.designation || matchedUser.designation || 'Agent',
+            monthlyRate: mRate,
+            hourlyRate: hRate,
+            tasks: {},
+            days: {},
+            grossSecs: 0,
+            idleSecs: 0,
+            mouseSum: 0,
+            keyboardSum: 0,
+            count: 0
+          };
+        }
+
+        var mEntry = monthlyMap[mKey];
+        if (t.task) mEntry.tasks[t.task] = true;
+        if (t.date) mEntry.days[t.date] = true;
+        var sSecs = typeof t.durationSeconds === 'number' ? Math.max(0, Math.floor(t.durationSeconds)) : 0;
+        mEntry.grossSecs += sSecs;
+        mEntry.idleSecs += (t.idleSeconds || 0);
+        mEntry.mouseSum += (t.mouseActivityAvg || 0);
+        mEntry.keyboardSum += (t.keyboardActivityAvg || 0);
+        mEntry.count += 1;
+      });
+
+      var monthlyRows = [];
+      Object.keys(monthlyMap).forEach(function(k) {
+        var item = monthlyMap[k];
+        var netSecs = Math.max(0, item.grossSecs - item.idleSecs);
+        var netHours = netSecs / 3600;
+        var estPay = (netHours * item.hourlyRate).toFixed(2);
+        var taskList = Object.keys(item.tasks).join(', ');
+        var avgAct = item.count > 0 ? Math.round(((item.mouseSum / item.count) + (item.keyboardSum / item.count)) / 2) : 0;
+        monthlyRows.push([
+          item.month,
+          item.code,
+          item.name,
+          item.designation,
+          taskList || 'General Work',
+          Object.keys(item.days).length + ' days',
+          formatTotalTime(item.grossSecs),
+          formatTotalTime(item.idleSecs),
+          formatTotalTime(netSecs),
+          '₱' + Number(item.monthlyRate).toLocaleString(),
+          '₱' + Number(item.hourlyRate).toFixed(2),
+          '₱' + Number(estPay).toLocaleString(),
+          avgAct + '%'
+        ]);
+      });
+      if (monthlySummarySheet) populateCleanSheet(monthlySummarySheet, monthlyHeaders, monthlyRows, '#059669');
+
+      // ==========================================
       // 5. POPULATE INACTIVE LOGS (Dedicated Tab)
       // ==========================================
       var inactiveHeaders = ['Inactivity Log ID', 'Date & Time', 'Employee Code', 'Employee Name', 'Task Category', 'Inactivity Duration (Mins)', 'Deduction Status', 'Trigger Source', 'Impact on Shift & Extension'];
@@ -1062,14 +1375,14 @@ function doPost(e) {
           p.employeeCode || 'LLC-0001',
           p.userName,
           p.designation || 'Agent',
-          p.monthlyRate || 23000,
-          p.hourlyRate || 143.75,
+          p.monthlyRate !== undefined && p.monthlyRate !== null ? Number(p.monthlyRate) : 0,
+          p.hourlyRate !== undefined && p.hourlyRate !== null ? Number(p.hourlyRate) : 0,
           p.totalTrackedHours || 0,
           p.missingHours || 0,
           p.missingDeductions || 0,
-          p.grossPay || 23000,
+          p.grossPay || 0,
           p.incentiveBonus || 0,
-          p.netPay || 23000,
+          p.netPay || 0,
           p.status || 'pending'
         ]);
       });
@@ -1375,8 +1688,8 @@ export const fetchEmployeesFromGoogleSheets = async (
               email: rawEmp.email || existing?.email || `${code.toLowerCase()}@llctimetracker.com`,
               role,
               designation: rawEmp.designation || existing?.designation || (role === 'admin' ? 'Admin' : 'Agent'),
-              monthlyRate: Number(rawEmp.monthlyRate) || existing?.monthlyRate || (isSuperAdmin ? 60000 : 23000),
-              hourlyRate: Number(rawEmp.hourlyRate) || existing?.hourlyRate || (isSuperAdmin ? 375 : 143.75),
+              monthlyRate: rawEmp.monthlyRate !== undefined && rawEmp.monthlyRate !== null && !isNaN(Number(rawEmp.monthlyRate)) ? Number(rawEmp.monthlyRate) : (existing?.monthlyRate || 0),
+              hourlyRate: rawEmp.hourlyRate !== undefined && rawEmp.hourlyRate !== null && !isNaN(Number(rawEmp.hourlyRate)) ? Number(rawEmp.hourlyRate) : (existing?.hourlyRate || 0),
               teamLeaderId: rawEmp.teamLeaderId || existing?.teamLeaderId || '',
               screenshotMonitored: rawEmp.screenshotMonitored !== undefined ? Boolean(rawEmp.screenshotMonitored) : false,
               activityMonitored: rawEmp.activityMonitored !== undefined ? Boolean(rawEmp.activityMonitored) : false,
@@ -1518,8 +1831,8 @@ export const fetchEmployeesFromGoogleSheets = async (
         email: email || existing?.email || `${code.toLowerCase()}@llctimetracker.com`,
         role: validRole,
         designation: (designation as any) || existing?.designation || (validRole === 'admin' ? 'Admin' : 'Agent'),
-        monthlyRate: Number(monthlyRateStr) || existing?.monthlyRate || (isSuperAdmin ? 60000 : 23000),
-        hourlyRate: Number(hourlyRateStr) || existing?.hourlyRate || (isSuperAdmin ? 375 : 143.75),
+        monthlyRate: monthlyRateStr !== '' && !isNaN(Number(monthlyRateStr)) ? Number(monthlyRateStr) : (existing?.monthlyRate || 0),
+        hourlyRate: hourlyRateStr !== '' && !isNaN(Number(hourlyRateStr)) ? Number(hourlyRateStr) : (existing?.hourlyRate || 0),
         teamLeaderId: supervisor || existing?.teamLeaderId || '',
         screenshotMonitored: scrMonitored,
         activityMonitored: actMonitored,

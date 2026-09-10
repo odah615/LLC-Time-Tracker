@@ -340,15 +340,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return u;
   };
 
-  // Helper to ensure all users have a guaranteed unique username
+  // Helper to ensure all users have a guaranteed unique username and default rate of 0
   const ensureUsernames = (userList: User[]): User[] => {
+    const isRateDefaultCleaned = typeof window !== 'undefined' && localStorage.getItem('trackpulse_rate_default_v1') === 'true';
     const result: User[] = [];
     for (const rawUser of userList) {
-      const norm = normalizeSuperAdmin(rawUser);
+      let norm = normalizeSuperAdmin(rawUser);
       if (!norm.username || norm.username.trim() === '') {
         norm.username = generateUniqueUsername(norm.name, result, norm.id);
       }
+      if (!isRateDefaultCleaned) {
+        if (norm.monthlyRate === 23000 || norm.monthlyRate === 60000 || norm.monthlyRate === 40000 || norm.monthlyRate === 35000 || norm.monthlyRate === 30000 || norm.monthlyRate === undefined) {
+          norm = { ...norm, monthlyRate: 0, hourlyRate: 0 };
+        }
+      }
       result.push(norm);
+    }
+    if (typeof window !== 'undefined' && !isRateDefaultCleaned) {
+      localStorage.setItem('trackpulse_rate_default_v1', 'true');
     }
     return result;
   };
