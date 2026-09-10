@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   X,
   Users,
+  Play,
 } from 'lucide-react';
 import {
   BarChart,
@@ -44,7 +45,16 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
   onOpenManualModal,
   isPersonalOnly = false,
 }) => {
-  const { timeLogs, currentUser, deleteTimeLog, formatDuration } = useApp();
+  const {
+    timeLogs,
+    currentUser,
+    deleteTimeLog,
+    formatDuration,
+    isTracking,
+    isPaused,
+    currentTask,
+    elapsedSeconds,
+  } = useApp();
 
   // Tab View Mode: 'daily' | 'weekly' | 'monthly'
   const [viewTab, setViewTab] = useState<ViewTabMode>('daily');
@@ -111,23 +121,45 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     return `${h}h ${m}m`;
   };
 
+  // Helper: Normalize date strings across YYYY-MM-DD, MM/DD/YYYY, and ISO formats
+  const normalizeDate = (rawDate?: string, startTimeIso?: string): string => {
+    const candidate = rawDate || (startTimeIso ? startTimeIso.split('T')[0] : '');
+    if (!candidate) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(candidate)) return candidate;
+    if (candidate.includes('/')) {
+      const parts = candidate.split('/');
+      if (parts.length === 3) {
+        if (parts[2].length === 4) {
+          // MM/DD/YYYY
+          return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+        } else if (parts[0].length === 4) {
+          // YYYY/MM/DD
+          return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+        }
+      }
+    }
+    if (candidate.includes('T')) return candidate.split('T')[0];
+    return candidate;
+  };
+
   // Helper: Determine date matching based on view tab
-  const isLogInPeriod = (logDateStr: string, mode: ViewTabMode) => {
-    if (!logDateStr) return false;
+  const isLogInPeriod = (logDateStr: string, mode: ViewTabMode, startTimeIso?: string) => {
+    const normalized = normalizeDate(logDateStr, startTimeIso);
+    if (!normalized) return true;
 
     if (mode === 'daily') {
-      return logDateStr === anchorDate;
+      return normalized === anchorDate;
     }
 
     if (mode === 'weekly') {
       if (!weekStartDate || !weekEndDate) return true;
-      return logDateStr >= weekStartDate && logDateStr <= weekEndDate;
+      return normalized >= weekStartDate && normalized <= weekEndDate;
     }
 
     if (mode === 'monthly') {
       const monthPadded = String(selectedMonth + 1).padStart(2, '0');
       const targetPrefix = `${selectedYear}-${monthPadded}`;
-      return logDateStr.startsWith(targetPrefix);
+      return normalized.startsWith(targetPrefix);
     }
 
     return true;
@@ -160,13 +192,27 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
   // General Filtered logs based on mode (isPersonalOnly or team view), period, task filter, and agent search query
   const filteredLogs = useMemo(() => {
     return timeLogs.filter((log) => {
-      // If personal view mode OR agent role, strictly filter for current user
+      // If personal view mode OR agent role, match flexibly across userId, employeeCode, and userName
       if (isPersonalOnly || currentUser.role === 'agent') {
-        if (log.userId !== currentUser.id) return false;
+        const uId = (currentUser.id || '').trim().toLowerCase();
+        const uCode = (currentUser.employeeCode || '').trim().toLowerCase();
+        const uName = (currentUser.name || '').trim().toLowerCase();
+        const uUsername = ((currentUser as any).username || '').trim().toLowerCase();
+
+        const logUId = (log.userId || '').trim().toLowerCase();
+        const logEmpCode = ((log as any).employeeCode || '').trim().toLowerCase();
+        const logUName = (log.userName || '').trim().toLowerCase();
+
+        const matchesUser =
+          (logUId && (logUId === uId || (uCode && logUId === uCode) || (uUsername && logUId === uUsername))) ||
+          (logEmpCode && (logEmpCode === uCode || logEmpCode === uId)) ||
+          (logUName && uName && (logUName === uName || logUName.includes(uName) || uName.includes(logUName)));
+
+        if (!matchesUser) return false;
       }
 
-      // Period filter (Daily / Weekly / Monthly)
-      const matchesPeriod = isLogInPeriod(log.date, viewTab);
+      // Period filter (Daily / Weekly / Monthly) with date normalization
+      const matchesPeriod = isLogInPeriod(log.date, viewTab, log.startTime);
 
       // Task category filter
       const matchesTask = selectedTaskFilter === 'ALL' || log.task === selectedTaskFilter;
@@ -476,6 +522,32 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
               {viewTab.toUpperCase()} Period: {getPeriodLabel()}
             </span>
           </div>
+
+          {/* Active Live Session Indicator (Syncs live from Desktop App Tracker) */}
+          {isTracking && (
+            <div className="bg-emerald-950/80 border border-emerald-500/80 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-inner">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 shrink-0">
+                  <Play className="w-5 h-5 fill-emerald-400" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-sm text-emerald-300">Live Active Session Tracking Right Now</span>
+                    <span className="bg-emerald-500/30 text-emerald-200 border border-emerald-400/50 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                      {isPaused ? 'PAUSED' : 'RECORDING'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    Currently tracking task: <strong className="text-white">"{currentTask || 'General'}"</strong> on Desktop App.
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider block">Live Session Elapsed</span>
+                <span className="font-mono text-2xl font-black text-white">{formatDuration(elapsedSeconds)}</span>
+              </div>
+            </div>
+          )}
 
           {/* Stat Cards Grid for Personal Timesheet */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

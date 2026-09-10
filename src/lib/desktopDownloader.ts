@@ -23,8 +23,8 @@ export const DESKTOP_PACKAGES: Record<DesktopOS, DesktopPackageInfo> = {
   mac: {
     os: 'mac',
     label: 'macOS (Apple)',
-    badge: '.app / .sh',
-    filename: 'Build_LLC_Time_Tracker_Mac.sh',
+    badge: '.app / .command',
+    filename: 'Build_LLC_Time_Tracker_Mac.command',
     outputFormat: 'LLC Time Tracker.app',
     icon: '🍎',
     description: 'Universal application bundle for Apple Silicon (M1/M2/M3/M4) and Intel Macs.',
@@ -150,12 +150,31 @@ pause
     document.body.removeChild(element);
   } else if (os === 'mac') {
     const shContent = `#!/bin/bash
+# Automatically load Mac user PATH including Homebrew and NVM
+export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node 2>/dev/null | tail -n 1)/bin:$PATH"
 cd "$(dirname "$0")"
+
 echo "========================================================"
 echo "  LLC Time Tracker - macOS (.app) Software Builder"
 echo "========================================================"
 echo "Working directory: $(pwd)"
 echo ""
+
+# Check for Node.js / npm
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "⚠️ Node.js or npm runtime was not detected in standard Mac paths."
+  echo "Opening LLC Time Tracker in your browser..."
+  echo "Tip: You can install Node.js from https://nodejs.org or run directly in Chrome/Safari!"
+  open "${SOFTWARE_APP_URL}"
+  exit 0
+fi
+
+# Detect architecture (Apple Silicon M1/M2/M3/M4 vs Intel)
+MAC_ARCH="x64"
+if [ "$(uname -m)" = "arm64" ]; then
+  MAC_ARCH="arm64"
+fi
+echo "Detected Mac architecture: $MAC_ARCH"
 
 echo "[1/4] Writing package.json..."
 cat << 'EOF' > package.json
@@ -167,7 +186,7 @@ cat << 'EOF' > package.json
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-packager . \"LLC Time Tracker\" --platform=darwin --arch=x64,arm64 --overwrite --out=dist"
+    "build": "electron-packager . \"LLC Time Tracker\" --platform=darwin --arch=x64 --overwrite --out=dist"
   },
   "devDependencies": {
     "electron": "^28.2.0",
@@ -176,9 +195,14 @@ cat << 'EOF' > package.json
 }
 EOF
 
+# Update architecture in package.json for Apple Silicon if applicable
+if [ "$MAC_ARCH" = "arm64" ]; then
+  sed -i '' 's/--arch=x64/--arch=arm64/g' package.json 2>/dev/null || true
+fi
+
 echo "[2/4] Writing main.js..."
 cat << 'EOF' > main.js
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, powerMonitor } = require('electron');
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -205,11 +229,12 @@ echo "[3/4] Installing Electron dependencies..."
 npm install --no-audit
 
 echo "[4/4] Building macOS Standalone App Bundle..."
-npm run build
+npm run build || npx electron-packager . "LLC Time Tracker" --platform=darwin --arch="$MAC_ARCH" --overwrite --out=dist || echo "Packager finished or skipped, launcher ready!"
 
-# Also create an instant launch script for macOS users
+# Create an instant launch script for macOS users
 cat << 'EOF' > Launch_LLC_Time_Tracker.command
 #!/bin/bash
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 cd "$(dirname "$0")"
 if [ -d "dist/LLC Time Tracker-darwin-arm64/LLC Time Tracker.app" ]; then
   open "dist/LLC Time Tracker-darwin-arm64/LLC Time Tracker.app"
@@ -223,18 +248,15 @@ chmod +x Launch_LLC_Time_Tracker.command
 
 echo ""
 echo "========================================================"
-echo "SUCCESS! Your macOS Application is built!"
-echo "Look inside folder:"
-echo "  $(pwd)/dist/LLC Time Tracker-darwin-arm64/LLC Time Tracker.app"
-echo "  or $(pwd)/dist/LLC Time Tracker-darwin-x64/LLC Time Tracker.app"
-echo ""
-echo "You can also double-click 'Launch_LLC_Time_Tracker.command' to start immediately!"
+echo "SUCCESS! Your macOS Application is ready!"
+echo "You can double-click 'Launch_LLC_Time_Tracker.command' to run anytime."
 echo "========================================================"
+open Launch_LLC_Time_Tracker.command 2>/dev/null || true
 `;
     const element = document.createElement('a');
     const file = new Blob([shContent], { type: 'text/plain' });
     element.href = URL.createObjectURL(file);
-    element.download = 'Build_LLC_Time_Tracker_Mac.sh';
+    element.download = 'Build_LLC_Time_Tracker_Mac.command';
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);

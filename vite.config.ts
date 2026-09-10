@@ -165,6 +165,9 @@ function centralSyncBridge(): Plugin {
                 const existingMap = new Map(syncState.timeLogs.map(l => [l.id, l]));
                 for (const item of logsToAdd) {
                   if (item && item.id) {
+                    if (!item.date && item.startTime) {
+                      item.date = item.startTime.split('T')[0];
+                    }
                     if (item.startTime) {
                       const pht = formatPhtTime(item.startTime);
                       if (pht) item.geoLocalStartTime = pht;

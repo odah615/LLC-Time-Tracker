@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { User } from '../../types';
 import { maskPassword } from '../../lib/googleSheetsSync';
 import { downloadWordDocInstructions } from '../../lib/docGenerator';
+import { downloadDesktopSoftwarePackage } from '../../lib/desktopDownloader';
 import {
   Clock,
   Globe,
@@ -266,85 +267,7 @@ export const LoginView: React.FC = () => {
   };
 
   const handleSimulateDownload = () => {
-    if (downloadOS === 'windows') {
-      const batContent = `@echo off
-:: Force script to switch working directory to the folder containing this .bat file
-cd /d "%~dp0"
-title LLC Time Tracker Standalone Software Builder
-cls
-echo ========================================================
-echo   LLC Time Tracker - Standalone Desktop Software Builder
-echo ========================================================
-echo Working Directory: %cd%
-echo.
-
-echo [1/4] Generating desktop configuration...
-(
-echo {
-echo   "name": "llc-time-tracker-desktop",
-echo   "version": "1.0.0",
-echo   "description": "LLC Time Tracker Standalone Desktop Software",
-echo   "main": "main.js"
-echo }
-) > package.json
-
-echo [2/4] Writing main.js electron runner...
-(
-echo const { app, BrowserWindow, Menu } = require('electron'^);
-echo function createWindow(^) {
-echo   const win = new BrowserWindow({
-echo     width: 1280,
-echo     height: 860,
-echo     title: "LLC Time Tracker Desktop Software",
-echo     webPreferences: {
-echo       nodeIntegration: false,
-echo       contextIsolation: true
-echo     }
-echo   }^);
-echo   win.loadURL('${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop'^);
-echo }
-echo app.whenReady(^).then(createWindow^);
-) > main.js
-
-echo [3/4] Creating launcher shortcut...
-(
-echo @echo off
-echo cd /d "%%~dp0"
-echo start "" "%currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop"
-) > "Launch_LLC_Time_Tracker.bat"
-
-echo.
-echo ========================================================
-echo [SUCCESS] LLC Time Tracker Desktop files generated!
-echo Double-click "Launch_LLC_Time_Tracker.bat" to start tracking.
-echo ========================================================
-pause
-`;
-      const blob = new Blob([batContent], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'Build_LLC_Time_Tracker_Windows.bat';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } else {
-      const shContent = `#!/bin/bash
-echo "=== LLC Time Tracker Desktop Setup ==="
-echo "Opening Desktop Tracker in browser..."
-open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || xdg-open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop"
-`;
-      const blob = new Blob([shContent], { type: 'text/plain;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Build_LLC_Time_Tracker_${downloadOS === 'mac' ? 'Mac.sh' : 'Linux.sh'}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
+    downloadDesktopSoftwarePackage(downloadOS);
   };
 
   return (
@@ -688,9 +611,9 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
                           ⚙️ Option 2: Run Automated Mac Builder Script
                         </div>
                         <div className="text-[11px] text-amber-900 leading-relaxed">
-                          If you downloaded <code>Build_LLC_Time_Tracker_Mac.sh</code>, open <strong>Terminal</strong> (Press <kbd>Cmd + Space</kbd>, type <em>Terminal</em>, press Enter) and copy-paste this command:
+                          If you downloaded <code>Build_LLC_Time_Tracker_Mac.command</code>, you can simply double-click it directly, or open <strong>Terminal</strong> and run:
                           <div className="mt-1.5 bg-slate-900 text-emerald-300 font-mono text-[11px] p-2 rounded-md select-all">
-                            bash ~/Downloads/Build_LLC_Time_Tracker_Mac.sh
+                            bash ~/Downloads/Build_LLC_Time_Tracker_Mac.command
                           </div>
                           <span className="text-[10px] text-amber-800 block mt-1">
                             <em>⚠️ Note: Do not paste the file path alone, or macOS will say "Permission denied". You must include <code>bash </code> at the start.</em>
@@ -785,7 +708,7 @@ open "${currentWebUrl || "https://portal.llctimetracker.com"}?mode=desktop" || x
                 }}
                 className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all"
               >
-                <Download className="w-4 h-4" /> Download {downloadOS === 'windows' ? 'Windows App Package (.bat)' : downloadOS === 'mac' ? 'macOS App Package (.sh)' : 'Linux App Package (.sh)'}
+                <Download className="w-4 h-4" /> Download {downloadOS === 'windows' ? 'Windows App Package (.bat)' : downloadOS === 'mac' ? 'macOS App Package (.command)' : 'Linux App Package (.sh)'}
               </button>
             </div>
           </div>

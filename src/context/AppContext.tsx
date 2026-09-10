@@ -29,6 +29,7 @@ import {
   fetchTimeLogsFromGoogleSheets,
   isValidWebhookUrl,
 } from '../lib/googleSheetsSync';
+import { playInactivityChime, playUrgentPulse } from '../lib/soundAlerts';
 import {
   INITIAL_USERS,
   INITIAL_TIME_LOGS,
@@ -156,6 +157,12 @@ interface AppContextType {
   dismissIdleAlert: () => void;
   recordIdleInactivityEvent: (idleMinutes: number, reason?: string) => void;
   simulateIdleEvent: (minutes?: number) => void;
+  inactivityAlertState: {
+    isOpen: boolean;
+    idleMinutes: number;
+    remainingSeconds: number;
+  };
+  respondToInactivityAlert: (action: 'stay_active' | 'pause_tracker') => void;
   // Actions
   startTracking: () => void;
   pauseTracking: () => void;
@@ -308,21 +315,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [currentUser, setCurrentUser] = useState<User>(() => {
-    const rootUser = users.find(
-      (u) =>
-        u.employeeCode?.toLowerCase() === 'superadmin' ||
-        u.id === 'usr-superadmin-red' ||
-        u.email === 'admin@llc.com'
-    );
-    if (rootUser) {
-      return normalizeSuperAdmin(rootUser);
-    }
-    return normalizeSuperAdmin(users[0] || INITIAL_USERS[0]);
+    try {
+      // 1. Check URL parameters first (allows Desktop App "Open in Web Portal" to preserve exact logged-in agent)
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const userParam = urlParams.get('user') || urlParams.get('userId');
+        if (userParam) {
+          const foundByParam = users.find(
+            (u) =>
+              u.id === userParam ||
+              (u.employeeCode && u.employeeCode.toLowerCase() === userParam.toLowerCase()) ||
+              (u.username && u.username.toLowerCase() === userParam.toLowerCase())
+          );
+          if (foundByParam) {
+            localStorage.setItem('trackpulse_current_user', JSON.stringify(foundByParam));
+            localStorage.setItem('trackpulse_auth', 'true');
+            return foundByParam.role === 'admin' ? normalizeSuperAdmin(foundByParam) : foundByParam;
+          }
+        }
+      }
+
+      // 2. Check saved session in localStorage
+      const savedUserStr = localStorage.getItem('trackpulse_current_user');
+      if (savedUserStr) {
+        const parsed = JSON.parse(savedUserStr);
+        if (parsed && parsed.id) {
+          const found = users.find(
+            (u) =>
+              u.id === parsed.id ||
+              (u.employeeCode && parsed.employeeCode && u.employeeCode.toLowerCase() === parsed.employeeCode.toLowerCase())
+          );
+          if (found) {
+            return found.role === 'admin' ? normalizeSuperAdmin(found) : found;
+          }
+          return parsed.role === 'admin' ? normalizeSuperAdmin(parsed) : parsed;
+        }
+      }
+    } catch (e) {}
+
+    // Default fallback (used only if not authenticated)
+    return users[0] || INITIAL_USERS[0];
   });
 
-  // Authentication State
+  // Authentication State: Only authenticated if explicit saved user or URL param exists
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('trackpulse_auth') === 'true';
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('user') || urlParams.get('userId')) {
+        return true;
+      }
+    }
+    const isAuth = localStorage.getItem('trackpulse_auth') === 'true';
+    const hasUser = !!localStorage.getItem('trackpulse_current_user');
+    return isAuth && hasUser;
   });
   const [loginMode, setLoginMode] = useState<'webapp' | 'software'>(() => {
     if (typeof window !== 'undefined') {
@@ -1430,6 +1475,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsDesktopDockView(mode === 'software');
     localStorage.setItem('trackpulse_auth', 'true');
     localStorage.setItem('trackpulse_login_mode', mode);
+    localStorage.setItem('trackpulse_current_user', JSON.stringify(user));
     localStorage.removeItem('trackpulse_session_expired_reason');
     setSessionExpiredReason(null);
     lastWebActivityTimestampRef.current = Date.now();
@@ -1455,7 +1501,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedAudit = [loginLog, ...auditLogs];
     setAuditLogs(updatedAudit);
 
-    // Instant presence broadcast on login
+    // Standby presence broadcast on login:
+    // Only when the user chooses a task and starts the timer in the desktop app will they be tagged as online!
     const nowIso = now.toISOString();
     const loginPresence: UserPresence = {
       userId: user.id,
@@ -1465,14 +1512,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       designation: user.designation || 'Agent',
       department: user.department || 'Operations',
       teamLeaderId: user.teamLeaderId || '',
-      isOnline: true,
-      status: 'online',
+      isOnline: false,
+      status: 'offline',
       isTracking: false,
       isPaused: false,
       elapsedSeconds: 0,
       mouseActivity: 0,
       keyboardActivity: 0,
-      currentTask: mode === 'software' ? 'Desktop App Standby' : 'Web Portal Session',
+      currentTask: mode === 'software' ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal Session',
       currentApp: mode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal',
       lastHeartbeat: nowIso,
       loginTime: nowIso,
@@ -1568,6 +1615,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsAuthenticated(false);
     setIsSessionWarningActive(false);
     localStorage.removeItem('trackpulse_auth');
+    localStorage.removeItem('trackpulse_current_user');
+    localStorage.removeItem('trackpulse_active_tracking');
   };
 
   // WebApp Inactivity Auto-Logout Effect:
@@ -1721,7 +1770,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentInactivitySeconds, setCurrentInactivitySeconds] = useState<number>(0);
   const [sessionIdleDeductionSeconds, setSessionIdleDeductionSeconds] = useState<number>(0);
   const [isIdleAlertActive, setIsIdleAlertActive] = useState<boolean>(false);
-  const dismissIdleAlert = () => setIsIdleAlertActive(false);
+  const isAlertOpenRef = useRef<boolean>(false);
+  const alertRemainingRef = useRef<number>(60);
+  const [inactivityAlertState, setInactivityAlertState] = useState<{
+    isOpen: boolean;
+    idleMinutes: number;
+    remainingSeconds: number;
+  }>({
+    isOpen: false,
+    idleMinutes: 0,
+    remainingSeconds: 60,
+  });
+
+  const respondToInactivityAlert = (action: 'stay_active' | 'pause_tracker') => {
+    isAlertOpenRef.current = false;
+    alertRemainingRef.current = 60;
+    if (action === 'stay_active') {
+      lastMouseActiveTimestampRef.current = Date.now();
+      lastKeyboardActiveTimestampRef.current = Date.now();
+      setCurrentInactivitySeconds(0);
+      setInactivityAlertState({ isOpen: false, idleMinutes: 0, remainingSeconds: 60 });
+      setIsIdleAlertActive(false);
+      setSaveToast("✓ Inactivity alert cleared — Timer continuing smoothly!");
+      setTimeout(() => setSaveToast(null), 3500);
+    } else {
+      pauseTracking();
+      setInactivityAlertState({ isOpen: false, idleMinutes: 0, remainingSeconds: 60 });
+      setIsIdleAlertActive(false);
+      setSaveToast("⏸️ Tracker paused for break/inactivity.");
+      setTimeout(() => setSaveToast(null), 3500);
+    }
+  };
+
+  const dismissIdleAlert = () => {
+    respondToInactivityAlert('stay_active');
+  };
 
   // Real Hardware Event Listeners (mouse movement, clicks, scrolls, keystrokes, inputs)
   useEffect(() => {
@@ -1879,10 +1962,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    const statusValue = snap.isPaused ? 'idle' : 'online';
+    const isEffectivelyOnline = Boolean(snap.isTracking);
+    const statusValue = !snap.isTracking ? 'offline' : (snap.isPaused ? 'idle' : 'online');
     const taskDisplay = snap.isTracking 
       ? (snap.isPaused ? `Paused (${snap.currentTask})` : snap.currentTask)
-      : (snap.loginMode === 'software' ? 'Desktop App Standby' : 'Web Portal Session');
+      : (snap.loginMode === 'software' ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal Session');
 
     const presenceDoc: UserPresence = {
       userId: snap.currentUser.id,
@@ -1892,7 +1976,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       designation: snap.currentDesignation || snap.currentUser.designation || 'Agent',
       department: snap.currentUser.department || 'Operations',
       teamLeaderId: snap.currentUser.teamLeaderId || '',
-      isOnline: true,
+      isOnline: isEffectivelyOnline,
       status: statusValue,
       isTracking: !!snap.isTracking,
       isPaused: !!snap.isPaused,
@@ -2049,10 +2133,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentIdleThresholdMinutes(nextThreshold);
   };
 
-  // Simulate or manually test idle event (e.g. 10m or 15m)
+  // Simulate or manually test idle event (e.g. 5m, 10m, or 15m)
   const simulateIdleEvent = (minutes?: number) => {
-    const idleMins = minutes || currentIdleThresholdMinutes || getRandomIdleThreshold();
-    recordIdleInactivityEvent(idleMins, `Simulated/Triggered Inactivity Check (${idleMins} mins idle)`);
+    const idleMins = minutes || 5;
+    isAlertOpenRef.current = true;
+    alertRemainingRef.current = 60;
+    playInactivityChime();
+    setIsIdleAlertActive(true);
+    setInactivityAlertState({
+      isOpen: true,
+      idleMinutes: idleMins,
+      remainingSeconds: 60,
+    });
   };
 
   // Timer Tick Engine & 2-Minute Activity Window Processing
@@ -2163,10 +2255,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const inactivitySec = lastActive > 0 ? Math.floor((now - lastActive) / 1000) : 0;
         setCurrentInactivitySeconds(inactivitySec);
 
-        // 1. Idle deduction penalty check at random 10-15 min interval (only when foreground window is truly idle)
-        const thresholdSeconds = currentIdleThresholdMinutes * 60;
-        if (inactivitySec >= thresholdSeconds && thresholdSeconds > 0) {
-          recordIdleInactivityEvent(currentIdleThresholdMinutes);
+        // 1. Inactivity Alert with Sound Chime (Prompts agent first instead of silent deduction)
+        // When inactivity reaches 5 minutes (or threshold), trigger the sound chime and warning popup!
+        const thresholdSeconds = Math.max(300, currentIdleThresholdMinutes * 60);
+        if (inactivitySec >= thresholdSeconds && thresholdSeconds > 0 && !isAlertOpenRef.current) {
+          isAlertOpenRef.current = true;
+          alertRemainingRef.current = 60;
+          playInactivityChime();
+          setIsIdleAlertActive(true);
+          setInactivityAlertState({
+            isOpen: true,
+            idleMinutes: Math.round(inactivitySec / 60) || 5,
+            remainingSeconds: 60,
+          });
+        }
+
+        // When the inactivity alert modal is active, count down and play audio warnings
+        if (isAlertOpenRef.current) {
+          alertRemainingRef.current -= 1;
+          const remaining = alertRemainingRef.current;
+
+          if (remaining <= 0) {
+            // 60-second warning countdown expired with no answer -> Deduct idle time & pause tracker!
+            isAlertOpenRef.current = false;
+            setIsIdleAlertActive(false);
+            const idleMinsToDeduct = Math.round(inactivitySec / 60) || 5;
+            setInactivityAlertState({ isOpen: false, idleMinutes: 0, remainingSeconds: 60 });
+            recordIdleInactivityEvent(idleMinsToDeduct, "Hardware Inactivity: 60-second warning prompt unanswered");
+            pauseTracking();
+          } else {
+            // Audio alerting during warning period
+            if (remaining <= 15 && remaining % 3 === 0) {
+              playUrgentPulse();
+            } else if (remaining % 15 === 0) {
+              playInactivityChime();
+            }
+            setInactivityAlertState((prev) => ({ ...prev, remainingSeconds: remaining }));
+          }
         }
 
         // 2. Desktop Software 30-Minute Inactivity Prompt ("Are you still there? - Yes or No")
@@ -2754,69 +2879,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentDesignation(desig);
   };
 
-  // Task selection with Confirmation Prompt when active
+  // Seamless Direct Task Selection: Just click to change task without having to stop or pause first!
   const selectTaskWithPrompt = (task: TaskCategory) => {
     if (task === currentTask) return;
 
     if (isTracking) {
-      // Prompt user confirmation
-      setTaskSwitchPending({ targetTask: task });
-    } else {
+      const prevTask = currentTask;
+      const trackedSecs = getLiveElapsedSeconds();
+
+      // Log previous task segment if tracked for at least 1 second
+      if (trackedSecs >= 1) {
+        const nowIso = new Date().toISOString();
+        const segStartTime = startTimeIso || new Date(Date.now() - trackedSecs * 1000).toISOString();
+        const userTz = currentUser.geoTimezone || 'Asia/Manila';
+        const segStartFormatted = formatLogStartTime(segStartTime, userTz);
+        const segEndFormatted = formatLogEndTime(nowIso, userTz);
+
+        const newLog: TimeLog = {
+          id: `log-${Date.now()}`,
+          userId: currentUser.id,
+          userName: currentUser.name,
+          userAvatar: currentUser.avatar,
+          designation: currentDesignation || currentUser.designation || 'Agent',
+          task: prevTask,
+          startTime: segStartTime,
+          endTime: nowIso,
+          durationSeconds: trackedSecs,
+          status: 'completed',
+          geoTimezone: userTz,
+          geoLocalStartTime: segStartFormatted,
+          geoLocalEndTime: segEndFormatted,
+          mouseActivityAvg: currentMouseActivity || 100,
+          keyboardActivityAvg: currentKeyboardActivity || 100,
+          idleSeconds: 0,
+          date: getManilaDateString(),
+          notes: `Direct task switched to ${task}`,
+          appsUsed: [
+            { appName: currentActiveApp || 'LLC Desktop App', icon: 'Globe', durationSeconds: trackedSecs, category: 'productive' },
+          ],
+        };
+        const updatedLogs = [newLog, ...timeLogs];
+        setTimeLogs(updatedLogs);
+        localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+        safeSetDoc(doc(db, 'timelogs', newLog.id), newLog).catch(() => {});
+        fetch('/api/timelogs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newLog),
+        }).catch(() => {});
+
+        triggerAutoSync(users, updatedLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
+      }
+
+      // Switch to new task seamlessly while tracking continues
+      const switchNowIso = new Date().toISOString();
+      const switchNowMs = Date.now();
+      trackingSessionStartMsRef.current = switchNowMs;
+      lastActiveIntervalStartMsRef.current = switchNowMs;
+      trackingAccumulatedSecondsRef.current = 0;
       setCurrentTask(task);
-    }
-  };
+      setElapsedSeconds(0);
+      setStartTimeIso(switchNowIso);
+      setTaskSwitchPending(null);
 
-  // Confirm task switch
-  const confirmTaskSwitch = () => {
-    if (!taskSwitchPending) return;
-
-    // Log current task segment if running
-    if (isTracking && elapsedSeconds > 5) {
-      const nowIso = new Date().toISOString();
-      const segStartTime = startTimeIso || new Date(Date.now() - elapsedSeconds * 1000).toISOString();
-      const userTz = currentUser.geoTimezone || 'Asia/Manila';
-      const segStartFormatted = formatLogStartTime(segStartTime, userTz);
-      const segEndFormatted = formatLogEndTime(nowIso, userTz);
-
-      const newLog: TimeLog = {
-        id: `log-${Date.now()}`,
-        userId: currentUser.id,
-        userName: currentUser.name,
-        userAvatar: currentUser.avatar,
-        designation: currentDesignation,
-        task: currentTask,
-        startTime: segStartTime,
-        endTime: nowIso,
-        durationSeconds: elapsedSeconds,
-        status: 'completed',
-        geoTimezone: userTz,
-        geoLocalStartTime: segStartFormatted,
-        geoLocalEndTime: segEndFormatted,
-        mouseActivityAvg: currentMouseActivity,
-        keyboardActivityAvg: currentKeyboardActivity,
-        idleSeconds: 0,
-        date: getManilaDateString(),
-        notes: `Task switched to ${taskSwitchPending.targetTask}`,
-        appsUsed: [
-          { appName: currentActiveApp, icon: 'Globe', durationSeconds: elapsedSeconds, category: 'productive' },
-        ],
-      };
-      setTimeLogs((prev) => [newLog, ...prev]);
-      safeSetDoc(doc(db, 'timelogs', newLog.id), newLog).catch(() => {});
-    }
-
-    // Switch task and reset timer
-    const switchNowIso = new Date().toISOString();
-    const switchNowMs = Date.now();
-    trackingSessionStartMsRef.current = switchNowMs;
-    lastActiveIntervalStartMsRef.current = switchNowMs;
-    trackingAccumulatedSecondsRef.current = 0;
-    setCurrentTask(taskSwitchPending.targetTask);
-    setElapsedSeconds(0);
-    setStartTimeIso(switchNowIso);
-    setTaskSwitchPending(null);
-
-    if (isTracking) {
       localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
         isTracking: true,
         isPaused: false,
@@ -2824,10 +2949,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         startMs: switchNowMs,
         lastActiveMs: switchNowMs,
         accumulatedSec: 0,
-        task: taskSwitchPending.targetTask,
+        task: task,
         designation: currentDesignation || currentUser?.designation || 'Agent',
       }));
+
+      // Broadcast updated task in presence
+      const switchPresence = {
+        userId: currentUser.id,
+        currentTask: task,
+        lastHeartbeat: switchNowIso,
+      };
+      safeSetDoc(doc(db, 'user_presence', currentUser.id), switchPresence, { merge: true }).catch(() => {});
+      fetch('/api/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(switchPresence),
+      }).catch(() => {});
+
+      setSaveToast(`✓ Task switched to "${task}" — Previous "${prevTask}" time recorded!`);
+      setTimeout(() => setSaveToast(null), 4000);
+    } else {
+      setCurrentTask(task);
     }
+  };
+
+  // Confirm task switch (legacy / manual modal fallback)
+  const confirmTaskSwitch = () => {
+    if (!taskSwitchPending) return;
+    selectTaskWithPrompt(taskSwitchPending.targetTask);
+    setTaskSwitchPending(null);
   };
 
   // Cancel task switch
@@ -4010,6 +4160,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dismissIdleAlert,
         recordIdleInactivityEvent,
         simulateIdleEvent,
+        inactivityAlertState,
+        respondToInactivityAlert,
         startTracking,
         pauseTracking,
         resumeTracking,

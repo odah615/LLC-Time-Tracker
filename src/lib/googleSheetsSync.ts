@@ -1167,9 +1167,14 @@ export const fetchEmployeesFromGoogleSheets = async (
 ): Promise<{ success: boolean; employees: User[]; count: number; message: string }> => {
   const userMap = new Map<string, User>();
   existingUsers.forEach((u) => {
-    if (u.employeeCode) userMap.set(u.employeeCode.toUpperCase().trim(), u);
+    if (u.employeeCode) {
+      userMap.set(u.employeeCode.toUpperCase().trim(), u);
+      userMap.set(u.employeeCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), u);
+    }
     if (u.email) userMap.set(u.email.toLowerCase().trim(), u);
     if (u.id) userMap.set(u.id, u);
+    if (u.name) userMap.set(u.name.toLowerCase().trim(), u);
+    if (u.username) userMap.set(u.username.toLowerCase().trim(), u);
   });
 
   const importedList: User[] = [];
@@ -1196,7 +1201,10 @@ export const fetchEmployeesFromGoogleSheets = async (
       if (json && Array.isArray(json.employees) && json.employees.length > 0) {
           json.employees.forEach((rawEmp: any, idx: number) => {
             const code = String(rawEmp.employeeCode || `LLC-${1000 + idx}`).trim();
-            const existing = userMap.get(code.toUpperCase()) || userMap.get((rawEmp.email || '').toLowerCase());
+            const existing = userMap.get(code.toUpperCase()) ||
+              userMap.get(code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()) ||
+              userMap.get((rawEmp.email || '').toLowerCase()) ||
+              userMap.get((rawEmp.name || '').toLowerCase());
 
             const rawRole = (rawEmp.role || '').toLowerCase().trim();
             const rawDesig = (rawEmp.designation || existing?.designation || '').toLowerCase().trim();
@@ -1247,7 +1255,7 @@ export const fetchEmployeesFromGoogleSheets = async (
               joinDate: existing?.joinDate || new Date().toISOString().split('T')[0],
               department: existing?.department || (role === 'admin' ? 'Executive Management' : 'Operations'),
               password: existing?.password || (isSuperAdmin ? 'AdminpassW0rd123!' : 'Password123!'),
-              mustChangePassword: existing?.mustChangePassword !== undefined ? existing.mustChangePassword : (isSuperAdmin ? false : true),
+              mustChangePassword: existing ? (existing.mustChangePassword !== undefined ? existing.mustChangePassword : (existing.password && existing.password !== 'Password123!' ? false : (isSuperAdmin ? false : true))) : (isSuperAdmin ? false : true),
             };
             importedList.push(userObj);
           });
@@ -1336,7 +1344,10 @@ export const fetchEmployeesFromGoogleSheets = async (
 
       if (!code && !name) continue;
 
-      const existing = userMap.get(code.toUpperCase()) || userMap.get(email.toLowerCase());
+      const existing = userMap.get(code.toUpperCase()) ||
+        userMap.get(code.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()) ||
+        userMap.get(email.toLowerCase()) ||
+        userMap.get(name.toLowerCase());
       const rawRole = (roleStr || '').toLowerCase().trim();
       const rawDesig = (designation || existing?.designation || '').toLowerCase().trim();
       const isSuperAdmin = code.toLowerCase() === 'superadmin' || rawRole === 'admin' || existing?.role === 'admin';
@@ -1387,7 +1398,7 @@ export const fetchEmployeesFromGoogleSheets = async (
         joinDate: joinDateStr || existing?.joinDate || new Date().toISOString().split('T')[0],
         department: existing?.department || (validRole === 'admin' ? 'Executive Management' : 'Operations'),
         password: existing?.password || (isSuperAdmin ? 'AdminpassW0rd123!' : 'Password123!'),
-        mustChangePassword: existing?.mustChangePassword !== undefined ? existing.mustChangePassword : (isSuperAdmin ? false : true),
+        mustChangePassword: existing ? (existing.mustChangePassword !== undefined ? existing.mustChangePassword : (existing.password && existing.password !== 'Password123!' ? false : (isSuperAdmin ? false : true))) : (isSuperAdmin ? false : true),
       };
 
       importedList.push(userObj);
