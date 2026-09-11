@@ -322,26 +322,53 @@ export const LoginView: React.FC = () => {
 
         {/* Login Form Box */}
         <div className="w-full max-w-xl bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative">
-          <div className="flex items-center justify-between pb-6 mb-6 border-b border-slate-800">
+          {/* Platform Mode Selector Tabs */}
+          <div className="mb-6 p-1.5 rounded-2xl bg-slate-950/80 border border-slate-800 grid grid-cols-2 gap-1.5 shadow-inner">
+            <button
+              type="button"
+              onClick={() => setActiveMode('software')}
+              className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                activeMode === 'software'
+                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+            >
+              <Laptop className="w-4 h-4" />
+              <span>Desktop Tracker</span>
+              {isSoftwareEnv && (
+                <span className="text-[9px] bg-emerald-950/80 text-emerald-200 px-1.5 py-0.5 rounded-full border border-emerald-400/40">
+                  Detected
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveMode('webapp')}
+              className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+                activeMode === 'webapp'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+              }`}
+            >
+              <Globe className="w-4 h-4" />
+              <span>Website Portal</span>
+              {!isSoftwareEnv && (
+                <span className="text-[9px] bg-blue-950/80 text-blue-200 px-1.5 py-0.5 rounded-full border border-blue-400/40">
+                  Detected
+                </span>
+              )}
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-800">
             <div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-400/20 text-blue-300 text-xs font-semibold mb-2">
-                {activeMode === 'webapp' ? (
-                  <>
-                    <Globe className="w-3.5 h-3.5 text-sky-400" /> LLC Web Portal Access Mode
-                  </>
-                ) : (
-                  <>
-                    <Laptop className="w-3.5 h-3.5 text-emerald-400" /> LLC Desktop Tracker App Mode
-                  </>
-                )}
-              </div>
-              <h2 className="text-2xl font-extrabold text-white tracking-tight">
-                {activeMode === 'webapp' ? 'Sign In to LLC Web Portal' : 'Sign In to LLC Desktop Tracker'}
+              <h2 className="text-xl font-extrabold text-white tracking-tight">
+                {activeMode === 'webapp' ? 'Sign In to LLC Website Portal' : 'Sign In to LLC Desktop Tracker'}
               </h2>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-400 mt-0.5">
                 {activeMode === 'webapp'
-                  ? 'Access timesheets, employee directory, leave management, payroll, and audit logs.'
-                  : 'Start shift tracking, periodic screenshot capture, and live activity monitoring.'}
+                  ? 'Platform Mode: Website • Presence: Website Active • Portal tools & logs'
+                  : 'Platform Mode: Desktop Tracker • Presence: Desktop Online / Live Tracking'}
               </p>
             </div>
           </div>

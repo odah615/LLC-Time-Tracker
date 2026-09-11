@@ -864,13 +864,13 @@ function doPost(e) {
           } catch (e) {}
         }
 
-        var isDesktop = p ? (p.loginPlatform === 'software' || (p.currentApp && p.currentApp.toLowerCase().indexOf('desktop') !== -1) || !!p.isTracking) : hasRunningLog;
-        var isTracking = p ? (!!p.isTracking && (isRecent || !!p.isOnline)) : hasRunningLog;
+        var isTracking = hasRunningLog || (p ? (!!p.isTracking && (isRecent || !!p.isOnline)) : false);
+        var isDesktop = hasRunningLog || (p ? (p.loginPlatform === 'software' || (p.currentApp && p.currentApp.toLowerCase().indexOf('desktop') !== -1) || !!p.isTracking) : false);
         var isIdle = p ? ((isDesktop || isTracking) && (p.status === 'idle' || !!p.isPaused)) : false;
-        var isDesktopOnline = isDesktop && (p ? (p.isOnline || isRecent) : true) && !isTracking && !isIdle;
+        var isDesktopOnline = isDesktop && (p ? (p.isOnline || isRecent) : false) && !isTracking && !isIdle;
         var isWebOnline = p ? (p.loginPlatform === 'webapp' || (!isDesktop && (!!p.isOnline || isRecent))) && !isTracking && !isDesktopOnline && !isIdle : false;
 
-        var platformMode = isDesktop ? 'Desktop Software App' : (isWebOnline ? 'Web Portal' : 'None / Offline');
+        var platformMode = isDesktop ? 'Desktop Tracker' : (isWebOnline ? 'Website' : 'None / Offline');
         var statusLabel = '⚪ Offline';
         var currentTask = 'Shift Concluded';
         var currentApp = 'None';
@@ -879,22 +879,22 @@ function doPost(e) {
           statusLabel = '🟢 Live Tracking';
           currentTask = (p && p.currentTask) || runningTask || 'Active Work in Progress';
           currentApp = (p && p.currentApp) || runningApp || 'LLC Time Tracker Desktop App';
-          platformMode = 'Desktop Software App';
+          platformMode = 'Desktop Tracker';
         } else if (isDesktopOnline) {
-          statusLabel = '🔵 Desktop Online (Standby)';
+          statusLabel = '🔵 Desktop Online';
           currentTask = (p && p.currentTask) || 'Desktop App Standby (Timer Not Started)';
           currentApp = (p && p.currentApp) || 'LLC Time Tracker Desktop App';
-          platformMode = 'Desktop Software App';
+          platformMode = 'Desktop Tracker';
         } else if (isWebOnline) {
-          statusLabel = '🌐 Web Portal Online';
-          currentTask = (p && p.currentTask) || 'Web Portal Active';
+          statusLabel = '🌐 Website Active';
+          currentTask = (p && p.currentTask) || 'Website Portal Active';
           currentApp = 'Web Browser';
-          platformMode = 'Web Portal';
+          platformMode = 'Website';
         } else if (isIdle) {
           statusLabel = '🟡 Idle / Break';
           currentTask = (p && p.currentTask) || 'Paused / Break';
           currentApp = (p && p.currentApp) || 'LLC Time Tracker Desktop App';
-          platformMode = 'Desktop Software App';
+          platformMode = 'Desktop Tracker';
         }
 
         if (isTracking && p && p.elapsedSeconds && p.elapsedSeconds > 0) {
