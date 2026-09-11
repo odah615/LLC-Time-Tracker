@@ -100,16 +100,12 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
         presence?.loginPlatform === 'software' ||
         presence?.currentApp?.toLowerCase().includes('desktop') ||
         !!presence?.isTracking;
-      const isWebOnly =
+      const isWebPlatform =
         presence?.loginPlatform === 'webapp' ||
-        (!isDesktopPlatform && !!presence?.isOnline);
+        (!isDesktopPlatform && (presence?.isOnline || isRecent));
 
-      // Determine real-time status according to user specification:
-      // - Desktop App login -> Shows Online (or Live Tracking if timer running, Idle if paused)
-      // - Web portal login -> Shows Web (Offline) and does not track desktop hours
-      // - Not logged in -> Shows Offline
       let calculatedStatus: 'online' | 'idle' | 'offline' = 'offline';
-      let presenceMode: 'tracking' | 'desktop_online' | 'web_offline' | 'idle' | 'offline' = 'offline';
+      let presenceMode: 'tracking' | 'desktop_online' | 'web_online' | 'idle' | 'offline' = 'offline';
 
       if (presence?.isTracking && (isRecent || presence.isOnline)) {
         calculatedStatus = 'online';
@@ -122,9 +118,9 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
           calculatedStatus = 'online';
           presenceMode = 'desktop_online';
         }
-      } else if (isWebOnly) {
-        calculatedStatus = 'offline';
-        presenceMode = 'web_offline';
+      } else if (isWebPlatform && (presence?.isOnline || isRecent)) {
+        calculatedStatus = 'online';
+        presenceMode = 'web_online';
       } else {
         calculatedStatus = 'offline';
         presenceMode = 'offline';
@@ -165,12 +161,12 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
       } else if (presenceMode === 'desktop_online') {
         currentTask = 'Desktop App Standby (Timer Not Started)';
         currentApp = 'LLC Time Tracker Desktop App';
+      } else if (presenceMode === 'web_online') {
+        currentTask = presence?.currentTask || 'Web Portal Active';
+        currentApp = 'Web Browser';
       } else if (presenceMode === 'idle') {
         currentTask = `Paused (${presence?.currentTask || latestLog?.task || 'Break'})`;
         currentApp = presence?.currentApp || 'LLC Time Tracker Desktop App';
-      } else if (presenceMode === 'web_offline') {
-        currentTask = 'Web Portal (No Desktop Tracking)';
-        currentApp = 'Web Browser';
       } else {
         currentTask = 'Shift Concluded';
         currentApp = 'None';
@@ -511,16 +507,16 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
                           Desktop Online
                         </span>
                       )}
+                      {row.presenceMode === 'web_online' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-teal-50 border border-teal-200 text-teal-800 shadow-2xs">
+                          <span className="w-2 h-2 rounded-full bg-teal-500" />
+                          Web Online
+                        </span>
+                      )}
                       {row.presenceMode === 'idle' && (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 border border-amber-200 text-amber-800 shadow-2xs">
                           <span className="w-2 h-2 rounded-full bg-amber-500" />
                           Idle / Break
-                        </span>
-                      )}
-                      {row.presenceMode === 'web_offline' && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 border border-slate-200 text-slate-600">
-                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                          Web (Offline)
                         </span>
                       )}
                       {row.presenceMode === 'offline' && (

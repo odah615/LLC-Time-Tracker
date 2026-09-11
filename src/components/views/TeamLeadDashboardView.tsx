@@ -283,15 +283,15 @@ export const TeamLeadDashboardView: React.FC = () => {
                 presence?.loginPlatform === 'software' ||
                 presence?.currentApp?.toLowerCase().includes('desktop') ||
                 !!presence?.isTracking;
-              const isWebOnly =
+              const isWebPlatform =
                 presence?.loginPlatform === 'webapp' ||
-                (!isDesktopPlatform && !!presence?.isOnline);
+                (!isDesktopPlatform && (presence?.isOnline || isRecent));
 
               const isTracking = !!presence?.isTracking && (isRecent || !!presence?.isOnline);
               const isIdle = (isDesktopPlatform || isTracking) && (presence?.status === 'idle' || !!presence?.isPaused);
               const isDesktopOnline = isDesktopPlatform && (presence?.isOnline || isRecent) && !isTracking && !isIdle;
-              const isWebOffline = isWebOnly && !isTracking;
-              const isOffline = !isTracking && !isDesktopOnline && !isIdle;
+              const isWebOnline = isWebPlatform && (presence?.isOnline || isRecent) && !isTracking && !isDesktopOnline && !isIdle;
+              const isOffline = !isTracking && !isDesktopOnline && !isWebOnline && !isIdle;
 
               const liveActiveSec = isTracking ? (presence?.elapsedSeconds || 0) : 0;
               const totalTodayTrackedSec = baseTodaySec + liveActiveSec;
@@ -301,10 +301,10 @@ export const TeamLeadDashboardView: React.FC = () => {
                 currentTask = presence?.currentTask || lastLog?.task || 'Active Task In Progress';
               } else if (isDesktopOnline) {
                 currentTask = 'Desktop App Standby (Timer Not Started)';
+              } else if (isWebOnline) {
+                currentTask = presence?.currentTask || 'Web Portal Active';
               } else if (isIdle) {
                 currentTask = `Paused (${presence?.currentTask || lastLog?.task || 'Break'})`;
-              } else if (isWebOffline) {
-                currentTask = 'Web Portal (No Desktop Tracking)';
               } else {
                 currentTask = 'Shift Concluded';
               }
@@ -345,19 +345,19 @@ export const TeamLeadDashboardView: React.FC = () => {
                         Desktop Online
                       </span>
                     )}
+                    {isWebOnline && (
+                      <span className="bg-teal-100 text-teal-800 border border-teal-200 text-[10px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-2xs">
+                        <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+                        Web Online
+                      </span>
+                    )}
                     {isIdle && (
                       <span className="bg-amber-100 text-amber-800 border border-amber-200 text-[10px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-2xs">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                         Idle / Break
                       </span>
                     )}
-                    {isWebOffline && (
-                      <span className="bg-slate-100 text-slate-600 border border-slate-200 text-[10px] px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                        Web (Offline)
-                      </span>
-                    )}
-                    {isOffline && !isWebOffline && (
+                    {isOffline && (
                       <span className="bg-slate-100 text-slate-500 border border-slate-200 text-[10px] px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                         Offline

@@ -186,12 +186,12 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
         presence?.loginPlatform === 'software' ||
         presence?.currentApp?.toLowerCase().includes('desktop') ||
         !!presence?.isTracking;
-      const isWebOnly =
+      const isWebPlatform =
         presence?.loginPlatform === 'webapp' ||
-        (!isDesktopPlatform && !!presence?.isOnline);
+        (!isDesktopPlatform && (presence?.isOnline || isRecent));
 
       let calculatedStatus: 'online' | 'idle' | 'offline' = 'offline';
-      let presenceMode: 'tracking' | 'desktop_online' | 'web_offline' | 'idle' | 'offline' = 'offline';
+      let presenceMode: 'tracking' | 'desktop_online' | 'web_online' | 'idle' | 'offline' = 'offline';
 
       if (presence?.isTracking && (isRecent || presence.isOnline)) {
         calculatedStatus = 'online';
@@ -204,9 +204,9 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
           calculatedStatus = 'online';
           presenceMode = 'desktop_online';
         }
-      } else if (isWebOnly) {
-        calculatedStatus = 'offline';
-        presenceMode = 'web_offline';
+      } else if (isWebPlatform && (presence?.isOnline || isRecent)) {
+        calculatedStatus = 'online';
+        presenceMode = 'web_online';
       } else {
         calculatedStatus = 'offline';
         presenceMode = 'offline';
@@ -223,9 +223,9 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
       if (userTodayLogs.length > 0) {
         const earliestLog = userTodayLogs[userTodayLogs.length - 1];
         loginTimeDisplay = formatLogStartTime(earliestLog.startTime, 'Asia/Manila') || earliestLog.geoLocalStartTime || '--:--';
-      } else if (isDesktopPlatform && attendance?.firstLoginTime && attendance.firstLoginTime !== '--:--') {
+      } else if (attendance?.firstLoginTime && attendance.firstLoginTime !== '--:--') {
         loginTimeDisplay = attendance.firstLoginTime;
-      } else if (isDesktopPlatform && presence?.loginTime) {
+      } else if (presence?.loginTime) {
         loginTimeDisplay = formatLogStartTime(presence.loginTime, 'Asia/Manila');
       }
 
@@ -244,10 +244,10 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
         currentTaskName = presence?.currentTask || latestLog?.task || 'Data Entry & Market Research';
       } else if (presenceMode === 'desktop_online') {
         currentTaskName = 'Desktop App Standby (Timer Not Started)';
+      } else if (presenceMode === 'web_online') {
+        currentTaskName = presence?.currentTask || 'Web Portal Active';
       } else if (presenceMode === 'idle') {
         currentTaskName = `Paused (${presence?.currentTask || latestLog?.task || 'Break'})`;
-      } else if (presenceMode === 'web_offline') {
-        currentTaskName = 'Web Portal (No Desktop Tracking)';
       } else {
         currentTaskName = 'Shift Concluded';
       }
@@ -257,7 +257,7 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
         ? (presence?.currentApp || 'LLC Time Tracker Desktop App')
         : (presenceMode === 'desktop_online' || presenceMode === 'idle'
             ? 'LLC Time Tracker Desktop App'
-            : (presenceMode === 'web_offline' ? 'Web Browser' : 'None'));
+            : (presenceMode === 'web_online' ? 'Web Browser' : 'None'));
 
       // Activity metrics
       const mouseActivity = presenceMode === 'tracking' ? (presence?.mouseActivity ?? 80) : 0;
@@ -793,18 +793,21 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
                           </span>
                         )}
                         {agent.presenceMode === 'desktop_online' && (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                             Desktop Online
                           </span>
                         )}
-                        {agent.presenceMode === 'idle' && (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
-                            Idle / Break
+                        {agent.presenceMode === 'web_online' && (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-teal-50 text-teal-800 border border-teal-200 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+                            Web Online
                           </span>
                         )}
-                        {agent.presenceMode === 'web_offline' && (
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
-                            Web (Offline)
+                        {agent.presenceMode === 'idle' && (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                            Idle / Break
                           </span>
                         )}
                         {agent.presenceMode === 'offline' && (

@@ -1124,14 +1124,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }, (err) => handleSnapshotError('attendance', err));
 
-      // Real-time live presence is synchronized via Firestore system_state/presence and user_presence
-      unsubPresence = onSnapshot(doc(db, 'system_state', 'presence'), (snapshot) => {
-        if (snapshot.exists() && snapshot.data()?.data !== undefined) {
-          const remotePresence: UserPresence[] = snapshot.data().data;
-          if (Array.isArray(remotePresence) && remotePresence.length > 0) {
+      // Real-time live presence is synchronized via Firestore collection user_presence & system_state/presence
+      unsubPresence = onSnapshot(collection(db, 'user_presence'), (snapshot) => {
+        if (!snapshot.empty) {
+          const remotePresenceList: UserPresence[] = snapshot.docs.map((d) => d.data() as UserPresence);
+          if (Array.isArray(remotePresenceList) && remotePresenceList.length > 0) {
             setUserPresenceList((prev) => {
               const map = new Map<string, UserPresence>(prev.map((p) => [p.userId, p]));
-              remotePresence.forEach((p) => {
+              remotePresenceList.forEach((p) => {
                 if (p && p.userId) {
                   const existing = map.get(p.userId);
                   map.set(p.userId, { ...(existing || p), ...p });
@@ -1593,14 +1593,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       designation: user.designation || 'Agent',
       department: user.department || 'Operations',
       teamLeaderId: user.teamLeaderId || '',
-      isOnline: isDesktop,
-      status: isDesktop ? 'online' : 'offline',
+      isOnline: true,
+      status: 'online',
       isTracking: false,
       isPaused: false,
       elapsedSeconds: 0,
       mouseActivity: 0,
       keyboardActivity: 0,
-      currentTask: isDesktop ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal (No Desktop Tracking)',
+      currentTask: isDesktop ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal Active',
       currentApp: isDesktop ? 'LLC Time Tracker Desktop App' : 'Web Browser',
       lastHeartbeat: nowIso,
       loginTime: nowIso,
@@ -2151,11 +2151,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const isTracking = Boolean(snap.isTracking);
     const isDesktop = snap.loginMode === 'software' || isTracking;
-    const isEffectivelyOnline = isDesktop;
-    const statusValue = isTracking ? (snap.isPaused ? 'idle' : 'online') : (isDesktop ? 'online' : 'offline');
+    const isEffectivelyOnline = true;
+    const statusValue = isTracking ? (snap.isPaused ? 'idle' : 'online') : (isDesktop ? 'online' : 'online');
     const taskDisplay = isTracking 
       ? (snap.isPaused ? `Paused (${snap.currentTask})` : snap.currentTask)
-      : (isDesktop ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal (No Desktop Tracking)');
+      : (isDesktop ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal Active');
 
     const presenceDoc: UserPresence = {
       userId: snap.currentUser.id,

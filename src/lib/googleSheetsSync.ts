@@ -790,9 +790,9 @@ function doPost(e) {
         var isTracking = p ? (!!p.isTracking && (isRecent || !!p.isOnline)) : false;
         var isIdle = p ? ((isDesktop || isTracking) && (p.status === 'idle' || !!p.isPaused)) : false;
         var isDesktopOnline = isDesktop && (p.isOnline || isRecent) && !isTracking && !isIdle;
-        var isWebOnly = p ? (p.loginPlatform === 'webapp' || (!isDesktop && !!p.isOnline)) : false;
+        var isWebOnline = p ? (p.loginPlatform === 'webapp' || (!isDesktop && (!!p.isOnline || isRecent))) && !isTracking && !isDesktopOnline && !isIdle : false;
 
-        var platformMode = isDesktop ? 'Desktop Software App' : (isWebOnly ? 'Web Portal' : 'None / Offline');
+        var platformMode = isDesktop ? 'Desktop Software App' : (isWebOnline ? 'Web Portal' : 'None / Offline');
         var statusLabel = '⚪ Offline';
         var currentTask = 'Shift Concluded';
         var currentApp = 'None';
@@ -805,14 +805,14 @@ function doPost(e) {
           statusLabel = '🔵 Desktop Online (Standby)';
           currentTask = 'Desktop App Standby (Timer Not Started)';
           currentApp = 'LLC Time Tracker Desktop App';
+        } else if (isWebOnline) {
+          statusLabel = '🌐 Web Portal Online';
+          currentTask = (p && p.currentTask) || 'Web Portal Active';
+          currentApp = 'Web Browser';
         } else if (isIdle) {
           statusLabel = '🟡 Idle / Break';
           currentTask = 'Paused / Break';
           currentApp = (p && p.currentApp) || 'LLC Time Tracker Desktop App';
-        } else if (isWebOnly) {
-          statusLabel = '⚪ Web (Offline)';
-          currentTask = 'Web Portal (No Desktop Tracking)';
-          currentApp = 'Web Browser';
         }
 
         // Today's total hours for user from timeLogs
