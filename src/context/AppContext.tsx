@@ -743,7 +743,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           updatedLeaves,
           updatedDesignationTasks,
           updatedRolePermissions,
-          liveSessions
+          liveSessions,
+          userPresenceList
         ).catch((err) => console.warn('Auto-sync to Google Sheets warning:', err));
       }
     },
@@ -798,7 +799,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       leaveRequests,
       designationTasks,
       rolePermissions,
-      liveSessions
+      liveSessions,
+      userPresenceList
     );
     if (res.success) {
       setSaveToast(`✓ Synced all Database Tabs (including Time Logs & Active Sessions) to Google Sheets!`);
@@ -1582,6 +1584,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Active presence broadcast on login:
     const nowIso = now.toISOString();
+    const isDesktop = mode === 'software';
     const loginPresence: UserPresence = {
       userId: user.id,
       userName: user.name,
@@ -1590,17 +1593,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       designation: user.designation || 'Agent',
       department: user.department || 'Operations',
       teamLeaderId: user.teamLeaderId || '',
-      isOnline: true,
-      status: 'online',
+      isOnline: isDesktop,
+      status: isDesktop ? 'online' : 'offline',
       isTracking: false,
       isPaused: false,
       elapsedSeconds: 0,
       mouseActivity: 0,
       keyboardActivity: 0,
-      currentTask: mode === 'software' ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal Active Session',
-      currentApp: mode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal',
+      currentTask: isDesktop ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal (No Desktop Tracking)',
+      currentApp: isDesktop ? 'LLC Time Tracker Desktop App' : 'Web Browser',
       lastHeartbeat: nowIso,
       loginTime: nowIso,
+      loginPlatform: isDesktop ? 'software' : 'webapp',
     };
     safeSetDoc(doc(db, 'user_presence', user.id), loginPresence, { merge: true }).catch(() => {});
     fetch('/api/presence', {
@@ -1898,41 +1902,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  // Randomized Idle Inactivity Engine (Default 25 to 35 minutes, or 45m in Dual Monitor mode)
-  const getRandomIdleThreshold = useCallback(() => {
-    return isDualMonitorMode ? 45 : Math.floor(Math.random() * 11) + 25; // 25-35 mins single, 45 mins dual
-  }, [isDualMonitorMode]);
-
-  const [currentIdleThresholdMinutes, setCurrentIdleThresholdMinutes] = useState<number>(() => isDualMonitorMode ? 45 : 30);
+  // 10-Minute Inactivity Engine with 5-Minute Grace Prompt (15m Total Auto-Logout & Deduction)
+  const currentIdleThresholdMinutes = 10;
   const [currentInactivitySeconds, setCurrentInactivitySeconds] = useState<number>(0);
   const [sessionIdleDeductionSeconds, setSessionIdleDeductionSeconds] = useState<number>(0);
   const [isIdleAlertActive, setIsIdleAlertActive] = useState<boolean>(false);
   const isAlertOpenRef = useRef<boolean>(false);
-  const alertRemainingRef = useRef<number>(180);
+  const alertRemainingRef = useRef<number>(300);
   const [inactivityAlertState, setInactivityAlertState] = useState<{
     isOpen: boolean;
     idleMinutes: number;
     remainingSeconds: number;
   }>({
     isOpen: false,
-    idleMinutes: 0,
-    remainingSeconds: 180,
+    idleMinutes: 10,
+    remainingSeconds: 300,
   });
 
   const respondToInactivityAlert = (action: 'stay_active' | 'pause_tracker') => {
     isAlertOpenRef.current = false;
-    alertRemainingRef.current = isDualMonitorMode ? 180 : 60;
+    alertRemainingRef.current = 300;
     if (action === 'stay_active') {
       lastMouseActiveTimestampRef.current = Date.now();
       lastKeyboardActiveTimestampRef.current = Date.now();
       setCurrentInactivitySeconds(0);
-      setInactivityAlertState({ isOpen: false, idleMinutes: 0, remainingSeconds: isDualMonitorMode ? 180 : 60 });
+      setInactivityAlertState({ isOpen: false, idleMinutes: 10, remainingSeconds: 300 });
       setIsIdleAlertActive(false);
-      setSaveToast("✓ Inactivity alert cleared — Timer continuing smoothly!");
+      setSaveToast("✓ Confirmed active — Timer continuing smoothly with 0 deductions!");
       setTimeout(() => setSaveToast(null), 3500);
     } else {
       pauseTracking();
-      setInactivityAlertState({ isOpen: false, idleMinutes: 0, remainingSeconds: isDualMonitorMode ? 180 : 60 });
+      setInactivityAlertState({ isOpen: false, idleMinutes: 10, remainingSeconds: 300 });
       setIsIdleAlertActive(false);
       setSaveToast("⏸️ Tracker paused for break/inactivity.");
       setTimeout(() => setSaveToast(null), 3500);
@@ -2150,11 +2150,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const isTracking = Boolean(snap.isTracking);
-    const isEffectivelyOnline = true;
-    const statusValue = isTracking ? (snap.isPaused ? 'idle' : 'online') : 'online';
+    const isDesktop = snap.loginMode === 'software' || isTracking;
+    const isEffectivelyOnline = isDesktop;
+    const statusValue = isTracking ? (snap.isPaused ? 'idle' : 'online') : (isDesktop ? 'online' : 'offline');
     const taskDisplay = isTracking 
       ? (snap.isPaused ? `Paused (${snap.currentTask})` : snap.currentTask)
-      : (snap.loginMode === 'software' ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal Active Session');
+      : (isDesktop ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal (No Desktop Tracking)');
 
     const presenceDoc: UserPresence = {
       userId: snap.currentUser.id,
@@ -2172,9 +2173,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       mouseActivity: isTracking ? snap.currentMouseActivity : 0,
       keyboardActivity: isTracking ? snap.currentKeyboardActivity : 0,
       currentTask: taskDisplay,
-      currentApp: snap.currentActiveApp || (snap.loginMode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal'),
+      currentApp: snap.currentActiveApp || (isDesktop ? 'LLC Time Tracker Desktop App' : 'Web Browser'),
       lastHeartbeat: nowIso,
       loginTime: nowIso,
+      loginPlatform: isDesktop ? 'software' : 'webapp',
     };
 
     // Always sync presence to Firestore so Trainer and Admins see live status in real-time
@@ -2314,25 +2316,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Auto Sync to Google Sheets
     triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, updatedAttendance, updatedIdleLogs, leaveRequests);
 
-    // Reset inactivity tracker refs and assign new random threshold for next cycle (10 to 15 mins)
+    // Reset inactivity tracker refs
     lastMouseActiveTimestampRef.current = Date.now();
     lastKeyboardActiveTimestampRef.current = Date.now();
     setCurrentInactivitySeconds(0);
-    const nextThreshold = getRandomIdleThreshold();
-    setCurrentIdleThresholdMinutes(nextThreshold);
   };
 
-  // Simulate or manually test idle event (e.g. 5m, 10m, or 15m)
+  // Simulate or manually test idle event (e.g. 10m idle with 5m grace prompt)
   const simulateIdleEvent = (minutes?: number) => {
-    const idleMins = minutes || 5;
+    const idleMins = minutes || 10;
     isAlertOpenRef.current = true;
-    alertRemainingRef.current = 60;
+    alertRemainingRef.current = 300;
     playInactivityChime();
     setIsIdleAlertActive(true);
     setInactivityAlertState({
       isOpen: true,
       idleMinutes: idleMins,
-      remainingSeconds: 60,
+      remainingSeconds: 300,
     });
   };
 
@@ -2419,7 +2419,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => clearInterval(interval);
   }, [isTracking, isPaused, currentActiveApp, getLiveElapsedSeconds]);
 
-  // Real-time Background Inactivity Detector: Random 10-15 minute threshold check & Desktop Software 30-Minute Inactivity Prompt
+  // Real-time Background Inactivity Detector: 10-Minute Inactivity Prompt with 5-Minute Grace (15m Total Auto-Logout & Deduction)
   useEffect(() => {
     let idleInterval: any = null;
     if (isTracking && !isPaused) {
@@ -2434,6 +2434,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               lastMouseActiveTimestampRef.current = Date.now();
               lastKeyboardActiveTimestampRef.current = Date.now();
               setCurrentInactivitySeconds(0);
+              if (isAlertOpenRef.current) {
+                isAlertOpenRef.current = false;
+                setIsIdleAlertActive(false);
+                setInactivityAlertState({ isOpen: false, idleMinutes: 10, remainingSeconds: 300 });
+              }
               return;
             }
           } catch (e) {}
@@ -2449,11 +2454,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         // When the desktop tracker is on a secondary monitor, blurred, minimized, or running in the background,
         // the employee is actively working in other apps on their computer (CRM, Excel, Chrome, Zendesk, etc.).
-        // Dual monitor users must NEVER be penalized with false idle popups.
         if (isAppHiddenOrMinimized) {
           lastMouseActiveTimestampRef.current = Date.now();
           lastKeyboardActiveTimestampRef.current = Date.now();
           setCurrentInactivitySeconds(0);
+          if (isAlertOpenRef.current) {
+            isAlertOpenRef.current = false;
+            setIsIdleAlertActive(false);
+            setInactivityAlertState({ isOpen: false, idleMinutes: 10, remainingSeconds: 300 });
+          }
           return;
         }
 
@@ -2462,75 +2471,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const inactivitySec = lastActive > 0 ? Math.floor((now - lastActive) / 1000) : 0;
         setCurrentInactivitySeconds(inactivitySec);
 
-        // 3. Inactivity Alert with Sound Chime (25-35 min single, 45 min dual monitor threshold)
-        const thresholdSeconds = Math.max(600, currentIdleThresholdMinutes * 60);
-        const countdownInitial = isDualMonitorMode ? 180 : 60;
-        if (inactivitySec >= thresholdSeconds && thresholdSeconds > 0 && !isAlertOpenRef.current) {
-          isAlertOpenRef.current = true;
-          alertRemainingRef.current = countdownInitial;
-          playInactivityChime();
-          setIsIdleAlertActive(true);
+        const IDLE_PROMPT_START_SECONDS = 10 * 60; // 10 minutes = 600s
+        const TOTAL_AUTO_LOGOUT_SECONDS = 15 * 60; // 15 minutes = 900s
+
+        // 3. Trigger 5-Minute Inactivity Confirmation Prompt at 10 Minutes
+        if (inactivitySec >= IDLE_PROMPT_START_SECONDS) {
+          const remainingGraceSeconds = Math.max(0, TOTAL_AUTO_LOGOUT_SECONDS - inactivitySec);
+          
+          if (!isAlertOpenRef.current) {
+            isAlertOpenRef.current = true;
+            playInactivityChime();
+            setIsIdleAlertActive(true);
+          }
+
           setInactivityAlertState({
             isOpen: true,
-            idleMinutes: Math.round(inactivitySec / 60) || currentIdleThresholdMinutes,
-            remainingSeconds: countdownInitial,
+            idleMinutes: 10,
+            remainingSeconds: remainingGraceSeconds,
           });
-        }
 
-        // When the inactivity alert modal is active, count down and play audio warnings
-        if (isAlertOpenRef.current) {
-          alertRemainingRef.current -= 1;
-          const remaining = alertRemainingRef.current;
+          // Play audio warning chimes
+          if (remainingGraceSeconds <= 15 && remainingGraceSeconds % 3 === 0) {
+            playUrgentPulse();
+          } else if (remainingGraceSeconds % 30 === 0) {
+            playInactivityChime();
+          }
 
-          if (remaining <= 0) {
-            // Warning countdown expired with no answer -> Deduct idle time & pause tracker!
+          // 4. 15 Minutes Continuous Inactivity reached -> Auto Logout & Deduct 15 Minutes from Timesheet
+          if (remainingGraceSeconds <= 0) {
             isAlertOpenRef.current = false;
             setIsIdleAlertActive(false);
-            const idleMinsToDeduct = Math.round(inactivitySec / 60) || 5;
-            setInactivityAlertState({ isOpen: false, idleMinutes: 0, remainingSeconds: countdownInitial });
-            recordIdleInactivityEvent(idleMinsToDeduct, isDualMonitorMode ? "Hardware Inactivity: 3-minute warning prompt unanswered" : "Hardware Inactivity: 60-second warning prompt unanswered");
-            pauseTracking();
-          } else {
-            // Audio alerting during warning period
-            if (remaining <= 15 && remaining % 3 === 0) {
-              playUrgentPulse();
-            } else if (remaining % 15 === 0) {
-              playInactivityChime();
-            }
-            setInactivityAlertState((prev) => ({ ...prev, remainingSeconds: remaining }));
+            setInactivityAlertState({ isOpen: false, idleMinutes: 10, remainingSeconds: 300 });
+
+            // Record 15 minutes idle deduction
+            recordIdleInactivityEvent(15, "15-minute continuous inactivity: 10m idle + 5m prompt unanswered");
+            stopTracking();
+            localStorage.setItem('trackpulse_session_expired_reason', 'inactivity_15min_software');
+            setSessionExpiredReason('inactivity_15min_software');
+            logout('15-minute desktop inactivity: 10m idle + 5m prompt unanswered');
           }
-        }
-
-        // 2. Desktop Software 30-Minute Inactivity Prompt ("Are you still there? - Yes or No")
-        // After 30 minutes of no mouse/keyboard activity in foreground, prompt agent with 5-minute countdown
-        if (loginMode === 'software') {
-          const SOFTWARE_PROMPT_START_SECONDS = 30 * 60; // 30 mins = 1800s
-          const SOFTWARE_PROMPT_TOTAL_SECONDS = 35 * 60; // 35 mins = 2100s
-
-          if (inactivitySec >= SOFTWARE_PROMPT_START_SECONDS) {
-            const promptRemaining = Math.max(0, SOFTWARE_PROMPT_TOTAL_SECONDS - inactivitySec);
-            setIsSessionWarningActive(true);
-            setWebSessionWarningCountdown(promptRemaining);
-
-            if (promptRemaining <= 0) {
-              // 5 minutes elapsed with no button click -> Auto logout & clean database!
-              setIsSessionWarningActive(false);
-              localStorage.setItem('trackpulse_session_expired_reason', 'inactivity_30min_software');
-              setSessionExpiredReason('inactivity_30min_software');
-              stopTracking();
-              logout('30-minute desktop inactivity: prompt unanswered');
-            }
-          } else if (isSessionWarningActive && inactivitySec < SOFTWARE_PROMPT_START_SECONDS) {
-            setIsSessionWarningActive(false);
-            setWebSessionWarningCountdown(300);
-          }
+        } else if (isAlertOpenRef.current && inactivitySec < IDLE_PROMPT_START_SECONDS) {
+          // Inactivity cleared by user hardware activity
+          isAlertOpenRef.current = false;
+          setIsIdleAlertActive(false);
+          setInactivityAlertState({ isOpen: false, idleMinutes: 10, remainingSeconds: 300 });
         }
       }, 1000);
     } else {
       setCurrentInactivitySeconds(0);
+      if (isAlertOpenRef.current) {
+        isAlertOpenRef.current = false;
+        setIsIdleAlertActive(false);
+        setInactivityAlertState({ isOpen: false, idleMinutes: 10, remainingSeconds: 300 });
+      }
     }
     return () => clearInterval(idleInterval);
-  }, [isTracking, isPaused, currentIdleThresholdMinutes, currentUser, currentTask, dailyAttendanceLogs, idleLogs, auditLogs, payrollRecords, users, timeLogs, leaveRequests, loginMode, isSessionWarningActive]);
+  }, [isTracking, isPaused, currentUser, currentTask, dailyAttendanceLogs, idleLogs, auditLogs, payrollRecords, users, timeLogs, leaveRequests, loginMode]);
 
   // Periodic Random Screenshot Generator Simulator (Randomized 10–15 min intervals)
   useEffect(() => {
@@ -2592,7 +2588,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentKeyboardActivity(100);
     setCurrentInactivitySeconds(0);
     setSessionIdleDeductionSeconds(0);
-    setCurrentIdleThresholdMinutes(getRandomIdleThreshold());
     setIsIdleAlertActive(false);
     setIsTracking(true);
     setIsPaused(false);

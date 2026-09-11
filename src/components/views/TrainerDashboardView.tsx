@@ -561,15 +561,40 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
               const now = Date.now();
               const lastHeartbeat = presence ? new Date(presence.lastHeartbeat).getTime() : 0;
               const isRecent = now - lastHeartbeat < 5 * 60 * 1000;
-              const isOnline = !!presence && (presence.isOnline || isRecent || !!presence.isTracking);
-              const isTracking = !!presence?.isTracking && (isRecent || presence?.isOnline);
-              const isIdle = isOnline && !isTracking && (presence?.status === 'idle' || !!presence?.isPaused);
+              const isDesktopPlatform =
+                presence?.loginPlatform === 'software' ||
+                presence?.currentApp?.toLowerCase().includes('desktop') ||
+                !!presence?.isTracking;
+              const isWebOnly =
+                presence?.loginPlatform === 'webapp' ||
+                (!isDesktopPlatform && !!presence?.isOnline);
+
+              const isTracking = !!presence?.isTracking && (isRecent || !!presence?.isOnline);
+              const isIdle = (isDesktopPlatform || isTracking) && (presence?.status === 'idle' || !!presence?.isPaused);
+              const isDesktopOnline = isDesktopPlatform && (presence?.isOnline || isRecent) && !isTracking && !isIdle;
+              const isWebOffline = isWebOnly && !isTracking;
+              const isOffline = !isTracking && !isDesktopOnline && !isIdle;
+
               const liveActiveSec = isTracking ? (presence?.elapsedSeconds || 0) : 0;
               const totalTodayTrackedSec = baseTodaySec + liveActiveSec;
 
-              const currentTask = isTracking
-                ? (presence?.currentTask || lastLog?.task || 'Active Task In Progress')
-                : (isOnline ? (presence?.currentTask || 'Web Portal Session') : (lastLog?.task || 'Shift Concluded'));
+              let currentTask = 'Shift Concluded';
+              if (isTracking) {
+                currentTask = presence?.currentTask || lastLog?.task || 'Active Task In Progress';
+              } else if (isDesktopOnline) {
+                currentTask = 'Desktop App Standby (Timer Not Started)';
+              } else if (isIdle) {
+                currentTask = `Paused (${presence?.currentTask || lastLog?.task || 'Break'})`;
+              } else if (isWebOffline) {
+                currentTask = 'Web Portal (No Desktop Tracking)';
+              } else {
+                currentTask = 'Shift Concluded';
+              }
+
+              // Device timezone (simple, non-complicated device timezone)
+              const deviceTimezoneDisplay = agent.geoTimezone
+                ? `${agent.geoTimezone} (GMT+8)`
+                : 'Asia/Manila (GMT+8)';
 
               return (
                 <div
@@ -596,19 +621,25 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
                         Live Tracking
                       </span>
                     )}
-                    {isOnline && !isTracking && !isIdle && (
+                    {isDesktopOnline && (
                       <span className="bg-blue-100 text-blue-800 border border-blue-200 text-[10px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-2xs">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                        Online
+                        Desktop Online
                       </span>
                     )}
                     {isIdle && (
                       <span className="bg-amber-100 text-amber-800 border border-amber-200 text-[10px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-2xs">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                        Idle
+                        Idle / Break
                       </span>
                     )}
-                    {!isOnline && (
+                    {isWebOffline && (
+                      <span className="bg-slate-100 text-slate-600 border border-slate-200 text-[10px] px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                        Web (Offline)
+                      </span>
+                    )}
+                    {isOffline && !isWebOffline && (
                       <span className="bg-slate-100 text-slate-500 border border-slate-200 text-[10px] px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                         Offline
@@ -631,8 +662,8 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
                       </span>
                     </div>
                     <div className="flex justify-between items-center text-slate-700 pt-1 border-t border-slate-100 text-[11px]">
-                      <span className="text-slate-400">GEO Timezone:</span>
-                      <span className="text-blue-600 font-mono font-medium">{agent.geoCity || 'Manila (GMT+8)'}</span>
+                      <span className="text-slate-400">Device Timezone:</span>
+                      <span className="text-blue-600 font-mono font-medium">{deviceTimezoneDisplay}</span>
                     </div>
                   </div>
                 </div>

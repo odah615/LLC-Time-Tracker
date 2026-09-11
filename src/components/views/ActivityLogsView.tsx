@@ -933,15 +933,15 @@ export const ActivityLogsView: React.FC = () => {
         )}
       </div>
 
-      {/* Hardware Inactivity & Shift Extension Table */}
+      {/* Inactivity & Shift Extension Table */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 pb-2 border-b border-slate-200">
           <div>
             <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-amber-600" /> Random Inactivity Logs & Shift Extensions
+              <Clock className="w-5 h-5 text-amber-600" /> Inactivity Logs & Shift Extensions
             </h3>
             <p className="text-xs text-slate-500">
-              Hardware inactivity logs triggered on random 10–15m intervals. Subtracted from employee daily shift time and synced to Google Sheets.
+              Inactivity logs triggered after 10m idle + 5m prompt unanswered (15m total). Subtracted from employee daily shift time and synced to Google Sheets.
             </p>
           </div>
           <span className="text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300 px-3 py-1 rounded-full font-mono">

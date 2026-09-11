@@ -1,4 +1,4 @@
-import { AuditLog, TimeLog, User, PayrollRecord, DailyAttendanceLog, IdleLog, LeaveRequest } from '../types';
+import { AuditLog, TimeLog, User, PayrollRecord, DailyAttendanceLog, IdleLog, LeaveRequest, UserPresence } from '../types';
 import { generateUniqueUsername } from './userUtils';
 
 export const DEFAULT_SPREADSHEET_ID = '1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA';
@@ -60,6 +60,25 @@ export const isValidWebhookUrl = (url?: string | null): boolean => {
 
 export const SPREADSHEET_SCHEMA = [
   {
+    tabName: 'Live_Presence',
+    description: 'Real-time live roster tab showing every agent/trainee live status, platform mode (Desktop App vs Web Portal), live tracking timer, active task, today total hours, first check-in, and device timezone.',
+    headers: [
+      'Employee Code',
+      'Employee Name',
+      'System Role',
+      'Designation',
+      'Platform Mode',
+      'Live Presence Status',
+      'Current Active Task',
+      'Current Application',
+      'Shift Hours Today',
+      'First Check-In (Manila GMT+8)',
+      'Device Timezone',
+      'Last Active Heartbeat (Manila GMT+8)',
+      'Last Heartbeat (ISO)',
+    ],
+  },
+  {
     tabName: 'Login_Logs',
     description: 'Dedicated log for all employee web portal & software desktop sign-ins, timestamps, role credentials, device/platform modes, and locations.',
     headers: [
@@ -94,7 +113,7 @@ export const SPREADSHEET_SCHEMA = [
   },
   {
     tabName: 'Idle_Logs',
-    description: 'Dedicated log for detected hardware inactivity (random 10-15m intervals), durations, time subtracted from shift, and required shift extensions.',
+    description: 'Dedicated log for 10-minute inactivity events with 5-minute grace period (15 minutes total idle auto-logout), durations, time subtracted from shift (-15 mins), and required shift extensions (+15 mins).',
     headers: [
       'Idle Log ID',
       'Timestamp',
@@ -591,6 +610,11 @@ function setupSheetsSchema() {
   var ss = getSpreadsheet();
   var schema = [
     {
+      tab: 'Live_Presence',
+      color: '#10b981', // Emerald Green
+      headers: ['Employee Code', 'Employee Name', 'System Role', 'Designation', 'Platform Mode', 'Live Presence Status', 'Current Active Task', 'Current Application', 'Shift Hours Today', 'First Check-In (Manila)', 'Device Timezone', 'Last Active Heartbeat (Manila)', 'Last Heartbeat (ISO)']
+    },
+    {
       tab: 'Login_Logs',
       color: '#2563eb', // Blue
       headers: ['Log ID', 'Timestamp (ISO)', 'Formatted Date & Time', 'Employee Code', 'Employee Name', 'User Role', 'Designation', 'Login Platform / Mode', 'Timezone & Location', 'Session Status', 'Account Password (Masked)']
@@ -729,6 +753,7 @@ function doPost(e) {
       var dailyAttendanceLogs = data.dailyAttendanceLogs || [];
       var leaveRequests = data.leaveRequests || [];
       var payrollRecords = data.payrollRecords || [];
+      var rawPresenceList = data.userPresenceList || data.livePresence || [];
 
       // Deduplicate users
       var userMap = {};
@@ -742,6 +767,98 @@ function doPost(e) {
         if (u.id) userMap[u.id] = u;
         if (u.name) userMap[u.name] = u;
       });
+
+      // ==========================================
+      // 0. POPULATE LIVE PRESENCE & SESSIONS (Dedicated Live Real-Time Tab)
+      // ==========================================
+      var presenceMap = {};
+      rawPresenceList.forEach(function(p) {
+        if (p && p.userId) presenceMap[p.userId] = p;
+        if (p && p.userName) presenceMap[p.userName] = p;
+      });
+
+      var presenceHeaders = ['Employee Code', 'Employee Name', 'System Role', 'Designation', 'Platform Mode', 'Live Presence Status', 'Current Active Task', 'Current Application', 'Shift Hours Today', 'First Check-In (Manila)', 'Device Timezone', 'Last Active Heartbeat (Manila)', 'Last Heartbeat (ISO)'];
+      var presenceRows = [];
+      var nowMs = new Date().getTime();
+
+      users.forEach(function(u) {
+        var p = presenceMap[u.id] || presenceMap[u.name] || null;
+        var pLastHeartbeatMs = p && p.lastHeartbeat ? new Date(p.lastHeartbeat).getTime() : 0;
+        var isRecent = pLastHeartbeatMs > 0 && (nowMs - pLastHeartbeatMs < 5 * 60 * 1000);
+
+        var isDesktop = p ? (p.loginPlatform === 'software' || (p.currentApp && p.currentApp.toLowerCase().indexOf('desktop') !== -1) || !!p.isTracking) : false;
+        var isTracking = p ? (!!p.isTracking && (isRecent || !!p.isOnline)) : false;
+        var isIdle = p ? ((isDesktop || isTracking) && (p.status === 'idle' || !!p.isPaused)) : false;
+        var isDesktopOnline = isDesktop && (p.isOnline || isRecent) && !isTracking && !isIdle;
+        var isWebOnly = p ? (p.loginPlatform === 'webapp' || (!isDesktop && !!p.isOnline)) : false;
+
+        var platformMode = isDesktop ? 'Desktop Software App' : (isWebOnly ? 'Web Portal' : 'None / Offline');
+        var statusLabel = '⚪ Offline';
+        var currentTask = 'Shift Concluded';
+        var currentApp = 'None';
+
+        if (isTracking) {
+          statusLabel = '🟢 Live Tracking';
+          currentTask = (p && p.currentTask) || 'Active Work in Progress';
+          currentApp = (p && p.currentApp) || 'LLC Time Tracker Desktop App';
+        } else if (isDesktopOnline) {
+          statusLabel = '🔵 Desktop Online (Standby)';
+          currentTask = 'Desktop App Standby (Timer Not Started)';
+          currentApp = 'LLC Time Tracker Desktop App';
+        } else if (isIdle) {
+          statusLabel = '🟡 Idle / Break';
+          currentTask = 'Paused / Break';
+          currentApp = (p && p.currentApp) || 'LLC Time Tracker Desktop App';
+        } else if (isWebOnly) {
+          statusLabel = '⚪ Web (Offline)';
+          currentTask = 'Web Portal (No Desktop Tracking)';
+          currentApp = 'Web Browser';
+        }
+
+        // Today's total hours for user from timeLogs
+        var userTodaySec = 0;
+        var userFirstCheckin = '--:--';
+        var todayStr = Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
+        rawTimeLogs.forEach(function(tl) {
+          var matchU = tl.userId === u.id || tl.userName === u.name || tl.employeeCode === u.employeeCode;
+          if (matchU && (tl.date === todayStr || (tl.startTime && tl.startTime.indexOf(todayStr) !== -1))) {
+            var dur = typeof tl.durationSeconds === 'number' ? tl.durationSeconds : 0;
+            userTodaySec += dur;
+            if (!userFirstCheckin || userFirstCheckin === '--:--') {
+              userFirstCheckin = tl.geoLocalStartTime || (tl.startTime ? Utilities.formatDate(new Date(tl.startTime), 'Asia/Manila', 'hh:mm a') : '--:--');
+            }
+          }
+        });
+
+        if (isTracking && p && p.elapsedSeconds) {
+          userTodaySec += p.elapsedSeconds;
+        }
+
+        var todayTimeFormatted = formatTotalTime(userTodaySec);
+        var lastHbFormatted = pLastHeartbeatMs > 0 ? Utilities.formatDate(new Date(pLastHeartbeatMs), 'Asia/Manila', 'yyyy-MM-dd hh:mm:ss a') : '--:--';
+        var devTimezone = u.geoTimezone ? u.geoTimezone + ' (GMT+8)' : 'Asia/Manila (GMT+8)';
+
+        presenceRows.push([
+          u.employeeCode || 'N/A',
+          u.name || 'Unknown',
+          u.role || 'agent',
+          u.designation || 'Agent',
+          platformMode,
+          statusLabel,
+          currentTask,
+          currentApp,
+          todayTimeFormatted,
+          userFirstCheckin,
+          devTimezone,
+          lastHbFormatted,
+          (p && p.lastHeartbeat) || ''
+        ]);
+      });
+
+      var presenceSheet = ss.getSheetByName('Live_Presence');
+      if (presenceSheet) populateCleanSheet(presenceSheet, presenceHeaders, presenceRows, '#065f46');
+      var presenceAliasSheet = ss.getSheetByName('Live_Sessions');
+      if (presenceAliasSheet) populateCleanSheet(presenceAliasSheet, presenceHeaders, presenceRows, '#065f46');
 
       // ==========================================
       // 1. POPULATE LOGIN LOGS (Support both 'Login_Logs' and 'Login_Session_Logs')
@@ -802,7 +919,9 @@ function doPost(e) {
 
         var matchedUser = userMap[(l.actorId || '').toUpperCase()] || userMap[l.actorId] || userMap[l.actorName] || {};
         var eventType = 'Manual Sign Out (Web Portal)';
-        if (l.details && (l.details.toLowerCase().indexOf('10-minute') !== -1 || l.details.toLowerCase().indexOf('timeout') !== -1)) {
+        if (l.details && (l.details.toLowerCase().indexOf('15-minute') !== -1 || l.details.toLowerCase().indexOf('15min') !== -1 || l.details.toLowerCase().indexOf('inactivity') !== -1)) {
+          eventType = '15-Min Inactivity Auto-Logout (Desktop)';
+        } else if (l.details && (l.details.toLowerCase().indexOf('10-minute') !== -1 || l.details.toLowerCase().indexOf('timeout') !== -1)) {
           eventType = '10-Min Inactivity Auto-Logout (Web)';
         } else if (l.details && l.details.toLowerCase().indexOf('desktop') !== -1) {
           eventType = 'Desktop Software Sign Out';
@@ -851,7 +970,7 @@ function doPost(e) {
           deductMins,
           extendMins,
           i.task,
-          i.reason || 'Zero Keyboard / Mouse Activity across 10-15m check',
+          i.reason || '15-min continuous inactivity: 10m idle + 5m prompt unanswered',
           i.status || 'logged'
         ]);
       });
@@ -1880,7 +1999,8 @@ export const syncDataToGoogleSheetsWebhook = async (
   leaveRequests: LeaveRequest[] = [],
   designationTasks?: Record<string, string[]>,
   rolePermissions?: Record<string, import('../types').RolePermissions>,
-  activeSessions?: TimeLog[]
+  activeSessions?: TimeLog[],
+  userPresenceList?: UserPresence[]
 ): Promise<{ success: boolean; message: string }> => {
   if (!webhookUrl || !webhookUrl.trim()) {
     return {
@@ -1917,6 +2037,7 @@ export const syncDataToGoogleSheetsWebhook = async (
       leaveRequests,
       designationTasks: designationTasks || {},
       rolePermissions: rolePermissions || {},
+      userPresenceList: userPresenceList || [],
       syncedAt: new Date().toISOString(),
     };
 

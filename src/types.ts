@@ -253,6 +253,7 @@ export interface UserPresence {
   isPaused?: boolean;
   lastHeartbeat: string; // ISO string
   loginTime?: string; // ISO string of shift start
+  loginPlatform?: 'software' | 'webapp';
 }
 
 export interface DailyAttendanceLog {

@@ -90,27 +90,44 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
       // Find presence in state
       const presence = userPresenceList.find((p) => p.userId === user.id);
 
-      // Calculate if active based on recent heartbeat (< 2.5 mins for online; > 10 mins auto-offline)
+      // Calculate if active based on recent heartbeat (< 5 mins)
       const lastHeartbeatMs = presence?.lastHeartbeat ? new Date(presence.lastHeartbeat).getTime() : 0;
       const diffMs = now - lastHeartbeatMs;
+      const isRecent = diffMs < 5 * 60 * 1000;
 
-      // Determine real-time status
+      // Platform check: Desktop app vs Web Portal
+      const isDesktopPlatform =
+        presence?.loginPlatform === 'software' ||
+        presence?.currentApp?.toLowerCase().includes('desktop') ||
+        !!presence?.isTracking;
+      const isWebOnly =
+        presence?.loginPlatform === 'webapp' ||
+        (!isDesktopPlatform && !!presence?.isOnline);
+
+      // Determine real-time status according to user specification:
+      // - Desktop App login -> Shows Online (or Live Tracking if timer running, Idle if paused)
+      // - Web portal login -> Shows Web (Offline) and does not track desktop hours
+      // - Not logged in -> Shows Offline
       let calculatedStatus: 'online' | 'idle' | 'offline' = 'offline';
-      if (!presence || (!presence.isOnline && !presence.isTracking)) {
-        calculatedStatus = 'offline';
-      } else if (diffMs > 10 * 60 * 1000 && !presence.isTracking) {
-        // Inactive / unclosed session for > 10 minutes -> Automatically mark OFFLINE
-        calculatedStatus = 'offline';
-      } else if (presence.isPaused) {
-        calculatedStatus = 'idle';
-      } else if (presence.isTracking) {
-        // If actively tracking within grace window, always show online
+      let presenceMode: 'tracking' | 'desktop_online' | 'web_offline' | 'idle' | 'offline' = 'offline';
+
+      if (presence?.isTracking && (isRecent || presence.isOnline)) {
         calculatedStatus = 'online';
-      } else if (diffMs > 5 * 60 * 1000) {
-        // Heartbeat lapsed slightly (> 5 min)
-        calculatedStatus = 'idle';
+        presenceMode = 'tracking';
+      } else if (isDesktopPlatform && (presence?.isOnline || isRecent)) {
+        if (presence?.isPaused || presence?.status === 'idle') {
+          calculatedStatus = 'idle';
+          presenceMode = 'idle';
+        } else {
+          calculatedStatus = 'online';
+          presenceMode = 'desktop_online';
+        }
+      } else if (isWebOnly) {
+        calculatedStatus = 'offline';
+        presenceMode = 'web_offline';
       } else {
-        calculatedStatus = presence.status || 'online';
+        calculatedStatus = 'offline';
+        presenceMode = 'offline';
       }
 
       // Today's attendance log
@@ -131,29 +148,57 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
 
       // Current task active duration
       let taskElapsedSeconds = 0;
-      if (calculatedStatus === 'online' || calculatedStatus === 'idle') {
+      if (presenceMode === 'tracking' || presenceMode === 'idle') {
         taskElapsedSeconds = presence?.elapsedSeconds || 0;
         if (presence?.isTracking && !presence?.isPaused && diffMs > 0 && diffMs < 60000) {
           taskElapsedSeconds += Math.floor(diffMs / 1000);
         }
       }
 
-      const isTracking = calculatedStatus === 'online' && !!presence?.isTracking;
-      const currentTask = presence?.isTracking
-        ? (presence.currentTask || latestLog?.task || 'Active Task')
-        : (calculatedStatus === 'online' ? (presence?.currentTask || 'Web Portal Session') : (calculatedStatus === 'idle' ? 'Shift Paused / Idle' : 'Shift Concluded'));
-      const currentApp = presence?.currentApp || (calculatedStatus === 'online' ? 'LLC Web Portal' : 'None');
+      const isTracking = presenceMode === 'tracking';
+      let currentTask = 'Shift Concluded';
+      let currentApp = 'None';
+
+      if (isTracking) {
+        currentTask = presence?.currentTask || latestLog?.task || 'Active Task';
+        currentApp = presence?.currentApp || 'LLC Time Tracker Desktop App';
+      } else if (presenceMode === 'desktop_online') {
+        currentTask = 'Desktop App Standby (Timer Not Started)';
+        currentApp = 'LLC Time Tracker Desktop App';
+      } else if (presenceMode === 'idle') {
+        currentTask = `Paused (${presence?.currentTask || latestLog?.task || 'Break'})`;
+        currentApp = presence?.currentApp || 'LLC Time Tracker Desktop App';
+      } else if (presenceMode === 'web_offline') {
+        currentTask = 'Web Portal (No Desktop Tracking)';
+        currentApp = 'Web Browser';
+      } else {
+        currentTask = 'Shift Concluded';
+        currentApp = 'None';
+      }
+
       const mouseActivity = isTracking ? (presence?.mouseActivity ?? 100) : 0;
       const keyboardActivity = isTracking ? (presence?.keyboardActivity ?? 100) : 0;
-      const firstLoginTime =
-        attendance?.firstLoginTime ||
-        (presence?.loginTime ? formatLogStartTime(presence.loginTime, 'Asia/Manila') : (calculatedStatus !== 'offline' ? 'Active' : '--:--'));
+
+      // Accurate First Check-in:
+      // If user has time logs today, use earliest log start time.
+      // If user has a valid attendance check-in recorded for today from Desktop App, use that.
+      // Otherwise, if not checked in or on web portal only, show '--:--'.
+      let firstLoginTime = '--:--';
+      if (userTodayLogs.length > 0) {
+        const earliestLog = userTodayLogs[userTodayLogs.length - 1];
+        firstLoginTime = formatLogStartTime(earliestLog.startTime, 'Asia/Manila') || earliestLog.geoLocalStartTime || '--:--';
+      } else if (isDesktopPlatform && attendance?.firstLoginTime && attendance.firstLoginTime !== '--:--') {
+        firstLoginTime = attendance.firstLoginTime;
+      } else if (isDesktopPlatform && presence?.loginTime) {
+        firstLoginTime = formatLogStartTime(presence.loginTime, 'Asia/Manila');
+      }
 
       return {
         user,
         presence,
         attendance,
         calculatedStatus,
+        presenceMode,
         currentTask,
         currentApp,
         mouseActivity,
@@ -453,25 +498,32 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
 
                     {/* Live Presence Status Badge */}
                     <td className="py-3 px-3">
-                      {isOnline && row.presence?.isTracking && (
+                      {row.presenceMode === 'tracking' && (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 border border-emerald-200 text-emerald-800 shadow-2xs">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                          Tracking
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 -ml-3" />
+                          Live Tracking
                         </span>
                       )}
-                      {isOnline && !row.presence?.isTracking && (
+                      {row.presenceMode === 'desktop_online' && (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 border border-blue-200 text-blue-700 shadow-2xs">
                           <span className="w-2 h-2 rounded-full bg-blue-500" />
-                          {row.presence?.currentApp?.toLowerCase().includes('desktop') ? 'Desktop Ready' : 'Web Portal'}
+                          Desktop Online
                         </span>
                       )}
-                      {isIdle && (
+                      {row.presenceMode === 'idle' && (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 border border-amber-200 text-amber-800 shadow-2xs">
                           <span className="w-2 h-2 rounded-full bg-amber-500" />
                           Idle / Break
                         </span>
                       )}
-                      {isOffline && (
+                      {row.presenceMode === 'web_offline' && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 border border-slate-200 text-slate-600">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                          Web (Offline)
+                        </span>
+                      )}
+                      {row.presenceMode === 'offline' && (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 border border-slate-200 text-slate-500">
                           <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                           Offline

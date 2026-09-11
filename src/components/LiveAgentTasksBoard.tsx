@@ -180,20 +180,36 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
       const presence = userPresenceList.find((p) => p.userId === user.id);
       const lastHeartbeatMs = presence?.lastHeartbeat ? new Date(presence.lastHeartbeat).getTime() : 0;
       const diffMs = now - lastHeartbeatMs;
+      const isRecent = diffMs < 5 * 60 * 1000;
+
+      const isDesktopPlatform =
+        presence?.loginPlatform === 'software' ||
+        presence?.currentApp?.toLowerCase().includes('desktop') ||
+        !!presence?.isTracking;
+      const isWebOnly =
+        presence?.loginPlatform === 'webapp' ||
+        (!isDesktopPlatform && !!presence?.isOnline);
 
       let calculatedStatus: 'online' | 'idle' | 'offline' = 'offline';
-      if (!presence || !presence.isOnline) {
+      let presenceMode: 'tracking' | 'desktop_online' | 'web_offline' | 'idle' | 'offline' = 'offline';
+
+      if (presence?.isTracking && (isRecent || presence.isOnline)) {
+        calculatedStatus = 'online';
+        presenceMode = 'tracking';
+      } else if (isDesktopPlatform && (presence?.isOnline || isRecent)) {
+        if (presence?.isPaused || presence?.status === 'idle') {
+          calculatedStatus = 'idle';
+          presenceMode = 'idle';
+        } else {
+          calculatedStatus = 'online';
+          presenceMode = 'desktop_online';
+        }
+      } else if (isWebOnly) {
         calculatedStatus = 'offline';
-      } else if (diffMs > 10 * 60 * 1000) {
-        // Inactive / unclosed session > 10 minutes -> Automatically mark OFFLINE
-        calculatedStatus = 'offline';
-      } else if (diffMs > 2.5 * 60 * 1000) {
-        // Heartbeat lapsed slightly (2.5 - 10 min)
-        calculatedStatus = 'idle';
-      } else if (presence.isPaused) {
-        calculatedStatus = 'idle';
+        presenceMode = 'web_offline';
       } else {
-        calculatedStatus = presence.status || 'online';
+        calculatedStatus = 'offline';
+        presenceMode = 'offline';
       }
 
       // Today's logs for this user
@@ -203,18 +219,19 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
 
       // Attendance / Login Time
       const attendance = dailyAttendanceLogs.find((a) => a.userId === user.id && a.date === todayStr);
-      let loginTimeDisplay = attendance?.firstLoginTime || '';
-      if (!loginTimeDisplay && presence?.loginTime) {
-        try {
-          loginTimeDisplay = formatLogStartTime(presence.loginTime, 'Asia/Manila');
-        } catch {
-          // fallback
-        }
+      let loginTimeDisplay = '--:--';
+      if (userTodayLogs.length > 0) {
+        const earliestLog = userTodayLogs[userTodayLogs.length - 1];
+        loginTimeDisplay = formatLogStartTime(earliestLog.startTime, 'Asia/Manila') || earliestLog.geoLocalStartTime || '--:--';
+      } else if (isDesktopPlatform && attendance?.firstLoginTime && attendance.firstLoginTime !== '--:--') {
+        loginTimeDisplay = attendance.firstLoginTime;
+      } else if (isDesktopPlatform && presence?.loginTime) {
+        loginTimeDisplay = formatLogStartTime(presence.loginTime, 'Asia/Manila');
       }
 
       // Real-Time Task Elapsed Time
       let taskElapsedSeconds = 0;
-      if (calculatedStatus === 'online' || calculatedStatus === 'idle') {
+      if (presenceMode === 'tracking' || presenceMode === 'idle') {
         taskElapsedSeconds = presence?.elapsedSeconds || 0;
         if (presence?.isTracking && !presence?.isPaused && diffMs > 0 && diffMs < 60000) {
           taskElapsedSeconds += Math.floor(diffMs / 1000);
@@ -222,23 +239,29 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
       }
 
       // Determine task name
-      let currentTaskName = presence?.currentTask;
-      if (!currentTaskName && calculatedStatus === 'online') {
-        currentTaskName = latestLog?.task || 'Data Entry & Market Research';
-      }
-      if (!currentTaskName && calculatedStatus === 'idle') {
-        currentTaskName = latestLog?.task || 'Shift Paused / Idle';
-      }
-      if (!currentTaskName && calculatedStatus === 'offline') {
-        currentTaskName = latestLog?.task ? `Last: ${latestLog.task}` : 'Shift Concluded';
+      let currentTaskName = 'Shift Concluded';
+      if (presenceMode === 'tracking') {
+        currentTaskName = presence?.currentTask || latestLog?.task || 'Data Entry & Market Research';
+      } else if (presenceMode === 'desktop_online') {
+        currentTaskName = 'Desktop App Standby (Timer Not Started)';
+      } else if (presenceMode === 'idle') {
+        currentTaskName = `Paused (${presence?.currentTask || latestLog?.task || 'Break'})`;
+      } else if (presenceMode === 'web_offline') {
+        currentTaskName = 'Web Portal (No Desktop Tracking)';
+      } else {
+        currentTaskName = 'Shift Concluded';
       }
 
       // Current app
-      const currentApp = presence?.currentApp || (calculatedStatus === 'online' ? latestLog?.appsUsed?.[0]?.appName || 'Google Chrome' : 'None');
+      const currentApp = presenceMode === 'tracking'
+        ? (presence?.currentApp || 'LLC Time Tracker Desktop App')
+        : (presenceMode === 'desktop_online' || presenceMode === 'idle'
+            ? 'LLC Time Tracker Desktop App'
+            : (presenceMode === 'web_offline' ? 'Web Browser' : 'None'));
 
       // Activity metrics
-      const mouseActivity = presence?.mouseActivity ?? (calculatedStatus === 'online' ? latestLog?.mouseActivityAvg ?? 78 : 0);
-      const keyboardActivity = presence?.keyboardActivity ?? (calculatedStatus === 'online' ? latestLog?.keyboardActivityAvg ?? 82 : 0);
+      const mouseActivity = presenceMode === 'tracking' ? (presence?.mouseActivity ?? 80) : 0;
+      const keyboardActivity = presenceMode === 'tracking' ? (presence?.keyboardActivity ?? 85) : 0;
 
       // Supervisor name
       const supervisor = users.find((u) => u.id === user.teamLeaderId);
@@ -247,12 +270,13 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
         user,
         presence,
         calculatedStatus,
+        presenceMode,
         currentTaskName: currentTaskName || 'Data Entry & Market Research',
         currentApp,
         mouseActivity,
         keyboardActivity,
         todayTotalSec,
-        loginTimeDisplay: loginTimeDisplay || (calculatedStatus !== 'offline' ? 'Active Shift' : '--:--'),
+        loginTimeDisplay: loginTimeDisplay || '--:--',
         taskElapsedSeconds,
         supervisorName: supervisor?.name || 'Direct / Management',
         latestLog,
@@ -762,23 +786,38 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
 
                       {/* Status pill & Manila Time indicator */}
                       <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            isOnline
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : isIdle
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                              : 'bg-slate-100 text-slate-500 border border-slate-200'
-                          }`}
-                        >
-                          {isOnline ? '🟢 Working' : isIdle ? '🟡 Inactive' : '⚪ Offline'}
-                        </span>
+                        {agent.presenceMode === 'tracking' && (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                            Live Tracking
+                          </span>
+                        )}
+                        {agent.presenceMode === 'desktop_online' && (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-blue-50 text-blue-700 border border-blue-200">
+                            Desktop Online
+                          </span>
+                        )}
+                        {agent.presenceMode === 'idle' && (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
+                            Idle / Break
+                          </span>
+                        )}
+                        {agent.presenceMode === 'web_offline' && (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                            Web (Offline)
+                          </span>
+                        )}
+                        {agent.presenceMode === 'offline' && (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-medium tracking-wider bg-slate-100 text-slate-500 border border-slate-200">
+                            Offline
+                          </span>
+                        )}
                         <span className="text-[10px] font-medium text-slate-500 flex items-center gap-1">
                           <LogIn className="w-2.5 h-2.5 text-slate-400" />
-                          Login: <strong className="font-mono text-slate-700">{agent.loginTimeDisplay}</strong>
+                          Check-in: <strong className="font-mono text-slate-700">{agent.loginTimeDisplay}</strong>
                         </span>
                         <span className="text-[9px] font-mono text-slate-400">
-                          {isOnline ? `PHT ${manilaCurrentTime}` : 'Manila (PHT)'}
+                          {agent.presenceMode === 'tracking' ? `PHT ${manilaCurrentTime}` : 'Manila (GMT+8)'}
                         </span>
                       </div>
                     </div>
