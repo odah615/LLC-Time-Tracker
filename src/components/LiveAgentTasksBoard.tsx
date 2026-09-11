@@ -177,7 +177,12 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
     const now = Date.now();
 
     return targetUsers.map((user) => {
-      const presence = userPresenceList.find((p) => p.userId === user.id);
+      const presence = userPresenceList.find(
+        (p) =>
+          p.userId === user.id ||
+          (p.employeeCode && user.employeeCode && p.employeeCode.toUpperCase() === user.employeeCode.toUpperCase()) ||
+          (p.userName && user.name && p.userName.toLowerCase().trim() === user.name.toLowerCase().trim())
+      );
       const lastHeartbeatMs = presence?.lastHeartbeat ? new Date(presence.lastHeartbeat).getTime() : 0;
       const diffMs = now - lastHeartbeatMs;
       const isRecent = diffMs < 5 * 60 * 1000;

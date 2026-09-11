@@ -557,7 +557,12 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
               const agentTodayLogs = agentAllLogs.filter((l) => l.date === todayStr);
               const baseTodaySec = agentTodayLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
 
-              const presence = userPresenceList.find((p) => p.userId === agent.id);
+              const presence = userPresenceList.find(
+                (p) =>
+                  p.userId === agent.id ||
+                  (p.employeeCode && agent.employeeCode && p.employeeCode.toUpperCase() === agent.employeeCode.toUpperCase()) ||
+                  (p.userName && agent.name && p.userName.toLowerCase().trim() === agent.name.toLowerCase().trim())
+              );
               const now = Date.now();
               const lastHeartbeat = presence ? new Date(presence.lastHeartbeat).getTime() : 0;
               const isRecent = now - lastHeartbeat < 5 * 60 * 1000;

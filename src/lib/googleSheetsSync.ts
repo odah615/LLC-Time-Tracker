@@ -572,15 +572,6 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
 function populateCleanSheet(sheet, headers, rows, headerColor) {
   if (!sheet) return;
 
-  try {
-    var existingFilter = sheet.getFilter();
-    if (existingFilter) {
-      existingFilter.remove();
-    }
-  } catch (fErr) {}
-
-  sheet.clear();
-
   var allData = [headers];
   if (rows && rows.length > 0) {
     allData = allData.concat(rows);
@@ -588,22 +579,24 @@ function populateCleanSheet(sheet, headers, rows, headerColor) {
 
   var numRows = allData.length;
   var numCols = headers.length;
+  var prevLastRow = sheet.getLastRow();
+  var prevLastCol = sheet.getLastColumn();
 
   var targetRange = sheet.getRange(1, 1, numRows, numCols);
   targetRange.setValues(allData);
+
+  // Clear any excess old rows below current dataset smoothly without flickering the sheet view
+  if (prevLastRow > numRows) {
+    try {
+      sheet.getRange(numRows + 1, 1, prevLastRow - numRows, Math.max(prevLastCol, numCols)).clearContent();
+    } catch (e) {}
+  }
 
   sheet.getRange(1, 1, 1, numCols)
     .setFontWeight('bold')
     .setBackground(headerColor || '#0f172a')
     .setFontColor('#ffffff');
   sheet.setFrozenRows(1);
-
-  try {
-    var maxRows = sheet.getMaxRows();
-    if (maxRows > numRows + 5 && maxRows > 25) {
-      sheet.deleteRows(numRows + 6, maxRows - (numRows + 5));
-    }
-  } catch (rErr) {}
 }
 
 function setupSheetsSchema() {
@@ -773,23 +766,108 @@ function doPost(e) {
       // ==========================================
       var presenceMap = {};
       rawPresenceList.forEach(function(p) {
-        if (p && p.userId) presenceMap[p.userId] = p;
-        if (p && p.userName) presenceMap[p.userName] = p;
+        if (!p) return;
+        var pKeys = [
+          p.userId,
+          p.employeeCode,
+          p.userName,
+          p.email
+        ];
+        pKeys.forEach(function(k) {
+          if (k) {
+            var kStr = String(k).trim();
+            presenceMap[kStr] = p;
+            presenceMap[kStr.toLowerCase()] = p;
+            presenceMap[kStr.toUpperCase()] = p;
+          }
+        });
       });
 
       var presenceHeaders = ['Employee Code', 'Employee Name', 'System Role', 'Designation', 'Platform Mode', 'Live Presence Status', 'Current Active Task', 'Current Application', 'Shift Hours Today', 'First Check-In (Manila)', 'Device Timezone', 'Last Active Heartbeat (Manila)', 'Last Heartbeat (ISO)'];
       var presenceRows = [];
       var nowMs = new Date().getTime();
+      var todayStr = Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
 
       users.forEach(function(u) {
-        var p = presenceMap[u.id] || presenceMap[u.name] || null;
-        var pLastHeartbeatMs = p && p.lastHeartbeat ? new Date(p.lastHeartbeat).getTime() : 0;
-        var isRecent = pLastHeartbeatMs > 0 && (nowMs - pLastHeartbeatMs < 5 * 60 * 1000);
+        var p = presenceMap[u.id] ||
+                presenceMap[String(u.id).toLowerCase()] ||
+                (u.employeeCode && (presenceMap[u.employeeCode] || presenceMap[String(u.employeeCode).toLowerCase()] || presenceMap[String(u.employeeCode).toUpperCase()])) ||
+                (u.name && (presenceMap[u.name] || presenceMap[String(u.name).toLowerCase().trim()])) ||
+                (u.username && (presenceMap[u.username] || presenceMap[String(u.username).toLowerCase()])) ||
+                (u.email && (presenceMap[u.email] || presenceMap[String(u.email).toLowerCase()])) ||
+                null;
 
-        var isDesktop = p ? (p.loginPlatform === 'software' || (p.currentApp && p.currentApp.toLowerCase().indexOf('desktop') !== -1) || !!p.isTracking) : false;
-        var isTracking = p ? (!!p.isTracking && (isRecent || !!p.isOnline)) : false;
+        var pLastHeartbeatMs = p && p.lastHeartbeat ? new Date(p.lastHeartbeat).getTime() : 0;
+        var isRecent = pLastHeartbeatMs > 0 && (nowMs - pLastHeartbeatMs < 15 * 60 * 1000);
+
+        // Check if there is an active running time log in rawTimeLogs for this user
+        var hasRunningLog = false;
+        var runningTask = '';
+        var runningApp = '';
+        var userTodaySec = 0;
+        var earliestCheckinMs = Infinity;
+        var userFirstCheckin = '--:--';
+
+        // 1. Check daily attendance logs for official first login
+        dailyAttendanceLogs.forEach(function(att) {
+          var matchAtt = att.userId === u.id || (u.employeeCode && att.employeeCode === u.employeeCode) || att.userName === u.name;
+          if (matchAtt && (att.date === todayStr || (att.date && att.date.indexOf(todayStr) !== -1))) {
+            if (att.firstLoginTime && att.firstLoginTime !== '--:--') {
+              userFirstCheckin = att.firstLoginTime;
+            }
+          }
+        });
+
+        // 2. Aggregate today's time logs & find earliest check-in time
+        rawTimeLogs.forEach(function(tl) {
+          var matchU = tl.userId === u.id || tl.userName === u.name || (u.employeeCode && tl.employeeCode === u.employeeCode);
+          if (matchU) {
+            var tlDate = tl.date || (tl.startTime ? Utilities.formatDate(new Date(tl.startTime), 'Asia/Manila', 'yyyy-MM-dd') : '');
+            var isTodayLog = tlDate === todayStr || (tl.startTime && tl.startTime.indexOf(todayStr) !== -1);
+
+            if (isTodayLog) {
+              var dur = typeof tl.durationSeconds === 'number' ? tl.durationSeconds : 0;
+              userTodaySec += dur;
+
+              if (tl.startTime) {
+                try {
+                  var startD = new Date(tl.startTime);
+                  var sMs = startD.getTime();
+                  if (!isNaN(sMs) && sMs < earliestCheckinMs) {
+                    earliestCheckinMs = sMs;
+                    var formattedStartTime = Utilities.formatDate(startD, 'Asia/Manila', 'hh:mm a');
+                    if (userFirstCheckin === '--:--' || earliestCheckinMs !== Infinity) {
+                      userFirstCheckin = tl.geoLocalStartTime || formattedStartTime;
+                    }
+                  }
+                } catch (e) {}
+              }
+            }
+
+            if (tl.status === 'running' || tl.endTime === 'Running Live') {
+              hasRunningLog = true;
+              runningTask = tl.task || runningTask;
+              if (tl.appsUsed && tl.appsUsed.length > 0 && tl.appsUsed[0].appName) {
+                runningApp = tl.appsUsed[0].appName;
+              }
+            }
+          }
+        });
+
+        // 3. Fallback to presence login time if check-in is still unset
+        if (userFirstCheckin === '--:--' && p && p.loginTime) {
+          try {
+            var pLoginD = new Date(p.loginTime);
+            if (!isNaN(pLoginD.getTime())) {
+              userFirstCheckin = Utilities.formatDate(pLoginD, 'Asia/Manila', 'hh:mm a');
+            }
+          } catch (e) {}
+        }
+
+        var isDesktop = p ? (p.loginPlatform === 'software' || (p.currentApp && p.currentApp.toLowerCase().indexOf('desktop') !== -1) || !!p.isTracking) : hasRunningLog;
+        var isTracking = p ? (!!p.isTracking && (isRecent || !!p.isOnline)) : hasRunningLog;
         var isIdle = p ? ((isDesktop || isTracking) && (p.status === 'idle' || !!p.isPaused)) : false;
-        var isDesktopOnline = isDesktop && (p.isOnline || isRecent) && !isTracking && !isIdle;
+        var isDesktopOnline = isDesktop && (p ? (p.isOnline || isRecent) : true) && !isTracking && !isIdle;
         var isWebOnline = p ? (p.loginPlatform === 'webapp' || (!isDesktop && (!!p.isOnline || isRecent))) && !isTracking && !isDesktopOnline && !isIdle : false;
 
         var platformMode = isDesktop ? 'Desktop Software App' : (isWebOnline ? 'Web Portal' : 'None / Offline');
@@ -799,38 +877,27 @@ function doPost(e) {
 
         if (isTracking) {
           statusLabel = '🟢 Live Tracking';
-          currentTask = (p && p.currentTask) || 'Active Work in Progress';
-          currentApp = (p && p.currentApp) || 'LLC Time Tracker Desktop App';
+          currentTask = (p && p.currentTask) || runningTask || 'Active Work in Progress';
+          currentApp = (p && p.currentApp) || runningApp || 'LLC Time Tracker Desktop App';
+          platformMode = 'Desktop Software App';
         } else if (isDesktopOnline) {
           statusLabel = '🔵 Desktop Online (Standby)';
-          currentTask = 'Desktop App Standby (Timer Not Started)';
-          currentApp = 'LLC Time Tracker Desktop App';
+          currentTask = (p && p.currentTask) || 'Desktop App Standby (Timer Not Started)';
+          currentApp = (p && p.currentApp) || 'LLC Time Tracker Desktop App';
+          platformMode = 'Desktop Software App';
         } else if (isWebOnline) {
           statusLabel = '🌐 Web Portal Online';
           currentTask = (p && p.currentTask) || 'Web Portal Active';
           currentApp = 'Web Browser';
+          platformMode = 'Web Portal';
         } else if (isIdle) {
           statusLabel = '🟡 Idle / Break';
-          currentTask = 'Paused / Break';
+          currentTask = (p && p.currentTask) || 'Paused / Break';
           currentApp = (p && p.currentApp) || 'LLC Time Tracker Desktop App';
+          platformMode = 'Desktop Software App';
         }
 
-        // Today's total hours for user from timeLogs
-        var userTodaySec = 0;
-        var userFirstCheckin = '--:--';
-        var todayStr = Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
-        rawTimeLogs.forEach(function(tl) {
-          var matchU = tl.userId === u.id || tl.userName === u.name || tl.employeeCode === u.employeeCode;
-          if (matchU && (tl.date === todayStr || (tl.startTime && tl.startTime.indexOf(todayStr) !== -1))) {
-            var dur = typeof tl.durationSeconds === 'number' ? tl.durationSeconds : 0;
-            userTodaySec += dur;
-            if (!userFirstCheckin || userFirstCheckin === '--:--') {
-              userFirstCheckin = tl.geoLocalStartTime || (tl.startTime ? Utilities.formatDate(new Date(tl.startTime), 'Asia/Manila', 'hh:mm a') : '--:--');
-            }
-          }
-        });
-
-        if (isTracking && p && p.elapsedSeconds) {
+        if (isTracking && p && p.elapsedSeconds && p.elapsedSeconds > 0) {
           userTodaySec += p.elapsedSeconds;
         }
 

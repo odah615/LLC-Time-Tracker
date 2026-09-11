@@ -87,8 +87,13 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
     });
 
     return nonAdminUsers.map((user) => {
-      // Find presence in state
-      const presence = userPresenceList.find((p) => p.userId === user.id);
+      // Find presence in state by userId, employeeCode, or normalized name
+      const presence = userPresenceList.find(
+        (p) =>
+          p.userId === user.id ||
+          (p.employeeCode && user.employeeCode && p.employeeCode.toUpperCase() === user.employeeCode.toUpperCase()) ||
+          (p.userName && user.name && p.userName.toLowerCase().trim() === user.name.toLowerCase().trim())
+      );
 
       // Calculate if active based on recent heartbeat (< 5 mins)
       const lastHeartbeatMs = presence?.lastHeartbeat ? new Date(presence.lastHeartbeat).getTime() : 0;

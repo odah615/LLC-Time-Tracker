@@ -2157,6 +2157,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? (snap.isPaused ? `Paused (${snap.currentTask})` : snap.currentTask)
       : (isDesktop ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal Active');
 
+    // Preserve original loginTime from previous presence state instead of overwriting on every heartbeat
+    const existingPres = userPresenceList.find(
+      (p) => p.userId === snap.currentUser.id || (p.employeeCode && snap.currentUser.employeeCode && p.employeeCode === snap.currentUser.employeeCode)
+    );
+    const resolvedLoginTime = existingPres?.loginTime || nowIso;
+
     const presenceDoc: UserPresence = {
       userId: snap.currentUser.id,
       userName: snap.currentUser.name,
@@ -2175,7 +2181,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       currentTask: taskDisplay,
       currentApp: snap.currentActiveApp || (isDesktop ? 'LLC Time Tracker Desktop App' : 'Web Browser'),
       lastHeartbeat: nowIso,
-      loginTime: nowIso,
+      loginTime: resolvedLoginTime,
       loginPlatform: isDesktop ? 'software' : 'webapp',
     };
 
