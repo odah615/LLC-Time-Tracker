@@ -39,12 +39,12 @@ export const TeamLeadDashboardView: React.FC = () => {
   const [selectedOS, setSelectedOS] = useState<DesktopOS>('windows');
   const [downloadSuccess, setDownloadSuccess] = useState(false);
 
-  // Pagination states (5 items per page)
+  // Pagination states (10 items per page)
   const [agentPage, setAgentPage] = useState(1);
   const [idlePage, setIdlePage] = useState(1);
   const [leavePage, setLeavePage] = useState(1);
 
-  const ITEMS_PER_PAGE = 5;
+  const ITEMS_PER_PAGE = 10;
 
   // Supervised agents
   const teamAgents: User[] = users.filter((u) => u.role === 'agent');
@@ -269,20 +269,25 @@ export const TeamLeadDashboardView: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {currentAgents.map((agent) => {
-              const agentLogs = timeLogs.filter((l) => l.userId === agent.id);
-              const lastLog = agentLogs[0];
-              const totalSec = agentLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
+              const agentAllLogs = timeLogs.filter((l) => l.userId === agent.id);
+              const lastLog = agentAllLogs[0];
+              const todayStr = new Date().toISOString().split('T')[0];
+              const agentTodayLogs = agentAllLogs.filter((l) => l.date === todayStr);
+              const baseTodaySec = agentTodayLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
 
               const presence = userPresenceList.find((p) => p.userId === agent.id);
               const now = Date.now();
               const lastHeartbeat = presence ? new Date(presence.lastHeartbeat).getTime() : 0;
-              const isRecent = now - lastHeartbeat < 60000;
-              const isOnline = !!presence && (presence.isOnline || isRecent);
-              const isTracking = isOnline && !!presence?.isTracking;
-              const isIdle = isOnline && (presence?.status === 'idle' || !!presence?.isPaused);
+              const isRecent = now - lastHeartbeat < 5 * 60 * 1000;
+              const isOnline = !!presence && (presence.isOnline || isRecent || !!presence.isTracking);
+              const isTracking = !!presence?.isTracking && (isRecent || presence?.isOnline);
+              const isIdle = isOnline && !isTracking && (presence?.status === 'idle' || !!presence?.isPaused);
+              const liveActiveSec = isTracking ? (presence?.elapsedSeconds || 0) : 0;
+              const totalTodayTrackedSec = baseTodaySec + liveActiveSec;
+
               const currentTask = isTracking
-                ? (presence?.currentTask || lastLog?.task || 'Email Reachout')
-                : (isOnline ? (presence?.currentTask || 'Available / Standby') : (lastLog?.task || 'Shift Concluded'));
+                ? (presence?.currentTask || lastLog?.task || 'Active Task In Progress')
+                : (isOnline ? (presence?.currentTask || 'Web Portal Session') : (lastLog?.task || 'Shift Concluded'));
 
               return (
                 <div
@@ -298,48 +303,54 @@ export const TeamLeadDashboardView: React.FC = () => {
                       />
                       <div>
                         <div className="font-bold text-slate-900 text-sm">{agent.name}</div>
-                        <div className="text-[11px] text-slate-500">{agent.designation}</div>
+                        <div className="text-[11px] text-slate-500 font-mono">#{agent.employeeCode} • {agent.designation}</div>
                       </div>
                     </div>
 
                     {isTracking && (
-                      <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Tracking
+                      <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1.5 shadow-2xs">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 -ml-3" />
+                        Live Tracking
                       </span>
                     )}
                     {isOnline && !isTracking && !isIdle && (
-                      <span className="bg-blue-100 text-blue-800 border border-blue-200 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs">
+                      <span className="bg-blue-100 text-blue-800 border border-blue-200 text-[10px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-2xs">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                         Online
                       </span>
                     )}
                     {isIdle && (
-                      <span className="bg-amber-100 text-amber-800 border border-amber-200 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs">
+                      <span className="bg-amber-100 text-amber-800 border border-amber-200 text-[10px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-2xs">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                         Idle
                       </span>
                     )}
                     {!isOnline && (
-                      <span className="bg-slate-100 text-slate-500 border border-slate-200 text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                      <span className="bg-slate-100 text-slate-500 border border-slate-200 text-[10px] px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                         Offline
                       </span>
                     )}
                   </div>
 
-                  <div className="bg-white p-2.5 rounded-lg text-xs space-y-1.5 border border-slate-200">
-                    <div className="flex justify-between text-slate-700">
-                      <span className="text-slate-500">Current / Last Task:</span>
-                      <strong className="text-emerald-700 truncate max-w-[140px]" title={currentTask}>{currentTask}</strong>
+                  <div className="bg-white p-3 rounded-lg text-xs space-y-2 border border-slate-200">
+                    <div className="flex justify-between items-center text-slate-700">
+                      <span className="text-slate-500 font-medium">Time Tracked Today:</span>
+                      <strong className={`font-mono text-sm ${isTracking ? 'text-emerald-700 font-black' : 'text-slate-900'}`}>
+                        {formatDuration(totalTodayTrackedSec)}
+                        {isTracking && <span className="text-[10px] text-emerald-600 font-bold ml-1 animate-pulse">(live)</span>}
+                      </strong>
                     </div>
-                    <div className="flex justify-between text-slate-700">
-                      <span className="text-slate-500">GEO Timezone:</span>
-                      <span className="text-blue-600 font-mono text-[10px]">{agent.geoCity}</span>
+                    <div className="flex justify-between items-center text-slate-700">
+                      <span className="text-slate-500 font-medium">Current Task:</span>
+                      <span className="text-emerald-700 font-bold truncate max-w-[150px] text-right" title={currentTask}>
+                        {currentTask}
+                      </span>
                     </div>
-                    <div className="flex justify-between text-slate-700">
-                      <span className="text-slate-500">Tracked Today:</span>
-                      <strong className="text-slate-900 font-mono">{formatDuration(totalSec)}</strong>
+                    <div className="flex justify-between items-center text-slate-700 pt-1 border-t border-slate-100 text-[11px]">
+                      <span className="text-slate-400">GEO Timezone:</span>
+                      <span className="text-blue-600 font-mono font-medium">{agent.geoCity || 'Manila (GMT+8)'}</span>
                     </div>
                   </div>
                 </div>

@@ -1122,8 +1122,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }, (err) => handleSnapshotError('attendance', err));
 
-      // Real-time live presence is synchronized via Central Sync Bridge (/api/presence)
-      // which eliminates 800,000+ daily Firestore reads across 100+ agents.
+      // Real-time live presence is synchronized via Firestore system_state/presence and user_presence
+      unsubPresence = onSnapshot(doc(db, 'system_state', 'presence'), (snapshot) => {
+        if (snapshot.exists() && snapshot.data()?.data !== undefined) {
+          const remotePresence: UserPresence[] = snapshot.data().data;
+          if (Array.isArray(remotePresence) && remotePresence.length > 0) {
+            setUserPresenceList((prev) => {
+              const map = new Map<string, UserPresence>(prev.map((p) => [p.userId, p]));
+              remotePresence.forEach((p) => {
+                if (p && p.userId) {
+                  const existing = map.get(p.userId);
+                  map.set(p.userId, { ...(existing || p), ...p });
+                }
+              });
+              const merged = Array.from(map.values());
+              localStorage.setItem('trackpulse_presence', JSON.stringify(merged));
+              return merged;
+            });
+          }
+        }
+      }, (err) => handleSnapshotError('presence', err));
 
       unsubLeave = onSnapshot(doc(db, 'system_state', 'leaverequests'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -1562,8 +1580,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updatedAudit = [loginLog, ...auditLogs];
     setAuditLogs(updatedAudit);
 
-    // Standby presence broadcast on login:
-    // Only when the user chooses a task and starts the timer in the desktop app will they be tagged as online!
+    // Active presence broadcast on login:
     const nowIso = now.toISOString();
     const loginPresence: UserPresence = {
       userId: user.id,
@@ -1573,14 +1590,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       designation: user.designation || 'Agent',
       department: user.department || 'Operations',
       teamLeaderId: user.teamLeaderId || '',
-      isOnline: false,
-      status: 'offline',
+      isOnline: true,
+      status: 'online',
       isTracking: false,
       isPaused: false,
       elapsedSeconds: 0,
       mouseActivity: 0,
       keyboardActivity: 0,
-      currentTask: mode === 'software' ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal Session',
+      currentTask: mode === 'software' ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal Active Session',
       currentApp: mode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal',
       lastHeartbeat: nowIso,
       loginTime: nowIso,
@@ -1593,10 +1610,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }).catch(() => {});
     setUserPresenceList((prev) => {
       const existing = prev.find((p) => p.userId === user.id);
-      if (existing) {
-        return prev.map((p) => (p.userId === user.id ? { ...p, ...loginPresence } : p));
-      }
-      return [loginPresence, ...prev];
+      const updated = existing
+        ? prev.map((p) => (p.userId === user.id ? { ...p, ...loginPresence } : p))
+        : [loginPresence, ...prev];
+      safeSetDoc(doc(db, 'system_state', 'presence'), { data: updated }).catch(() => {});
+      return updated;
     });
 
     // Create daily attendance record ONLY if signing into the desktop application software
@@ -2121,21 +2139,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: snap.currentUser.id, ...offlineDoc }),
       }).catch(() => {});
-      setUserPresenceList((prev) =>
-        prev.map((p) =>
-          p.userId === snap.currentUser.id
-            ? { ...p, ...offlineDoc }
-            : p
-        )
-      );
+      setUserPresenceList((prev) => {
+        const updated = prev.map((p) =>
+          p.userId === snap.currentUser.id ? { ...p, ...offlineDoc } : p
+        );
+        safeSetDoc(doc(db, 'system_state', 'presence'), { data: updated }).catch(() => {});
+        return updated;
+      });
       return;
     }
 
-    const isEffectivelyOnline = Boolean(snap.isTracking);
-    const statusValue = !snap.isTracking ? 'offline' : (snap.isPaused ? 'idle' : 'online');
-    const taskDisplay = snap.isTracking 
+    const isTracking = Boolean(snap.isTracking);
+    const isEffectivelyOnline = true;
+    const statusValue = isTracking ? (snap.isPaused ? 'idle' : 'online') : 'online';
+    const taskDisplay = isTracking 
       ? (snap.isPaused ? `Paused (${snap.currentTask})` : snap.currentTask)
-      : (snap.loginMode === 'software' ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal Session');
+      : (snap.loginMode === 'software' ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal Active Session');
 
     const presenceDoc: UserPresence = {
       userId: snap.currentUser.id,
@@ -2147,11 +2166,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       teamLeaderId: snap.currentUser.teamLeaderId || '',
       isOnline: isEffectivelyOnline,
       status: statusValue,
-      isTracking: !!snap.isTracking,
+      isTracking: isTracking,
       isPaused: !!snap.isPaused,
       elapsedSeconds: snap.elapsedSeconds || 0,
-      mouseActivity: snap.isTracking ? snap.currentMouseActivity : 0,
-      keyboardActivity: snap.isTracking ? snap.currentKeyboardActivity : 0,
+      mouseActivity: isTracking ? snap.currentMouseActivity : 0,
+      keyboardActivity: isTracking ? snap.currentKeyboardActivity : 0,
       currentTask: taskDisplay,
       currentApp: snap.currentActiveApp || (snap.loginMode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal'),
       lastHeartbeat: nowIso,
@@ -2167,10 +2186,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }).catch(() => {});
     setUserPresenceList((prev) => {
       const exists = prev.some((p) => p.userId === snap.currentUser.id);
-      if (exists) {
-        return prev.map((p) => (p.userId === snap.currentUser.id ? { ...p, ...presenceDoc } : p));
-      }
-      return [presenceDoc, ...prev];
+      const updated = exists
+        ? prev.map((p) => (p.userId === snap.currentUser.id ? { ...p, ...presenceDoc } : p))
+        : [presenceDoc, ...prev];
+      safeSetDoc(doc(db, 'system_state', 'presence'), { data: updated }).catch(() => {});
+      return updated;
     });
   }, [isAuthenticated]);
 

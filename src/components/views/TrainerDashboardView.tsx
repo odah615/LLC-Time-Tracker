@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { downloadDesktopSoftwarePackage, DesktopOS } from '../../lib/desktopDownloader';
+import { getManilaDateString } from '../../lib/dateUtils';
 import {
   GraduationCap,
   Users,
@@ -33,6 +34,9 @@ import {
   Layers,
   UserCheck2,
   Activity,
+  Radio,
+  Play,
+  Pause,
 } from 'lucide-react';
 import { TimeLog, User, IdleLog, LeaveRequest } from '../../types';
 import { UserAvatar } from '../UserAvatar';
@@ -75,12 +79,18 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
   const [editTask, setEditTask] = useState('');
   const [editDurationHours, setEditDurationHours] = useState(1);
 
-  // Pagination states (5 per page)
+  // Pagination states (10 per page as required)
+  const ITEMS_PER_PAGE = 10;
+  const [empPage, setEmpPage] = useState(1);
   const [agentPage, setAgentPage] = useState(1);
+  const [timesheetPage, setTimesheetPage] = useState(1);
   const [idlePage, setIdlePage] = useState(1);
   const [leavePage, setLeavePage] = useState(1);
 
-  const ITEMS_PER_PAGE = 5;
+  // Reset employee page on search or filter change
+  useEffect(() => {
+    setEmpPage(1);
+  }, [searchTerm, roleFilter]);
 
   // Filter out Admin accounts from general employee management (Trainers don't manage admin accounts)
   const manageableUsers = users.filter((u) => u.role !== 'admin');
@@ -153,13 +163,19 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
     return items.slice(startIndex, startIndex + perPage);
   };
 
+  const totalEmpPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE) || 1;
   const totalAgentPages = Math.ceil(traineeAgents.length / ITEMS_PER_PAGE) || 1;
+  const totalTimesheetPages = Math.ceil(timeLogs.length / ITEMS_PER_PAGE) || 1;
   const totalIdlePages = Math.ceil(sortedIdleLogs.length / ITEMS_PER_PAGE) || 1;
   const totalLeavePages = Math.ceil(pendingLeaves.length / ITEMS_PER_PAGE) || 1;
 
+  const currentFilteredUsers: User[] = getPaginatedItems<User>(filteredUsers, empPage);
   const currentAgents: User[] = getPaginatedItems<User>(traineeAgents, agentPage);
+  const currentTimeLogs: TimeLog[] = getPaginatedItems<TimeLog>(timeLogs, timesheetPage);
   const currentIdleLogs: IdleLog[] = getPaginatedItems<IdleLog>(sortedIdleLogs, idlePage);
   const currentLeaves: LeaveRequest[] = getPaginatedItems<LeaveRequest>(pendingLeaves, leavePage);
+
+  const todayStr = getManilaDateString();
 
   return (
     <div id="trainer-dashboard-view" className="space-y-6">
@@ -370,14 +386,14 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
-              {filteredUsers.length === 0 ? (
+              {currentFilteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-slate-400">
                     No employees match your search filter criteria.
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map((usr) => {
+                currentFilteredUsers.map((usr) => {
                   return (
                     <tr key={usr.id} className="hover:bg-slate-50/80 transition-colors">
                       {/* ID No. */}
@@ -441,6 +457,48 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
             </tbody>
           </table>
         </div>
+
+        {/* Employee Management Pagination Footer (10 per page) */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200 text-xs text-slate-600">
+          <div>
+            Showing {filteredUsers.length === 0 ? 0 : (empPage - 1) * ITEMS_PER_PAGE + 1} to{' '}
+            {Math.min(empPage * ITEMS_PER_PAGE, filteredUsers.length)} of {filteredUsers.length} employees (Page {empPage} of {totalEmpPages})
+          </div>
+
+          {totalEmpPages > 1 && (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setEmpPage((p) => Math.max(1, p - 1))}
+                disabled={empPage === 1}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent transition-all flex items-center gap-1"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" /> Previous
+              </button>
+
+              {Array.from({ length: totalEmpPages }, (_, i) => i + 1).map((pNum) => (
+                <button
+                  key={pNum}
+                  onClick={() => setEmpPage(pNum)}
+                  className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                    empPage === pNum
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {pNum}
+                </button>
+              ))}
+
+              <button
+                onClick={() => setEmpPage((p) => Math.min(totalEmpPages, p + 1))}
+                disabled={empPage === totalEmpPages}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent transition-all flex items-center gap-1"
+              >
+                Next <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 4. Team Member Details & Monitoring */}
@@ -452,7 +510,7 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
                 <Users className="w-5 h-5 text-indigo-600" /> Trainee & Supervised Roster
               </h3>
               <p className="text-xs text-slate-500">
-                Showing {currentAgents.length} of {traineeAgents.length} active agents/trainees (Page {agentPage} of {totalAgentPages})
+                Showing {currentAgents.length} of {traineeAgents.length} active agents/trainees (Page {agentPage} of {totalAgentPages} • 10 per page)
               </p>
             </div>
 
@@ -494,9 +552,10 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {currentAgents.map((agent) => {
-              const agentLogs = timeLogs.filter((l) => l.userId === agent.id);
-              const lastLog = agentLogs[0];
-              const totalSec = agentLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
+              const agentAllLogs = timeLogs.filter((l) => l.userId === agent.id);
+              const lastLog = agentAllLogs[0];
+              const agentTodayLogs = agentAllLogs.filter((l) => l.date === todayStr);
+              const baseTodaySec = agentTodayLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
 
               const presence = userPresenceList.find((p) => p.userId === agent.id);
               const now = Date.now();
@@ -505,9 +564,12 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
               const isOnline = !!presence && (presence.isOnline || isRecent || !!presence.isTracking);
               const isTracking = !!presence?.isTracking && (isRecent || presence?.isOnline);
               const isIdle = isOnline && !isTracking && (presence?.status === 'idle' || !!presence?.isPaused);
+              const liveActiveSec = isTracking ? (presence?.elapsedSeconds || 0) : 0;
+              const totalTodayTrackedSec = baseTodaySec + liveActiveSec;
+
               const currentTask = isTracking
-                ? (presence?.currentTask || lastLog?.task || 'Training')
-                : (isOnline ? (presence?.currentTask || 'Available / Standby') : (lastLog?.task || 'Shift Concluded'));
+                ? (presence?.currentTask || lastLog?.task || 'Active Task In Progress')
+                : (isOnline ? (presence?.currentTask || 'Web Portal Session') : (lastLog?.task || 'Shift Concluded'));
 
               return (
                 <div
@@ -523,48 +585,54 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
                       />
                       <div>
                         <div className="font-bold text-slate-900 text-sm">{agent.name}</div>
-                        <div className="text-[11px] text-slate-500">{agent.designation}</div>
+                        <div className="text-[11px] text-slate-500 font-mono">#{agent.employeeCode} • {agent.designation}</div>
                       </div>
                     </div>
 
                     {isTracking && (
-                      <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Tracking
+                      <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1.5 shadow-2xs">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 -ml-3" />
+                        Live Tracking
                       </span>
                     )}
                     {isOnline && !isTracking && !isIdle && (
-                      <span className="bg-blue-100 text-blue-800 border border-blue-200 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs">
+                      <span className="bg-blue-100 text-blue-800 border border-blue-200 text-[10px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-2xs">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                         Online
                       </span>
                     )}
                     {isIdle && (
-                      <span className="bg-amber-100 text-amber-800 border border-amber-200 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-2xs">
+                      <span className="bg-amber-100 text-amber-800 border border-amber-200 text-[10px] px-2.5 py-1 rounded-full font-bold flex items-center gap-1 shadow-2xs">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                         Idle
                       </span>
                     )}
                     {!isOnline && (
-                      <span className="bg-slate-100 text-slate-500 border border-slate-200 text-[10px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                      <span className="bg-slate-100 text-slate-500 border border-slate-200 text-[10px] px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                         Offline
                       </span>
                     )}
                   </div>
 
-                  <div className="bg-white p-2.5 rounded-lg text-xs space-y-1.5 border border-slate-200">
-                    <div className="flex justify-between text-slate-700">
-                      <span className="text-slate-500">Current / Last Task:</span>
-                      <strong className="text-indigo-700 truncate max-w-[140px]" title={currentTask}>{currentTask}</strong>
+                  <div className="bg-white p-3 rounded-lg text-xs space-y-2 border border-slate-200">
+                    <div className="flex justify-between items-center text-slate-700">
+                      <span className="text-slate-500 font-medium">Time Tracked Today:</span>
+                      <strong className={`font-mono text-sm ${isTracking ? 'text-emerald-700 font-black' : 'text-slate-900'}`}>
+                        {formatDuration(totalTodayTrackedSec)}
+                        {isTracking && <span className="text-[10px] text-emerald-600 font-bold ml-1 animate-pulse">(live)</span>}
+                      </strong>
                     </div>
-                    <div className="flex justify-between text-slate-700">
-                      <span className="text-slate-500">GEO Timezone:</span>
-                      <span className="text-blue-600 font-mono text-[10px]">{agent.geoCity}</span>
+                    <div className="flex justify-between items-center text-slate-700">
+                      <span className="text-slate-500 font-medium">Current Task:</span>
+                      <span className="text-indigo-700 font-bold truncate max-w-[150px] text-right" title={currentTask}>
+                        {currentTask}
+                      </span>
                     </div>
-                    <div className="flex justify-between text-slate-700">
-                      <span className="text-slate-500">Tracked Today:</span>
-                      <strong className="text-slate-900 font-mono">{formatDuration(totalSec)}</strong>
+                    <div className="flex justify-between items-center text-slate-700 pt-1 border-t border-slate-100 text-[11px]">
+                      <span className="text-slate-400">GEO Timezone:</span>
+                      <span className="text-blue-600 font-mono font-medium">{agent.geoCity || 'Manila (GMT+8)'}</span>
                     </div>
                   </div>
                 </div>
@@ -787,81 +855,131 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
-              {timeLogs.map((log) => {
-                const isEditing = editingLogId === log.id;
+              {currentTimeLogs.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-slate-400">
+                    No timesheet logs available.
+                  </td>
+                </tr>
+              ) : (
+                currentTimeLogs.map((log) => {
+                  const isEditing = editingLogId === log.id;
 
-                return (
-                  <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4 font-bold text-slate-900">
-                      {log.userName}
-                    </td>
+                  return (
+                    <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="py-3.5 px-4 font-bold text-slate-900">
+                        {log.userName}
+                      </td>
 
-                    <td className="py-3.5 px-4 font-mono text-slate-600">
-                      {log.date} ({log.startTime} - {log.endTime})
-                    </td>
+                      <td className="py-3.5 px-4 font-mono text-slate-600">
+                        {log.date} ({log.startTime} - {log.endTime})
+                      </td>
 
-                    <td className="py-3.5 px-4">
-                      {isEditing ? (
-                        <input
-                          type="text"
-                          value={editTask}
-                          onChange={(e) => setEditTask(e.target.value)}
-                          className="bg-white border border-slate-300 rounded p-1 text-xs font-semibold"
-                        />
-                      ) : (
-                        <span className="font-semibold text-indigo-700">{log.task}</span>
-                      )}
-                    </td>
-
-                    <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                      {isEditing ? (
-                        <div className="flex items-center gap-1">
+                      <td className="py-3.5 px-4">
+                        {isEditing ? (
                           <input
-                            type="number"
-                            step="0.1"
-                            value={editDurationHours}
-                            onChange={(e) => setEditDurationHours(Number(e.target.value))}
-                            className="w-16 bg-white border border-slate-300 rounded p-1 text-xs font-mono font-bold"
+                            type="text"
+                            value={editTask}
+                            onChange={(e) => setEditTask(e.target.value)}
+                            className="bg-white border border-slate-300 rounded p-1 text-xs font-semibold"
                           />
-                          <span>hrs</span>
-                        </div>
-                      ) : (
-                        formatDuration(log.durationSeconds)
-                      )}
-                    </td>
+                        ) : (
+                          <span className="font-semibold text-indigo-700">{log.task}</span>
+                        )}
+                      </td>
 
-                    <td className="py-3.5 px-4 text-right space-x-2">
-                      {isEditing ? (
-                        <button
-                          onClick={() => handleSaveEditedLog(log.id)}
-                          className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold text-xs inline-flex items-center gap-1 shadow-sm"
-                        >
-                          <Save className="w-3.5 h-3.5" /> Save
-                        </button>
-                      ) : (
-                        <>
+                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
+                        {isEditing ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={editDurationHours}
+                              onChange={(e) => setEditDurationHours(Number(e.target.value))}
+                              className="w-16 bg-white border border-slate-300 rounded p-1 text-xs font-mono font-bold"
+                            />
+                            <span>hrs</span>
+                          </div>
+                        ) : (
+                          formatDuration(log.durationSeconds)
+                        )}
+                      </td>
+
+                      <td className="py-3.5 px-4 text-right space-x-2">
+                        {isEditing ? (
                           <button
-                            onClick={() => handleStartEditLog(log)}
-                            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200"
-                            title="Directly edit agent timesheet entry"
+                            onClick={() => handleSaveEditedLog(log.id)}
+                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold text-xs inline-flex items-center gap-1 shadow-sm"
                           >
-                            <Edit className="w-3.5 h-3.5" />
+                            <Save className="w-3.5 h-3.5" /> Save
                           </button>
-                          <button
-                            onClick={() => deleteTimeLog(log.id)}
-                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200"
-                            title="Delete log"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleStartEditLog(log)}
+                              className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200"
+                              title="Directly edit agent timesheet entry"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => deleteTimeLog(log.id)}
+                              className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200"
+                              title="Delete log"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
+        </div>
+
+        {/* Timesheet Override Pagination Controls (10 per page) */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200 text-xs text-slate-600">
+          <div>
+            Showing {timeLogs.length === 0 ? 0 : (timesheetPage - 1) * ITEMS_PER_PAGE + 1} to{' '}
+            {Math.min(timesheetPage * ITEMS_PER_PAGE, timeLogs.length)} of {timeLogs.length} timesheet logs (Page {timesheetPage} of {totalTimesheetPages})
+          </div>
+
+          {totalTimesheetPages > 1 && (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setTimesheetPage((p) => Math.max(1, p - 1))}
+                disabled={timesheetPage === 1}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent transition-all flex items-center gap-1"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" /> Previous
+              </button>
+
+              {Array.from({ length: totalTimesheetPages }, (_, i) => i + 1).map((pNum) => (
+                <button
+                  key={pNum}
+                  onClick={() => setTimesheetPage(pNum)}
+                  className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                    timesheetPage === pNum
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {pNum}
+                </button>
+              ))}
+
+              <button
+                onClick={() => setTimesheetPage((p) => Math.min(totalTimesheetPages, p + 1))}
+                disabled={timesheetPage === totalTimesheetPages}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent transition-all flex items-center gap-1"
+              >
+                Next <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
