@@ -1868,41 +1868,107 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setWebSessionWarningCountdown(300);
 
     const now = new Date();
+    const nowMs = Date.now();
+    const nowIso = now.toISOString();
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const dateFormatted = `${monthNames[now.getMonth()]} ${now.getDate().toString().padStart(2, '0')}, ${now.getFullYear()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
     const loginLog: AuditLog = {
       id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      timestamp: now.toISOString(),
+      timestamp: nowIso,
       dateFormatted,
       actorId: user.id,
       actorName: user.name,
       actorRole: user.role,
       category: 'Login',
-      details: `User signed into LLC Time Tracker ${mode === 'software' ? 'Desktop Software App' : 'Web Portal'}.`,
+      details: `User signed into LLC Time Tracker ${mode === 'software' ? 'Desktop Software App' : 'Web Portal'}. Live shift automatically activated.`,
     };
     const updatedAudit = [loginLog, ...auditLogs];
     setAuditLogs(updatedAudit);
 
-    // Active presence broadcast on login:
-    const nowIso = now.toISOString();
+    // Auto-activate live shift tracking immediately upon login
+    const userDesig = user.designation || 'Agent';
+    const allowedTasks = designationTasks[userDesig] || designationTasks['Agent'] || ['Email Reachout', 'Data Entry & Market Research'];
+    const initialTask = allowedTasks[0] || 'Email Reachout';
+
+    setIsTracking(true);
+    setIsPaused(false);
+    setElapsedSeconds(0);
+    setStartTimeIso(nowIso);
+    setCurrentTask(initialTask as TaskCategory);
+    setCurrentDesignation(userDesig);
+    trackingSessionStartMsRef.current = nowMs;
+    lastActiveIntervalStartMsRef.current = nowMs;
+    trackingAccumulatedSecondsRef.current = 0;
+    lastMouseActiveTimestampRef.current = nowMs;
+    lastKeyboardActiveTimestampRef.current = nowMs;
+    mouseActivityHistoryRef.current = [100];
+    keyboardActivityHistoryRef.current = [100];
+    setCurrentMouseActivity(100);
+    setCurrentKeyboardActivity(100);
+    setCurrentInactivitySeconds(0);
+    setSessionIdleDeductionSeconds(0);
+    setIsIdleAlertActive(false);
+    currentTaskSegmentStartMsRef.current = nowMs;
+    currentTaskSegmentStartTimeIsoRef.current = nowIso;
+
+    localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
+      isTracking: true,
+      isPaused: false,
+      startTimeIso: nowIso,
+      startMs: nowMs,
+      lastActiveMs: nowMs,
+      accumulatedSec: 0,
+      task: initialTask,
+      designation: userDesig,
+      currentTaskSegmentStartMs: nowMs,
+      currentTaskSegmentStartTimeIso: nowIso,
+    }));
+
+    // Create daily attendance record
+    const today = getManilaDateString(now);
+    const checkInTime = getManilaTimeString(now);
+    const existingAttendance = dailyAttendanceLogs.find(
+      (a) => a.userId === user.id && a.date === today
+    );
+    let currentAttendanceList = dailyAttendanceLogs;
+    if (!existingAttendance) {
+      const newAtt: DailyAttendanceLog = {
+        id: `att-${user.id}-${today}`,
+        userId: user.id,
+        userName: user.name,
+        employeeCode: user.employeeCode || '',
+        date: today,
+        firstLoginTime: checkInTime,
+        totalLoggedSeconds: 0,
+        totalLoggedHours: 0,
+        status: 'present',
+        syncedToGoogleSheets: true,
+      };
+      currentAttendanceList = [newAtt, ...dailyAttendanceLogs];
+      setDailyAttendanceLogs(currentAttendanceList);
+      localStorage.setItem('trackpulse_attendance', JSON.stringify(currentAttendanceList));
+      safeSetDoc(doc(db, 'system_state', 'attendance'), { data: currentAttendanceList }).catch(() => {});
+    }
+
+    // Active live presence broadcast on login:
     const isDesktop = mode === 'software';
     const loginPresence: UserPresence = {
       userId: user.id,
       userName: user.name,
       employeeCode: user.employeeCode || '',
       role: user.role,
-      designation: user.designation || 'Agent',
+      designation: userDesig,
       department: user.department || 'Operations',
       teamLeaderId: user.teamLeaderId || '',
       isOnline: true,
       status: 'online',
-      isTracking: false,
+      isTracking: true,
       isPaused: false,
       elapsedSeconds: 0,
-      mouseActivity: 0,
-      keyboardActivity: 0,
-      currentTask: isDesktop ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal Active',
-      currentApp: isDesktop ? 'LLC Time Tracker Desktop App' : 'Web Browser',
+      mouseActivity: 100,
+      keyboardActivity: 100,
+      currentTask: initialTask,
+      currentApp: isDesktop ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal',
       lastHeartbeat: nowIso,
       loginTime: nowIso,
       loginPlatform: isDesktop ? 'software' : 'webapp',
@@ -1921,34 +1987,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       safeSetDoc(doc(db, 'system_state', 'presence'), { data: updated }).catch(() => {});
       return updated;
     });
-
-    // Create daily attendance record ONLY if signing into the desktop application software
-    let currentAttendanceList = dailyAttendanceLogs;
-    if (mode === 'software') {
-      const today = getManilaDateString();
-      const existingAttendance = dailyAttendanceLogs.find(
-        (a) => a.userId === user.id && a.date === today
-      );
-      if (!existingAttendance) {
-        const checkInTime = getManilaTimeString(now);
-        const newAtt: DailyAttendanceLog = {
-          id: `att-${user.id}-${today}`,
-          userId: user.id,
-          userName: user.name,
-          employeeCode: user.employeeCode || '',
-          date: today,
-          firstLoginTime: checkInTime,
-          totalLoggedSeconds: 0,
-          totalLoggedHours: 0,
-          status: 'present',
-          syncedToGoogleSheets: true,
-        };
-        currentAttendanceList = [newAtt, ...dailyAttendanceLogs];
-        setDailyAttendanceLogs(currentAttendanceList);
-        localStorage.setItem('trackpulse_attendance', JSON.stringify(currentAttendanceList));
-        safeSetDoc(doc(db, 'system_state', 'attendance'), { data: currentAttendanceList }).catch(() => {});
-      }
-    }
 
     triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, currentAttendanceList, idleLogs, leaveRequests);
   };

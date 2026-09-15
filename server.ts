@@ -298,6 +298,7 @@ app.post('/api/sync-sheets', async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      redirect: 'follow',
     });
 
     const text = await fetchResponse.text();
