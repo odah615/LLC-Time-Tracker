@@ -153,7 +153,7 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
       const userTodayLogs = timeLogs.filter(
         (l) => l.userId === user.id && l.date === todayStr
       );
-      const totalTodaySec = userTodayLogs.reduce(
+      const finishedTodaySec = userTodayLogs.reduce(
         (acc, l) => acc + l.durationSeconds,
         0
       );
@@ -168,6 +168,10 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
           taskElapsedSeconds += Math.floor(diffMs / 1000);
         }
       }
+
+      // Total tracked seconds today = completed logs + active live elapsed session
+      const liveRunningSec = (presenceMode === 'tracking' || presence?.isTracking) ? taskElapsedSeconds : 0;
+      const totalTodaySec = finishedTodaySec + liveRunningSec;
 
       const isTracking = presenceMode === 'tracking';
       let currentTask = 'Shift Concluded';

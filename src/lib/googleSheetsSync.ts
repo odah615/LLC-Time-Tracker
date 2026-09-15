@@ -1118,6 +1118,8 @@ function doPost(e) {
         activeSeen[dedupeKey] = true;
 
         var matchedUser = userMap[t.userId] || userMap[t.userName] || {};
+        var empCode = matchedUser.employeeCode || t.employeeCode || 'N/A';
+        var empName = resolveStaffFullName(empCode, t.userName, matchedUser.name || t.userName, t.userId);
         
         var rawSecs = typeof t.durationSeconds === 'number' ? Math.max(0, Math.floor(t.durationSeconds)) : 0;
         if (!rawSecs && t.startTime && t.endTime && t.endTime !== 'Running Live') {
@@ -1128,6 +1130,19 @@ function doPost(e) {
               if (rawSecs < 0) rawSecs = 0;
             }
           } catch(e) {}
+        }
+        if (rawSecs === 0 && (t.endTime === 'Running Live' || t.status === 'running' || !t.endTime)) {
+          var pUser = presenceMap[t.userId] || presenceMap[empCode] || presenceMap[empName];
+          if (pUser && pUser.elapsedSeconds && pUser.elapsedSeconds > 0) {
+            rawSecs = pUser.elapsedSeconds;
+          } else if (t.startTime) {
+            try {
+              var sMs = new Date(t.startTime).getTime();
+              if (!isNaN(sMs) && nowMs > sMs) {
+                rawSecs = Math.floor((nowMs - sMs) / 1000);
+              }
+            } catch(e) {}
+          }
         }
         var totalTimeHuman = formatTotalTime(rawSecs);
         var idleMins = t.idleSeconds ? Math.round(t.idleSeconds / 60) + ' mins' : '0 mins';
@@ -1154,9 +1169,9 @@ function doPost(e) {
 
         activeRows.push([
           t.id || 'N/A',
-          matchedUser.employeeCode || 'N/A',
-          t.userName || 'Unknown',
-          t.designation || 'Agent',
+          empCode,
+          empName,
+          t.designation || matchedUser.designation || 'Agent',
           t.task || 'General',
           t.date || '',
           sTime,
@@ -1166,7 +1181,7 @@ function doPost(e) {
           idleMins,
           (t.mouseActivityAvg != null ? t.mouseActivityAvg : 0) + '%',
           (t.keyboardActivityAvg != null ? t.keyboardActivityAvg : 0) + '%',
-          t.status || 'completed',
+          t.status || (eTime === 'Running Live' ? 'running' : 'completed'),
           t.notes || ''
         ]);
       });
@@ -1202,9 +1217,9 @@ function doPost(e) {
       rawTimeLogs.forEach(function(t) {
         var d = t.date || (t.startTime ? t.startTime.slice(0, 10) : '2026-09-10');
         var matchedUser = userMap[t.userId] || userMap[t.userName] || {};
-        var empCode = matchedUser.employeeCode || 'N/A';
-        var empName = t.userName || 'Unknown';
-        var dKey = d + '___' + empName;
+        var empCode = matchedUser.employeeCode || t.employeeCode || 'N/A';
+        var empName = resolveStaffFullName(empCode, t.userName, matchedUser.name || t.userName, t.userId);
+        var dKey = d + '___' + (empCode !== 'N/A' ? empCode : empName);
 
         if (!dailyMap[dKey]) {
           dailyMap[dKey] = {
@@ -1233,12 +1248,50 @@ function doPost(e) {
           entry.lastClockOut = t.geoLocalEndTime || t.endTime;
         }
         var sSecs = typeof t.durationSeconds === 'number' ? Math.max(0, Math.floor(t.durationSeconds)) : 0;
+        if (sSecs === 0 && (t.endTime === 'Running Live' || t.status === 'running' || !t.endTime)) {
+          var pUser = presenceMap[t.userId] || presenceMap[empCode] || presenceMap[empName];
+          if (pUser && pUser.elapsedSeconds && pUser.elapsedSeconds > 0) {
+            sSecs = pUser.elapsedSeconds;
+          } else if (t.startTime) {
+            try {
+              var sMs = new Date(t.startTime).getTime();
+              if (!isNaN(sMs) && nowMs > sMs) {
+                sSecs = Math.floor((nowMs - sMs) / 1000);
+              }
+            } catch(e) {}
+          }
+        }
         entry.grossSecs += sSecs;
         entry.idleSecs += (t.idleSeconds || 0);
         entry.mouseSum += (t.mouseActivityAvg || 0);
         entry.keyboardSum += (t.keyboardActivityAvg || 0);
         entry.count += 1;
-        if (t.endTime === 'Running Live' || !t.endTime) entry.hasLive = true;
+        if (t.endTime === 'Running Live' || !t.endTime || t.status === 'running') entry.hasLive = true;
+      });
+
+      // Also ensure all actively tracking users in rawPresenceList for today have a running entry
+      users.forEach(function(u) {
+        var p = presenceMap[u.id] || (u.employeeCode && presenceMap[u.employeeCode]) || presenceMap[u.name];
+        if (p && p.isTracking && p.elapsedSeconds && p.elapsedSeconds > 0) {
+          var dKey = todayStr + '___' + (u.employeeCode || u.name);
+          if (!dailyMap[dKey]) {
+            dailyMap[dKey] = {
+              date: todayStr,
+              code: u.employeeCode || 'N/A',
+              name: u.name,
+              designation: u.designation || 'Agent',
+              tasks: { [p.currentTask || 'Active Work']: true },
+              firstClockIn: p.loginTime ? Utilities.formatDate(new Date(p.loginTime), 'Asia/Manila', 'hh:mm a') : '--:--',
+              lastClockOut: 'Running Live',
+              grossSecs: p.elapsedSeconds,
+              idleSecs: 0,
+              mouseSum: p.mouseActivity || 90,
+              keyboardSum: p.keyboardActivity || 90,
+              count: 1,
+              hasLive: true
+            };
+          }
+        }
       });
 
       var dailyRows = [];
@@ -1292,9 +1345,9 @@ function doPost(e) {
         var weekLabel = 'Week (' + monStr + ' - ' + sunStr + ')';
 
         var matchedUser = userMap[t.userId] || userMap[t.userName] || {};
-        var empCode = matchedUser.employeeCode || 'N/A';
-        var empName = t.userName || 'Unknown';
-        var wKey = weekLabel + '___' + empName;
+        var empCode = matchedUser.employeeCode || t.employeeCode || 'N/A';
+        var empName = resolveStaffFullName(empCode, t.userName, matchedUser.name || t.userName, t.userId);
+        var wKey = weekLabel + '___' + (empCode !== 'N/A' ? empCode : empName);
 
         if (!weeklyMap[wKey]) {
           weeklyMap[wKey] = {
@@ -1316,6 +1369,12 @@ function doPost(e) {
         if (t.task) wEntry.tasks[t.task] = (wEntry.tasks[t.task] || 0) + (t.durationSeconds || 0);
         if (t.date) wEntry.days[t.date] = true;
         var sSecs = typeof t.durationSeconds === 'number' ? Math.max(0, Math.floor(t.durationSeconds)) : 0;
+        if (sSecs === 0 && (t.endTime === 'Running Live' || t.status === 'running' || !t.endTime)) {
+          var pUser = presenceMap[t.userId] || presenceMap[empCode] || presenceMap[empName];
+          if (pUser && pUser.elapsedSeconds && pUser.elapsedSeconds > 0) {
+            sSecs = pUser.elapsedSeconds;
+          }
+        }
         wEntry.grossSecs += sSecs;
         wEntry.idleSecs += (t.idleSeconds || 0);
         wEntry.mouseSum += (t.mouseActivityAvg || 0);

@@ -219,7 +219,7 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
 
       // Today's logs for this user
       const userTodayLogs = timeLogs.filter((l) => l.userId === user.id && l.date === todayStr);
-      const todayTotalSec = userTodayLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
+      const finishedTodaySec = userTodayLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
       const latestLog = userTodayLogs[0] || timeLogs.find((l) => l.userId === user.id);
 
       // Attendance / Login Time
@@ -242,6 +242,10 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
           taskElapsedSeconds += Math.floor(diffMs / 1000);
         }
       }
+
+      // Total hours today = completed finished logs + active live elapsed session
+      const liveRunningSec = (presenceMode === 'tracking' || presence?.isTracking) ? taskElapsedSeconds : 0;
+      const todayTotalSec = finishedTodaySec + liveRunningSec;
 
       // Determine task name
       let currentTaskName = 'Shift Concluded';

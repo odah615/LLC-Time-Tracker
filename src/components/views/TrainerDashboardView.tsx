@@ -837,21 +837,34 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
 
                     <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                       {isTracking ? (
-                        <button
-                          onClick={() => stopAgentLiveShift(agent.id)}
-                          className="w-full py-1.5 px-2.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                          title="Stop Desktop Tracker session and conclude shift for this trainee"
-                        >
-                          <Pause className="w-3.5 h-3.5 text-red-600" /> Conclude Shift / Stop
-                        </button>
+                        <div className="w-full flex items-center justify-between bg-emerald-50/80 border border-emerald-200/80 rounded-lg px-2.5 py-1.5 text-[11px]">
+                          <span className="font-bold text-emerald-800 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                            Auto-Tracking Active
+                          </span>
+                          <button
+                            onClick={() => stopAgentLiveShift(agent.id)}
+                            className="text-[10px] text-red-600 hover:text-red-800 font-bold underline cursor-pointer"
+                            title="Force conclude active shift"
+                          >
+                            Conclude
+                          </button>
+                        </div>
+                      ) : isDesktopOnline ? (
+                        <div className="w-full bg-blue-50/80 border border-blue-200/80 rounded-lg px-2.5 py-1.5 text-[11px] text-blue-700 font-semibold flex items-center justify-center gap-1.5">
+                          <Laptop className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Desktop App Connected (Auto-Standby)</span>
+                        </div>
+                      ) : isWebOnline ? (
+                        <div className="w-full bg-teal-50/80 border border-teal-200/80 rounded-lg px-2.5 py-1.5 text-[11px] text-teal-700 font-semibold flex items-center justify-center gap-1.5">
+                          <Activity className="w-3.5 h-3.5 text-teal-600" />
+                          <span>Web Portal Connected (Auto-Standby)</span>
+                        </div>
                       ) : (
-                        <button
-                          onClick={() => startAgentLiveShift(agent.id, 'Email Reachout')}
-                          className="w-full py-1.5 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                          title="Start live desktop tracking session for this trainee and sync to Google Sheets"
-                        >
-                          <Play className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" /> Start Live Shift
-                        </button>
+                        <div className="w-full bg-slate-100/80 border border-slate-200/80 rounded-lg px-2.5 py-1.5 text-[11px] text-slate-500 font-medium flex items-center justify-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Offline • Auto-Starts on Login</span>
+                        </div>
                       )}
                     </div>
                   </div>
