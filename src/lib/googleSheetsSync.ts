@@ -1,5 +1,5 @@
 import { AuditLog, TimeLog, User, PayrollRecord, DailyAttendanceLog, IdleLog, LeaveRequest, UserPresence } from '../types';
-import { generateUniqueUsername } from './userUtils';
+import { generateUniqueUsername, isPlaceholderName, deduplicateUsers } from './userUtils';
 
 export const DEFAULT_SPREADSHEET_ID = '1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA';
 export const DEFAULT_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA/edit?gid=1299988798#gid=1299988798';
@@ -1721,11 +1721,45 @@ function doGet(e) {
       });
     }
 
+    var presSheet = ss.getSheetByName('Live_Presence') || ss.getSheetByName('Live_Sessions');
+    var presenceList = [];
+    if (presSheet && presSheet.getLastRow() > 1) {
+      var pData = presSheet.getRange(2, 1, presSheet.getLastRow() - 1, 13).getValues();
+      pData.forEach(function(row) {
+        var code = String(row[0] || '').trim();
+        var name = String(row[1] || '').trim();
+        if (!code && !name) return;
+        var pMode = String(row[4] || '').trim();
+        var statusStr = String(row[5] || '').trim();
+        var isTrk = statusStr.indexOf('Live Tracking') !== -1 || statusStr.indexOf('Tracking') !== -1;
+        var isIdl = statusStr.indexOf('Idle') !== -1 || statusStr.indexOf('Break') !== -1;
+        var isDsk = pMode.indexOf('Desktop') !== -1 || statusStr.indexOf('Desktop') !== -1 || isTrk;
+        var isWeb = pMode.indexOf('Website') !== -1 || statusStr.indexOf('Website') !== -1;
+        var isOff = statusStr.indexOf('Offline') !== -1 || (!isTrk && !isIdl && !isDsk && !isWeb);
+
+        presenceList.push({
+          employeeCode: code,
+          userName: name,
+          role: String(row[2] || 'agent').trim(),
+          designation: String(row[3] || 'Agent').trim(),
+          isOnline: !isOff,
+          isTracking: isTrk,
+          isPaused: isIdl,
+          status: isIdl ? 'idle' : (isOff ? 'offline' : 'online'),
+          loginPlatform: isDsk ? 'software' : (isWeb ? 'webapp' : 'webapp'),
+          currentTask: String(row[6] || (isOff ? 'Shift Concluded' : 'Active Task')).trim(),
+          currentApp: String(row[7] || (isDsk ? 'LLC Time Tracker Desktop App' : 'Web Browser')).trim(),
+          lastHeartbeat: String(row[12] || '').trim() || new Date().toISOString()
+        });
+      });
+    }
+
     return ContentService.createTextOutput(JSON.stringify({
       status: 'SUCCESS',
       count: employees.length,
       employees: employees,
       timeLogs: timeLogs,
+      presence: presenceList,
       timestamp: new Date().toISOString()
     })).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
@@ -1863,6 +1897,10 @@ export const fetchEmployeesFromGoogleSheets = async (
             const empName = rawEmp.name || existing?.name || (isSuperAdmin ? 'Red' : `Employee ${code}`);
             const username = (rawEmp.username || existing?.username || (isSuperAdmin ? 'admin' : generateUniqueUsername(empName, existingUsers, existing?.id))).toLowerCase();
 
+            if (isPlaceholderName(empName, username, code)) {
+              return;
+            }
+
             const userObj: User = {
               id: existing ? existing.id : `usr-${code.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
               employeeCode: code,
@@ -1889,11 +1927,12 @@ export const fetchEmployeesFromGoogleSheets = async (
           });
 
           if (importedList.length > 0) {
+            const cleanList = deduplicateUsers(importedList);
             return {
               success: true,
-              employees: importedList,
-              count: importedList.length,
-              message: `Successfully imported ${importedList.length} employee accounts via Google Apps Script Webhook!`,
+              employees: cleanList,
+              count: cleanList.length,
+              message: `Successfully imported ${cleanList.length} employee accounts via Google Apps Script Webhook!`,
             };
           }
         }
@@ -2006,6 +2045,10 @@ export const fetchEmployeesFromGoogleSheets = async (
       const empName = name || existing?.name || (isSuperAdmin ? 'Admin' : `Employee ${code}`);
       const finalUsername = (parsedUsername || existing?.username || (isSuperAdmin ? 'admin' : generateUniqueUsername(empName, existingUsers, existing?.id))).toLowerCase();
 
+      if (isPlaceholderName(empName, finalUsername, code)) {
+        continue;
+      }
+
       const userObj: User = {
         id: existing ? existing.id : `usr-${code.toLowerCase().replace(/[^a-z0-9]/g, '-') || `auto-${i}`}`,
         employeeCode: code || `LLC-${String(i).padStart(4, '0')}`,
@@ -2039,11 +2082,12 @@ export const fetchEmployeesFromGoogleSheets = async (
       importedList.unshift(admin);
     }
 
+    const cleanList = deduplicateUsers(importedList);
     return {
       success: true,
-      employees: importedList,
-      count: importedList.length,
-      message: `Successfully pulled ${importedList.length} employees from Google Sheets Employee_Directory!`,
+      employees: cleanList,
+      count: cleanList.length,
+      message: `Successfully pulled ${cleanList.length} employees from Google Sheets Employee_Directory!`,
     };
   } catch (err: any) {
     return {
@@ -2234,6 +2278,149 @@ export const fetchTimeLogsFromGoogleSheets = async (
     success: false,
     timeLogs: [],
     message: 'Could not extract time logs from Google Sheets. Ensure the sheet has a "Time_Logs" tab and is accessible.',
+  };
+};
+
+/**
+ * Extracts and imports Live Presence directly from the Google Sheets database (Live_Presence or Live_Sessions tab)
+ */
+export const fetchLivePresenceFromGoogleSheets = async (
+  webhookUrl?: string,
+  spreadsheetId: string = DEFAULT_SPREADSHEET_ID,
+  existingUsers: User[] = []
+): Promise<{ success: boolean; presenceList: UserPresence[]; message: string }> => {
+  const userMap = new Map<string, User>();
+  existingUsers.forEach((u) => {
+    if (u.id) userMap.set(u.id, u);
+    if (u.employeeCode) userMap.set(u.employeeCode.toUpperCase().trim(), u);
+    if (u.name) userMap.set(u.name.toLowerCase().trim(), u);
+  });
+
+  // Method 1: Webhook GET
+  if (webhookUrl && isValidWebhookUrl(webhookUrl)) {
+    try {
+      const proxyRes = await fetch(`/api/sync-sheets?url=${encodeURIComponent(webhookUrl.trim())}`);
+      if (proxyRes.ok) {
+        const data = await proxyRes.json();
+        if (data && Array.isArray(data.presence) && data.presence.length > 0) {
+          const list: UserPresence[] = data.presence.map((p: any) => {
+            const matchedUser =
+              (p.employeeCode && userMap.get(p.employeeCode.toUpperCase().trim())) ||
+              (p.userName && userMap.get(p.userName.toLowerCase().trim())) ||
+              (p.userId && userMap.get(p.userId));
+
+            return {
+              userId: matchedUser?.id || p.userId || `usr-${p.employeeCode || Date.now()}`,
+              userName: p.userName || matchedUser?.name || 'Employee',
+              employeeCode: p.employeeCode || matchedUser?.employeeCode || '',
+              role: p.role || matchedUser?.role || 'agent',
+              designation: p.designation || matchedUser?.designation || 'Agent',
+              department: matchedUser?.department || 'Operations',
+              teamLeaderId: matchedUser?.teamLeaderId || '',
+              isOnline: Boolean(p.isOnline),
+              status: p.status || (p.isOnline ? 'online' : 'offline'),
+              isTracking: Boolean(p.isTracking),
+              isPaused: Boolean(p.isPaused),
+              elapsedSeconds: Number(p.elapsedSeconds) || 0,
+              mouseActivity: p.isTracking ? (Number(p.mouseActivity) || 85) : 0,
+              keyboardActivity: p.isTracking ? (Number(p.keyboardActivity) || 90) : 0,
+              currentTask: p.currentTask || (p.isOnline ? 'Active Work' : 'Shift Concluded'),
+              currentApp: p.currentApp || (p.loginPlatform === 'software' ? 'LLC Time Tracker Desktop App' : 'Web Browser'),
+              loginPlatform: p.loginPlatform || 'software',
+              lastHeartbeat: p.lastHeartbeat || new Date().toISOString(),
+            };
+          });
+
+          return {
+            success: true,
+            presenceList: list,
+            message: `Successfully extracted ${list.length} live presence records from Google Sheets!`,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('Webhook GET for presence failed, trying CSV export fallback...', err);
+    }
+  }
+
+  // Method 2: Direct Google Sheets CSV Query for Live_Presence / Live_Sessions tab
+  if (spreadsheetId) {
+    try {
+      const tabsToTry = ['Live_Presence', 'Live_Sessions'];
+      for (const tab of tabsToTry) {
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${tab}`;
+        const response = await fetch(csvUrl);
+        if (response.ok) {
+          const csvText = await response.text();
+          const rows = parseCSVRows(csvText);
+          if (rows.length > 1) {
+            const parsedList: UserPresence[] = [];
+            for (let i = 1; i < rows.length; i++) {
+              const r = rows[i];
+              const code = (r[0] || '').trim();
+              const name = (r[1] || '').trim();
+              if (!code && !name) continue;
+
+              const role = (r[2] || 'agent').trim();
+              const designation = (r[3] || 'Agent').trim();
+              const platformMode = (r[4] || '').trim();
+              const statusStr = (r[5] || '').trim();
+              const taskStr = (r[6] || '').trim();
+              const appStr = (r[7] || '').trim();
+              const isoHb = (r[12] || '').trim();
+
+              const isTracking = statusStr.includes('Live Tracking') || statusStr.includes('Tracking');
+              const isIdle = statusStr.includes('Idle') || statusStr.includes('Break');
+              const isDesktop = platformMode.includes('Desktop') || statusStr.includes('Desktop') || isTracking;
+              const isWeb = platformMode.includes('Website') || statusStr.includes('Website');
+              const isOffline = statusStr.includes('Offline') || (!isTracking && !isIdle && !isDesktop && !isWeb);
+
+              const matchedUser =
+                (code && userMap.get(code.toUpperCase())) ||
+                (name && userMap.get(name.toLowerCase())) ||
+                null;
+
+              parsedList.push({
+                userId: matchedUser?.id || `usr-${code || i}`,
+                userName: name || matchedUser?.name || 'Employee',
+                employeeCode: code || matchedUser?.employeeCode || '',
+                role: (matchedUser?.role || role || 'agent') as any,
+                designation: matchedUser?.designation || designation || 'Agent',
+                department: matchedUser?.department || 'Operations',
+                teamLeaderId: matchedUser?.teamLeaderId || '',
+                isOnline: !isOffline,
+                status: isIdle ? 'idle' : isOffline ? 'offline' : 'online',
+                isTracking: isTracking,
+                isPaused: isIdle,
+                elapsedSeconds: isTracking ? 600 : 0,
+                mouseActivity: isTracking ? 88 : 0,
+                keyboardActivity: isTracking ? 92 : 0,
+                currentTask: taskStr || (isTracking ? 'Active Task' : isOffline ? 'Shift Concluded' : 'Desktop Standby'),
+                currentApp: appStr || (isDesktop ? 'LLC Time Tracker Desktop App' : 'Web Browser'),
+                loginPlatform: isDesktop ? 'software' : 'webapp',
+                lastHeartbeat: isoHb || new Date().toISOString(),
+              });
+            }
+
+            if (parsedList.length > 0) {
+              return {
+                success: true,
+                presenceList: parsedList,
+                message: `Successfully extracted ${parsedList.length} live presence records from Google Sheets tab "${tab}"!`,
+              };
+            }
+          }
+        }
+      }
+    } catch (csvErr) {
+      console.warn('CSV export fallback for presence failed:', csvErr);
+    }
+  }
+
+  return {
+    success: false,
+    presenceList: [],
+    message: 'Could not extract live presence from Google Sheets. Ensure sheet has a "Live_Presence" tab.',
   };
 };
 

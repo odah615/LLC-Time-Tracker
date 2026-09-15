@@ -34,6 +34,7 @@ import {
   Legend,
 } from 'recharts';
 import { TASK_LIST } from '../../data/initialData';
+import { TimeLog } from '../../types';
 import { UserAvatar } from '../UserAvatar';
 
 interface TimesheetViewProps {
@@ -49,6 +50,9 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
 }) => {
   const {
     timeLogs,
+    users,
+    userPresenceList,
+    dailyAttendanceLogs,
     currentUser,
     deleteTimeLog,
     formatDuration,
@@ -132,7 +136,15 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
       const parts = candidate.split('/');
       if (parts.length === 3) {
         if (parts[2].length === 4) {
-          // MM/DD/YYYY
+          const p0 = parseInt(parts[0], 10);
+          const p1 = parseInt(parts[1], 10);
+          if (p0 > 12) {
+            // DD/MM/YYYY
+            return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+          } else if (p1 > 12) {
+            // MM/DD/YYYY
+            return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+          }
           return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
         } else if (parts[0].length === 4) {
           // YYYY/MM/DD
@@ -143,6 +155,78 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     if (candidate.includes('T')) return candidate.split('T')[0];
     return candidate;
   };
+
+  // Combine completed historical time logs with active live shifts for today
+  const allAvailableLogs = useMemo(() => {
+    const list: TimeLog[] = [...timeLogs];
+    const today = getManilaDateString();
+
+    users.forEach((u) => {
+      // Check if user already has completed timeLogs for today
+      const hasTodayLog = list.some(
+        (l) =>
+          (l.userId === u.id || ((l as any).employeeCode && (l as any).employeeCode === u.employeeCode)) &&
+          normalizeDate(l.date, l.startTime) === today
+      );
+
+      const isCurrentActiveUser = currentUser?.id === u.id && isTracking;
+
+      const presence = userPresenceList.find(
+        (p) =>
+          p.userId === u.id ||
+          (p.employeeCode && u.employeeCode && p.employeeCode.toUpperCase() === u.employeeCode.toUpperCase()) ||
+          (p.userName && u.name && p.userName.toLowerCase().trim() === u.name.toLowerCase().trim())
+      );
+
+      const attendance = dailyAttendanceLogs.find(
+        (a) => (a.userId === u.id || a.userName === u.name) && normalizeDate(a.date) === today
+      );
+
+      const isUserTracking =
+        isCurrentActiveUser ||
+        presence?.isTracking ||
+        (presence?.isOnline && (presence?.elapsedSeconds || 0) > 0);
+
+      const liveElapsed = isCurrentActiveUser
+        ? Math.max(elapsedSeconds, 1)
+        : (presence?.elapsedSeconds || attendance?.totalWorkSeconds || 0);
+
+      // If user is currently tracking OR has active check-in today and no finalized log exists yet
+      if (!hasTodayLog && (isUserTracking || liveElapsed > 0 || attendance?.checkInTime)) {
+        const activeTask = isCurrentActiveUser
+          ? (currentTask || 'Active Shift')
+          : (presence?.currentTask || attendance?.currentTask || 'Active Shift');
+
+        const liveStartTime =
+          presence?.startTime ||
+          attendance?.checkInTime ||
+          new Date(Date.now() - Math.max(liveElapsed, 60) * 1000).toISOString();
+
+        list.unshift({
+          id: `live-ongoing-${u.id}-${today}`,
+          userId: u.id,
+          userName: u.name,
+          userAvatar: u.avatar || '',
+          designation: u.designation || 'Agent',
+          task: activeTask,
+          date: today,
+          startTime: liveStartTime,
+          endTime: isUserTracking ? 'In Progress (Live)' : (attendance?.checkOutTime || 'Active Shift'),
+          durationSeconds: Math.max(liveElapsed, 60),
+          status: isUserTracking ? 'running' : 'completed',
+          geoTimezone: u.geoTimezone || 'Asia/Manila',
+          geoLocalStartTime: new Date(liveStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+          appsUsed: [],
+          idleSeconds: presence?.idleDeductionSeconds || attendance?.idleDeductionsSeconds || 0,
+          mouseActivityAvg: presence?.mouseActivity ?? 95,
+          keyboardActivityAvg: presence?.keyboardActivity ?? 95,
+          notes: isUserTracking ? 'Live Active Shift' : 'Daily Attendance Log',
+        });
+      }
+    });
+
+    return list;
+  }, [timeLogs, users, userPresenceList, dailyAttendanceLogs, currentUser, isTracking, currentTask, elapsedSeconds]);
 
   // Helper: Determine date matching based on view tab
   const isLogInPeriod = (logDateStr: string, mode: ViewTabMode, startTimeIso?: string) => {
@@ -192,46 +276,57 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
   };
 
   // General Filtered logs based on mode (isPersonalOnly or team view), period, task filter, and agent search query
+  // Chronologically sorted from newest to oldest
   const filteredLogs = useMemo(() => {
-    return timeLogs.filter((log) => {
-      // If personal view mode OR agent role, match flexibly across userId, employeeCode, and userName
-      if (isPersonalOnly || currentUser.role === 'agent') {
-        const uId = (currentUser.id || '').trim().toLowerCase();
-        const uCode = (currentUser.employeeCode || '').trim().toLowerCase();
-        const uName = (currentUser.name || '').trim().toLowerCase();
-        const uUsername = ((currentUser as any).username || '').trim().toLowerCase();
+    return allAvailableLogs
+      .filter((log) => {
+        // If personal view mode OR agent role, match flexibly across userId, employeeCode, and userName
+        if (isPersonalOnly || currentUser.role === 'agent') {
+          const uId = (currentUser.id || '').trim().toLowerCase();
+          const uCode = (currentUser.employeeCode || '').trim().toLowerCase();
+          const uName = (currentUser.name || '').trim().toLowerCase();
+          const uUsername = ((currentUser as any).username || '').trim().toLowerCase();
 
-        const logUId = (log.userId || '').trim().toLowerCase();
-        const logEmpCode = ((log as any).employeeCode || '').trim().toLowerCase();
-        const logUName = (log.userName || '').trim().toLowerCase();
+          const logUId = (log.userId || '').trim().toLowerCase();
+          const logEmpCode = ((log as any).employeeCode || '').trim().toLowerCase();
+          const logUName = (log.userName || '').trim().toLowerCase();
 
-        const matchesUser =
-          (logUId && (logUId === uId || (uCode && logUId === uCode) || (uUsername && logUId === uUsername))) ||
-          (logEmpCode && (logEmpCode === uCode || logEmpCode === uId)) ||
-          (logUName && uName && (logUName === uName || logUName.includes(uName) || uName.includes(logUName)));
+          const matchesUser =
+            (logUId && (logUId === uId || (uCode && logUId === uCode) || (uUsername && logUId === uUsername))) ||
+            (logEmpCode && (logEmpCode === uCode || logEmpCode === uId)) ||
+            (logUName && uName && (logUName === uName || logUName.includes(uName) || uName.includes(logUName)));
 
-        if (!matchesUser) return false;
-      }
+          if (!matchesUser) return false;
+        }
 
-      // Period filter (Daily / Weekly / Monthly) with date normalization
-      const matchesPeriod = isLogInPeriod(log.date, viewTab, log.startTime);
+        // Period filter (Daily / Weekly / Monthly) with date normalization
+        const matchesPeriod = isLogInPeriod(log.date, viewTab, log.startTime);
 
-      // Task category filter
-      const matchesTask = selectedTaskFilter === 'ALL' || log.task === selectedTaskFilter;
+        // Task category filter
+        const matchesTask = selectedTaskFilter === 'ALL' || log.task === selectedTaskFilter;
 
-      // Search query filter (Agent Name / Designation / Employee Code)
-      const query = agentSearch.trim().toLowerCase();
-      const matchesSearch =
-        isPersonalOnly ||
-        !query ||
-        log.userName.toLowerCase().includes(query) ||
-        log.designation.toLowerCase().includes(query) ||
-        log.userId.toLowerCase().includes(query);
+        // Search query filter (Agent Name / Designation / Employee Code)
+        const query = agentSearch.trim().toLowerCase();
+        const matchesSearch =
+          isPersonalOnly ||
+          !query ||
+          log.userName.toLowerCase().includes(query) ||
+          log.designation.toLowerCase().includes(query) ||
+          log.userId.toLowerCase().includes(query);
 
-      return matchesPeriod && matchesTask && matchesSearch;
-    });
+        return matchesPeriod && matchesTask && matchesSearch;
+      })
+      .sort((a, b) => {
+        const getTs = (l: TimeLog) => {
+          if (l.startTime && !isNaN(Date.parse(l.startTime))) return new Date(l.startTime).getTime();
+          if (l.date && !isNaN(Date.parse(l.date))) return new Date(l.date).getTime();
+          if ((l as any).timestamp && !isNaN(Date.parse((l as any).timestamp))) return new Date((l as any).timestamp).getTime();
+          return 0;
+        };
+        return getTs(b) - getTs(a);
+      });
   }, [
-    timeLogs,
+    allAvailableLogs,
     currentUser,
     isPersonalOnly,
     viewTab,
@@ -775,33 +870,84 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
 
             {/* Dynamic Date Controls per ViewTab */}
             {viewTab === 'daily' && (
-              <div className="relative flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm hover:bg-slate-100/80 transition-all cursor-pointer">
-                <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0 pointer-events-none" />
-                <span className="text-xs font-semibold text-slate-500 select-none pointer-events-none">Date:</span>
-                <span className="text-xs font-semibold text-slate-800 pointer-events-none">
-                  {formatDateDDMMYYYY(anchorDate)}
-                </span>
-                <input
-                  type="date"
-                  value={anchorDate}
-                  onChange={(e) => {
-                    setAnchorDate(e.target.value);
-                    const w = getMondayFriday(e.target.value);
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date(anchorDate || todayStr);
+                    d.setDate(d.getDate() - 1);
+                    const prev = getManilaDateString(d);
+                    setAnchorDate(prev);
+                    const w = getMondayFriday(prev);
                     setWeekStartDate(w.start);
                     setWeekEndDate(w.end);
-                    const d = new Date(e.target.value);
-                    if (!isNaN(d.getTime())) {
-                      setSelectedMonth(d.getMonth());
-                      setSelectedYear(d.getFullYear());
-                    }
                   }}
-                  onClick={(e) => {
-                    try {
-                      (e.currentTarget as HTMLInputElement).showPicker?.();
-                    } catch {}
+                  className="p-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 transition-all"
+                  title="Previous Day"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+
+                <div className="relative flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm hover:bg-slate-100/80 transition-all cursor-pointer">
+                  <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0 pointer-events-none" />
+                  <span className="text-xs font-semibold text-slate-500 select-none pointer-events-none">Date:</span>
+                  <span className="text-xs font-semibold text-slate-800 pointer-events-none">
+                    {formatDateDDMMYYYY(anchorDate)}
+                  </span>
+                  <input
+                    type="date"
+                    value={anchorDate}
+                    onChange={(e) => {
+                      setAnchorDate(e.target.value);
+                      const w = getMondayFriday(e.target.value);
+                      setWeekStartDate(w.start);
+                      setWeekEndDate(w.end);
+                      const d = new Date(e.target.value);
+                      if (!isNaN(d.getTime())) {
+                        setSelectedMonth(d.getMonth());
+                        setSelectedYear(d.getFullYear());
+                      }
+                    }}
+                    onClick={(e) => {
+                      try {
+                        (e.currentTarget as HTMLInputElement).showPicker?.();
+                      } catch {}
+                    }}
+                    className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const d = new Date(anchorDate || todayStr);
+                    d.setDate(d.getDate() + 1);
+                    const next = getManilaDateString(d);
+                    setAnchorDate(next);
+                    const w = getMondayFriday(next);
+                    setWeekStartDate(w.start);
+                    setWeekEndDate(w.end);
                   }}
-                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
-                />
+                  className="p-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 transition-all"
+                  title="Next Day"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+
+                {anchorDate !== todayStr && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAnchorDate(todayStr);
+                      const w = getMondayFriday(todayStr);
+                      setWeekStartDate(w.start);
+                      setWeekEndDate(w.end);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold hover:bg-blue-100 transition-all shadow-sm"
+                  >
+                    Today
+                  </button>
+                )}
               </div>
             )}
 

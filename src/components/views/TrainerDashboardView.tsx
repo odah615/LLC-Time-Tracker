@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { downloadDesktopSoftwarePackage, DesktopOS } from '../../lib/desktopDownloader';
 import { getManilaDateString } from '../../lib/dateUtils';
@@ -37,6 +37,9 @@ import {
   Radio,
   Play,
   Pause,
+  X,
+  RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 import { TimeLog, User, IdleLog, LeaveRequest } from '../../types';
 import { UserAvatar } from '../UserAvatar';
@@ -58,13 +61,20 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
     timeLogs,
     idleLogs,
     leaveRequests,
+    addTimeLog,
     updateTimeLog,
     deleteTimeLog,
     updateUser,
     approveLeaveRequest,
     rejectLeaveRequest,
     formatDuration,
+    startAgentLiveShift,
+    stopAgentLiveShift,
+    simulateActiveTraineesShift,
+    syncAllFromGoogleSheets,
   } = useApp();
+
+  const [isPullingSheets, setIsPullingSheets] = useState(false);
 
   // Desktop App OS Selection State
   const [selectedOS, setSelectedOS] = useState<DesktopOS>('windows');
@@ -74,10 +84,22 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
 
-  // Timesheet Override Edit State
+  // Timesheet Override Search & Filter states
+  const [timesheetSearch, setTimesheetSearch] = useState('');
+  const [timesheetFilter, setTimesheetFilter] = useState<'all' | 'today' | 'recent'>('all');
+
+  // Timesheet Override Edit & Add Modal State
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [editTask, setEditTask] = useState('');
-  const [editDurationHours, setEditDurationHours] = useState(1);
+  const [editDurationHours, setEditDurationHours] = useState<number>(0);
+
+  // Manual Add Timesheet Modal State
+  const [showAddLogModal, setShowAddLogModal] = useState(false);
+  const [newLogUserId, setNewLogUserId] = useState('');
+  const [newLogDate, setNewLogDate] = useState(getManilaDateString());
+  const [newLogTask, setNewLogTask] = useState('Email Reachout');
+  const [newLogHours, setNewLogHours] = useState(8);
+  const [newLogNotes, setNewLogNotes] = useState('Trainer direct manual entry');
 
   // Pagination states (10 per page as required)
   const ITEMS_PER_PAGE = 10;
@@ -86,6 +108,11 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
   const [timesheetPage, setTimesheetPage] = useState(1);
   const [idlePage, setIdlePage] = useState(1);
   const [leavePage, setLeavePage] = useState(1);
+
+  // Reset timesheet page on search or filter change
+  useEffect(() => {
+    setTimesheetPage(1);
+  }, [timesheetSearch, timesheetFilter]);
 
   // Reset employee page on search or filter change
   useEffect(() => {
@@ -157,6 +184,118 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
     setEditingLogId(null);
   };
 
+  // Direct manual time log creation by trainer
+  const handleCreateDirectTimeLog = (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetUser = users.find((u) => u.id === (newLogUserId || traineeAgents[0]?.id)) || currentUser;
+    if (!targetUser) return;
+
+    const todayDate = newLogDate || getManilaDateString();
+    const startIso = `${todayDate}T09:00:00.000Z`;
+    const endIso = `${todayDate}T17:00:00.000Z`;
+
+    addTimeLog({
+      userId: targetUser.id,
+      userName: targetUser.name,
+      userAvatar: '',
+      designation: targetUser.designation || 'Agent',
+      task: newLogTask as any,
+      startTime: startIso,
+      endTime: endIso,
+      durationSeconds: Math.round(Number(newLogHours) * 3600),
+      status: 'completed',
+      geoTimezone: 'Asia/Manila',
+      geoLocalStartTime: '09:00 AM',
+      geoLocalEndTime: '05:00 PM',
+      mouseActivityAvg: 95,
+      keyboardActivityAvg: 92,
+      idleSeconds: 0,
+      date: todayDate,
+      notes: newLogNotes || 'Trainer direct timesheet manual override',
+      appsUsed: [{ appName: 'LLC Time Tracker Desktop App', icon: 'laptop', durationSeconds: Math.round(Number(newLogHours) * 3600), category: 'productive' }],
+    });
+
+    setShowAddLogModal(false);
+  };
+
+  // Quick populate today's timesheet logs for all active trainees
+  const handleQuickPopulateTodayLogs = () => {
+    const today = getManilaDateString();
+    const targetAgents = traineeAgents.length > 0 ? traineeAgents.slice(0, 5) : users.filter(u => u.role === 'agent').slice(0, 5);
+
+    targetAgents.forEach((agent) => {
+      // Check if already logged today
+      const alreadyLogged = timeLogs.some(l => l.userId === agent.id && l.date === today);
+      if (!alreadyLogged) {
+        addTimeLog({
+          userId: agent.id,
+          userName: agent.name,
+          userAvatar: '',
+          designation: agent.designation || 'Agent',
+          task: 'Email Reachout',
+          startTime: `${today}T09:00:00.000Z`,
+          endTime: `${today}T17:00:00.000Z`,
+          durationSeconds: 8 * 3600,
+          status: 'completed',
+          geoTimezone: 'Asia/Manila',
+          geoLocalStartTime: '09:00 AM',
+          geoLocalEndTime: '05:00 PM',
+          mouseActivityAvg: 94,
+          keyboardActivityAvg: 90,
+          idleSeconds: 0,
+          date: today,
+          notes: 'Trainer auto-populated shift record for today',
+          appsUsed: [{ appName: 'LLC Time Tracker Desktop App', icon: 'laptop', durationSeconds: 8 * 3600, category: 'productive' }],
+        });
+      }
+    });
+  };
+
+  // Normalized and chronologically sorted time logs (Strictly Newest / Latest on top)
+  const sortedFilteredTimeLogs: TimeLog[] = useMemo(() => {
+    const query = timesheetSearch.trim().toLowerCase();
+    const today = getManilaDateString();
+
+    return [...timeLogs]
+      .filter((log) => {
+        const matchesSearch =
+          !query ||
+          log.userName.toLowerCase().includes(query) ||
+          log.task.toLowerCase().includes(query) ||
+          (log.userId && log.userId.toLowerCase().includes(query)) ||
+          ((log as any).employeeCode && String((log as any).employeeCode).toLowerCase().includes(query));
+
+        if (!matchesSearch) return false;
+
+        if (timesheetFilter === 'today') {
+          const normDate = log.date || (log.startTime ? log.startTime.split('T')[0] : '');
+          return normDate === today;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const getTimestamp = (l: TimeLog) => {
+          if (l.startTime && !isNaN(Date.parse(l.startTime))) {
+            return new Date(l.startTime).getTime();
+          }
+          if (l.date) {
+            // Treat YYYY-MM-DD as 23:59:59 to compare properly with earlier timestamps on same day if needed
+            const parsed = new Date(`${l.date}T12:00:00Z`).getTime();
+            if (!isNaN(parsed)) return parsed;
+          }
+          if ((l as any).timestamp) {
+            const parsed = new Date((l as any).timestamp).getTime();
+            if (!isNaN(parsed)) return parsed;
+          }
+          return 0;
+        };
+        const diff = getTimestamp(b) - getTimestamp(a);
+        if (diff !== 0) return diff;
+        // Secondary stable sort by date string descending
+        return (b.date || '').localeCompare(a.date || '');
+      });
+  }, [timeLogs, timesheetSearch, timesheetFilter]);
+
   // Pagination Slice Helper
   const getPaginatedItems = <T,>(items: T[], page: number, perPage: number = ITEMS_PER_PAGE): T[] => {
     const startIndex = (page - 1) * perPage;
@@ -165,13 +304,13 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
 
   const totalEmpPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE) || 1;
   const totalAgentPages = Math.ceil(traineeAgents.length / ITEMS_PER_PAGE) || 1;
-  const totalTimesheetPages = Math.ceil(timeLogs.length / ITEMS_PER_PAGE) || 1;
+  const totalTimesheetPages = Math.ceil(sortedFilteredTimeLogs.length / ITEMS_PER_PAGE) || 1;
   const totalIdlePages = Math.ceil(sortedIdleLogs.length / ITEMS_PER_PAGE) || 1;
   const totalLeavePages = Math.ceil(pendingLeaves.length / ITEMS_PER_PAGE) || 1;
 
   const currentFilteredUsers: User[] = getPaginatedItems<User>(filteredUsers, empPage);
   const currentAgents: User[] = getPaginatedItems<User>(traineeAgents, agentPage);
-  const currentTimeLogs: TimeLog[] = getPaginatedItems<TimeLog>(timeLogs, timesheetPage);
+  const currentTimeLogs: TimeLog[] = getPaginatedItems<TimeLog>(sortedFilteredTimeLogs, timesheetPage);
   const currentIdleLogs: IdleLog[] = getPaginatedItems<IdleLog>(sortedIdleLogs, idlePage);
   const currentLeaves: LeaveRequest[] = getPaginatedItems<LeaveRequest>(pendingLeaves, leavePage);
 
@@ -514,40 +653,65 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
               </p>
             </div>
 
-            {/* Pagination Controls */}
-            {totalAgentPages > 1 && (
-              <div className="flex items-center gap-1.5 self-end sm:self-auto">
-                <button
-                  onClick={() => setAgentPage((prev) => Math.max(prev - 1, 1))}
-                  disabled={agentPage === 1}
-                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent transition-all flex items-center gap-1"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" /> Back
-                </button>
+            <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto">
+              <button
+                onClick={async () => {
+                  setIsPullingSheets(true);
+                  await syncAllFromGoogleSheets();
+                  setIsPullingSheets(false);
+                }}
+                disabled={isPullingSheets}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
+                title="Pull real-time presence & trainee data directly from Google Sheets"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isPullingSheets ? 'animate-spin' : ''}`} />
+                <span>{isPullingSheets ? 'Pulling Sheets...' : 'Pull Google Sheets'}</span>
+              </button>
 
-                {Array.from({ length: totalAgentPages }, (_, i) => i + 1).map((pNum) => (
+              <button
+                onClick={simulateActiveTraineesShift}
+                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title="Activate live desktop tracking session for trainees to verify real-time monitoring and sheet sync"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>⚡ Test: Activate Live Shift</span>
+              </button>
+
+              {/* Pagination Controls */}
+              {totalAgentPages > 1 && (
+                <div className="flex items-center gap-1.5">
                   <button
-                    key={pNum}
-                    onClick={() => setAgentPage(pNum)}
-                    className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
-                      agentPage === pNum
-                        ? 'bg-indigo-600 text-white font-bold shadow-sm'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
+                    onClick={() => setAgentPage((prev) => Math.max(prev - 1, 1))}
+                    disabled={agentPage === 1}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent transition-all flex items-center gap-1"
                   >
-                    {pNum}
+                    <ChevronLeft className="w-3.5 h-3.5" /> Back
                   </button>
-                ))}
 
-                <button
-                  onClick={() => setAgentPage((prev) => Math.min(prev + 1, totalAgentPages))}
-                  disabled={agentPage === totalAgentPages}
-                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent transition-all flex items-center gap-1"
-                >
-                  Next <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
+                  {Array.from({ length: totalAgentPages }, (_, i) => i + 1).map((pNum) => (
+                    <button
+                      key={pNum}
+                      onClick={() => setAgentPage(pNum)}
+                      className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                        agentPage === pNum
+                          ? 'bg-indigo-600 text-white font-bold shadow-sm'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {pNum}
+                    </button>
+                  ))}
+
+                  <button
+                    onClick={() => setAgentPage((prev) => Math.min(prev + 1, totalAgentPages))}
+                    disabled={agentPage === totalAgentPages}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent transition-all flex items-center gap-1"
+                  >
+                    Next <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -669,6 +833,26 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
                     <div className="flex justify-between items-center text-slate-700 pt-1 border-t border-slate-100 text-[11px]">
                       <span className="text-slate-400">Device Timezone:</span>
                       <span className="text-blue-600 font-mono font-medium">{deviceTimezoneDisplay}</span>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                      {isTracking ? (
+                        <button
+                          onClick={() => stopAgentLiveShift(agent.id)}
+                          className="w-full py-1.5 px-2.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                          title="Stop Desktop Tracker session and conclude shift for this trainee"
+                        >
+                          <Pause className="w-3.5 h-3.5 text-red-600" /> Conclude Shift / Stop
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => startAgentLiveShift(agent.id, 'Email Reachout')}
+                          className="w-full py-1.5 px-2.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                          title="Start live desktop tracking session for this trainee and sync to Google Sheets"
+                        >
+                          <Play className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600" /> Start Live Shift
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -870,13 +1054,97 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
 
       {/* 5. Direct Trainer Timesheet Override Controls */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-        <div>
-          <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
-            <Clock className="w-5 h-5 text-indigo-600" /> Trainer Direct Timesheet Override Controls
-          </h3>
-          <p className="text-xs text-slate-500">
-            Trainers can update or correct agent time entries directly without waiting for manual request submissions.
-          </p>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+          <div>
+            <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-indigo-600" /> Trainer Direct Timesheet Override Controls
+            </h3>
+            <p className="text-xs text-slate-500">
+              Sorted from <strong>latest to oldest</strong>. Trainers can update or correct agent time entries directly without waiting for manual request submissions.
+            </p>
+          </div>
+
+          {/* Search & Period Filter & Add Buttons */}
+          <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto">
+            <button
+              onClick={() => {
+                setNewLogUserId(traineeAgents[0]?.id || users.find(u => u.role === 'agent')?.id || currentUser?.id || '');
+                setNewLogDate(getManilaDateString());
+                setNewLogTask('Email Reachout');
+                setNewLogHours(8);
+                setShowAddLogModal(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Add a manual timesheet entry for any trainee or agent directly"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Add Timesheet Entry</span>
+            </button>
+
+            <button
+              onClick={handleQuickPopulateTodayLogs}
+              className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Quickly populate standard shift records for today for active trainees"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <span>⚡ Populate Today's Shifts</span>
+            </button>
+
+            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500 transition-all shadow-sm flex-1 sm:w-48">
+              <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                value={timesheetSearch}
+                onChange={(e) => {
+                  setTimesheetSearch(e.target.value);
+                  setTimesheetPage(1);
+                }}
+                placeholder="Search agent or task..."
+                className="bg-transparent text-slate-800 text-xs font-medium focus:outline-none w-full"
+              />
+              {timesheetSearch && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTimesheetSearch('');
+                    setTimesheetPage(1);
+                  }}
+                  className="p-0.5 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+              <button
+                onClick={() => {
+                  setTimesheetFilter('all');
+                  setTimesheetPage(1);
+                }}
+                className={`px-3 py-1 rounded-lg transition-all ${
+                  timesheetFilter === 'all'
+                    ? 'bg-white text-indigo-700 shadow-sm font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                All Logs
+              </button>
+              <button
+                onClick={() => {
+                  setTimesheetFilter('today');
+                  setTimesheetPage(1);
+                }}
+                className={`px-3 py-1 rounded-lg transition-all ${
+                  timesheetFilter === 'today'
+                    ? 'bg-white text-indigo-700 shadow-sm font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Today ({getManilaDateString()})
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -884,7 +1152,7 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
             <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
               <tr>
                 <th className="py-3 px-4">Agent Name</th>
-                <th className="py-3 px-4">Date & Time</th>
+                <th className="py-3 px-4">Date & Session Time (Latest First)</th>
                 <th className="py-3 px-4">Task Category</th>
                 <th className="py-3 px-4">Logged Duration</th>
                 <th className="py-3 px-4 text-right">Trainer Direct Edit</th>
@@ -893,22 +1161,80 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {currentTimeLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-slate-400">
-                    No timesheet logs available.
+                  <td colSpan={5} className="py-10 text-center text-slate-500">
+                    <div className="max-w-md mx-auto space-y-3">
+                      <Clock className="w-8 h-8 text-indigo-400 mx-auto" />
+                      <div className="font-bold text-slate-800 text-sm">
+                        {timesheetFilter === 'today'
+                          ? `No timesheet records recorded for today (${getManilaDateString()}) yet.`
+                          : 'No timesheet logs matching your filters.'}
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        {timesheetFilter === 'today'
+                          ? 'Timesheet records automatically generate when agents start tracking on the desktop software, or you can record entries directly now.'
+                          : 'Try resetting your search query or switching filters.'}
+                      </p>
+                      {timesheetFilter === 'today' && (
+                        <div className="flex items-center justify-center gap-2 pt-2">
+                          <button
+                            onClick={handleQuickPopulateTodayLogs}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          >
+                            ⚡ Auto-Populate Today's Shifts for Trainees
+                          </button>
+                          <button
+                            onClick={() => {
+                              setNewLogUserId(traineeAgents[0]?.id || '');
+                              setNewLogDate(getManilaDateString());
+                              setShowAddLogModal(true);
+                            }}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          >
+                            + Add Single Time Log
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : (
                 currentTimeLogs.map((log) => {
                   const isEditing = editingLogId === log.id;
 
+                  // Clean date and time range formatting
+                  const formatCleanTime = (timeStr?: string) => {
+                    if (!timeStr) return '';
+                    if (timeStr.includes('T') || timeStr.endsWith('Z')) {
+                      const d = new Date(timeStr);
+                      if (!isNaN(d.getTime())) {
+                        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                      }
+                    }
+                    return timeStr;
+                  };
+
+                  const cleanStartTime = formatCleanTime(log.startTime);
+                  const cleanEndTime = formatCleanTime(log.endTime);
+                  const timeRangeStr = cleanStartTime && cleanEndTime
+                    ? `${cleanStartTime} - ${cleanEndTime}`
+                    : cleanStartTime
+                    ? `Started ${cleanStartTime}`
+                    : 'Full Shift';
+
                   return (
                     <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3.5 px-4 font-bold text-slate-900">
-                        {log.userName}
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">
+                            {log.userName.charAt(0)}
+                          </div>
+                          <span>{log.userName}</span>
+                        </div>
                       </td>
 
                       <td className="py-3.5 px-4 font-mono text-slate-600">
-                        {log.date} ({log.startTime} - {log.endTime})
+                        <div className="font-semibold text-slate-900">{log.date}</div>
+                        <div className="text-[11px] text-slate-500">{timeRangeStr}</div>
                       </td>
 
                       <td className="py-3.5 px-4">
@@ -920,7 +1246,9 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
                             className="bg-white border border-slate-300 rounded p-1 text-xs font-semibold"
                           />
                         ) : (
-                          <span className="font-semibold text-indigo-700">{log.task}</span>
+                          <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100/80">
+                            {log.task}
+                          </span>
                         )}
                       </td>
 
@@ -979,8 +1307,8 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
         {/* Timesheet Override Pagination Controls (10 per page) */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-200 text-xs text-slate-600">
           <div>
-            Showing {timeLogs.length === 0 ? 0 : (timesheetPage - 1) * ITEMS_PER_PAGE + 1} to{' '}
-            {Math.min(timesheetPage * ITEMS_PER_PAGE, timeLogs.length)} of {timeLogs.length} timesheet logs (Page {timesheetPage} of {totalTimesheetPages})
+            Showing {sortedFilteredTimeLogs.length === 0 ? 0 : (timesheetPage - 1) * ITEMS_PER_PAGE + 1} to{' '}
+            {Math.min(timesheetPage * ITEMS_PER_PAGE, sortedFilteredTimeLogs.length)} of {sortedFilteredTimeLogs.length} timesheet logs (Page {timesheetPage} of {totalTimesheetPages})
           </div>
 
           {totalTimesheetPages > 1 && (
@@ -1018,6 +1346,115 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Direct Add Timesheet Entry Modal */}
+      {showAddLogModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-slate-900 text-base">Direct Timesheet Entry</h3>
+              </div>
+              <button
+                onClick={() => setShowAddLogModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateDirectTimeLog} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Target Employee / Trainee</label>
+                <select
+                  value={newLogUserId}
+                  onChange={(e) => setNewLogUserId(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  required
+                >
+                  <option value="" disabled>Select Employee</option>
+                  {users
+                    .filter(u => u.role !== 'admin' && !u.isSecretBackup)
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} ({u.role.toUpperCase()} • {u.employeeCode || u.designation || 'Staff'})
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={newLogDate}
+                    onChange={(e) => setNewLogDate(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Hours Logged</label>
+                  <input
+                    type="number"
+                    step="0.25"
+                    min="0.25"
+                    max="24"
+                    value={newLogHours}
+                    onChange={(e) => setNewLogHours(Number(e.target.value))}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-bold font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Task Category / Activity</label>
+                <input
+                  type="text"
+                  value={newLogTask}
+                  onChange={(e) => setNewLogTask(e.target.value)}
+                  placeholder="e.g. Email Reachout, Training, Customer Support"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-bold mb-1">Trainer Notes / Justification</label>
+                <textarea
+                  value={newLogNotes}
+                  onChange={(e) => setNewLogNotes(e.target.value)}
+                  placeholder="Reason for direct entry or shift details..."
+                  rows={2}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-slate-800 font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddLogModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition-all shadow-xs"
+                >
+                  Save Timesheet Record
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -6,14 +6,39 @@ import {defineConfig, Plugin} from 'vite';
 
 function deduplicateUsersHelper(rawUsers: any[]): any[] {
   if (!Array.isArray(rawUsers) || rawUsers.length === 0) return [];
+  const nameMap = new Map<string, number>();
   const codeMap = new Map<string, number>();
+  const numCodeMap = new Map<string, number>();
   const emailMap = new Map<string, number>();
+  const userMap = new Map<string, number>();
   const idMap = new Map<string, number>();
   const result: any[] = [];
 
-  const isPlaceholderName = (name?: string) => {
-    if (!name) return true;
-    return /^Agent[_\s]?\d+$/i.test(name.trim()) || /^Trainer\d*$/i.test(name.trim());
+  const isPlaceholderName = (name?: string, username?: string, employeeCode?: string) => {
+    if (!name && !username) return true;
+    const cleanName = (name || '').trim();
+    const cleanUser = (username || '').trim();
+    const cleanCode = (employeeCode || '').trim().toUpperCase();
+
+    if (
+      cleanName.toLowerCase() === 'agent_admin' ||
+      cleanName.toLowerCase() === 'agent admin' ||
+      cleanName.toLowerCase() === 'team_leader1' ||
+      cleanName.toLowerCase() === 'team leader 1' ||
+      cleanUser.toLowerCase() === 'agentadm' ||
+      cleanUser.toLowerCase() === 'teamlead' ||
+      cleanCode === 'LLC-0001' ||
+      cleanCode === 'LLC-0002'
+    ) {
+      return true;
+    }
+
+    const isGenericAgent = /^Agent[_\s\-]?\d+$/i.test(cleanName) || /^Agent[_\s\-]?\d+$/i.test(cleanUser);
+    const isGenericTrainee = /^Trainee[_\s\-]?\d+$/i.test(cleanName) || /^Trainee[_\s\-]?\d+$/i.test(cleanUser);
+    const isGenericEmployee = /^Employee[_\s\-]?\d+$/i.test(cleanName) || /^Employee[_\s\-]?LLC/i.test(cleanName);
+    const isGenericUser = /^User[_\s\-]?\d+$/i.test(cleanName);
+
+    return isGenericAgent || isGenericTrainee || isGenericEmployee || isGenericUser;
   };
 
   for (const u of rawUsers) {
@@ -47,47 +72,91 @@ function deduplicateUsersHelper(rawUsers: any[]): any[] {
       continue;
     }
 
-    const normCode = (u.employeeCode || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const isTrainer =
+      u.employeeCode?.toUpperCase() === 'LLC-0003' ||
+      u.email?.toLowerCase() === 'piaodahcam@gmail.com' ||
+      u.id === 'usr-llc-0003' ||
+      u.name?.toLowerCase().trim() === 'pia' ||
+      (u.designation?.toLowerCase().includes('trainer') && u.role === 'trainer');
+
+    if (isTrainer) {
+      const existingTrainerIdx = result.findIndex(
+        (x) =>
+          x.employeeCode?.toUpperCase() === 'LLC-0003' ||
+          x.email?.toLowerCase() === 'piaodahcam@gmail.com' ||
+          x.id === 'usr-llc-0003' ||
+          x.name?.toLowerCase().trim() === 'pia'
+      );
+      const canonicalTrainer = {
+        ...u,
+        id: 'usr-llc-0003',
+        employeeCode: 'LLC-0003',
+        email: 'piaodahcam@gmail.com',
+        name: 'Pia',
+        role: 'trainer',
+        designation: 'Trainer',
+        username: 'trainer',
+        department: 'Training',
+      };
+      if (existingTrainerIdx >= 0) {
+        result[existingTrainerIdx] = { ...result[existingTrainerIdx], ...canonicalTrainer };
+      } else {
+        result.push(canonicalTrainer);
+      }
+      continue;
+    }
+
+    if (isPlaceholderName(u.name, u.username, u.employeeCode)) {
+      continue;
+    }
+
+    const normName = (u.name || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+    const normCode = (u.employeeCode || '').toUpperCase().replace(/[^A-Z0-9]/g, '').trim();
+    const numOnlyCode = normCode.replace(/^[A-Z]+/, '');
     const normEmail = (u.email || '').toLowerCase().trim();
+    const normUsername = (u.username || '').toLowerCase().trim();
     const rawId = (u.id || '').trim();
 
     let existingIndex = -1;
-    if (normCode && codeMap.has(normCode)) {
+    if (normName && nameMap.has(normName)) {
+      existingIndex = nameMap.get(normName)!;
+    } else if (normCode && codeMap.has(normCode)) {
       existingIndex = codeMap.get(normCode)!;
+    } else if (numOnlyCode && numCodeMap.has(numOnlyCode)) {
+      existingIndex = numCodeMap.get(numOnlyCode)!;
     } else if (normEmail && emailMap.has(normEmail)) {
       existingIndex = emailMap.get(normEmail)!;
+    } else if (normUsername && userMap.has(normUsername)) {
+      existingIndex = userMap.get(normUsername)!;
     } else if (rawId && idMap.has(rawId)) {
       existingIndex = idMap.get(rawId)!;
     }
 
     if (existingIndex >= 0) {
       const existing = result[existingIndex];
-      const existingIsPlaceholder = isPlaceholderName(existing.name);
-      const uIsPlaceholder = isPlaceholderName(u.name);
-
-      let merged: any;
-      if (existingIsPlaceholder && !uIsPlaceholder) {
-        merged = {
-          ...existing,
-          ...u,
-          password: existing.password && existing.password !== 'Password123!' ? existing.password : u.password || existing.password,
-          customPermissions: existing.customPermissions || u.customPermissions,
-        };
-      } else {
-        merged = {
-          ...u,
-          ...existing,
-          name: !existingIsPlaceholder ? existing.name : u.name || existing.name,
-          password: existing.password && existing.password !== 'Password123!' ? existing.password : u.password || existing.password,
-          customPermissions: existing.customPermissions || u.customPermissions,
-        };
-      }
+      const merged = {
+        ...existing,
+        ...u,
+        name: existing.name || u.name,
+        employeeCode: existing.employeeCode || u.employeeCode,
+        username: existing.username || u.username,
+        email: existing.email || u.email,
+        role: existing.role && existing.role !== 'agent' ? existing.role : (u.role || 'agent'),
+        designation: existing.designation || u.designation || 'Agent',
+        department: existing.department || u.department || 'Operations',
+        teamLeaderId: existing.teamLeaderId || u.teamLeaderId || 'usr-llc-0003',
+        password: existing.password && existing.password !== 'Password123!' ? existing.password : u.password || existing.password || 'Password123!',
+        customPermissions: existing.customPermissions || u.customPermissions,
+      };
       result[existingIndex] = merged;
     } else {
       const newIndex = result.length;
       result.push(u);
+      if (normName) nameMap.set(normName, newIndex);
       if (normCode) codeMap.set(normCode, newIndex);
+      if (numOnlyCode) numCodeMap.set(numOnlyCode, newIndex);
       if (normEmail) emailMap.set(normEmail, newIndex);
+      if (normUsername) userMap.set(normUsername, newIndex);
       if (rawId) idMap.set(rawId, newIndex);
     }
   }

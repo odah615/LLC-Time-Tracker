@@ -43,6 +43,9 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
     timeLogs,
     formatDuration,
     currentUser,
+    importPresenceFromGoogleSheets,
+    syncAllFromGoogleSheets,
+    simulateActiveTraineesShift,
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -54,6 +57,7 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isPullingSheets, setIsPullingSheets] = useState(false);
   const [tick, setTick] = useState(0);
 
   // Periodic 5-second tick to update real-time task elapsed durations
@@ -64,10 +68,19 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
 
   const todayStr = getManilaDateString();
 
-  // Manual refresh animation trigger
-  const handleRefresh = () => {
+  // Manual refresh animation trigger + pull presence
+  const handleRefresh = async () => {
     setIsRefreshing(true);
+    try {
+      await importPresenceFromGoogleSheets();
+    } catch (e) {}
     setTimeout(() => setIsRefreshing(false), 600);
+  };
+
+  const handlePullFromSheets = async () => {
+    setIsPullingSheets(true);
+    await syncAllFromGoogleSheets();
+    setIsPullingSheets(false);
   };
 
   // Combine Users with UserPresence and DailyAttendanceLog (Excluding Admins)
@@ -308,8 +321,29 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
           </div>
 
           <button
+            onClick={handlePullFromSheets}
+            disabled={isPullingSheets}
+            className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center gap-1.5 text-xs font-bold shadow-xs disabled:opacity-50 cursor-pointer"
+            title="Pull Live Presence & Data directly from Google Sheets Database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isPullingSheets ? 'animate-spin' : ''}`} />
+            <span>{isPullingSheets ? 'Pulling Sheets...' : 'Pull Google Sheets'}</span>
+          </button>
+
+          {(currentUser?.role === 'trainer' || currentUser?.role === 'admin') && (
+            <button
+              onClick={simulateActiveTraineesShift}
+              className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 transition-all flex items-center gap-1.5 text-xs font-bold shadow-xs cursor-pointer"
+              title="Activate live desktop tracking for trainees to test real-time monitoring and sheet sync"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>⚡ Test: Activate Live Trainees</span>
+            </button>
+          )}
+
+          <button
             onClick={handleRefresh}
-            className="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-all flex items-center gap-1.5 text-xs font-semibold"
+            className="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
             title="Refresh Real-time Status"
           >
             <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-emerald-600' : ''}`} />
@@ -431,6 +465,7 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
               <th className="py-3.5 px-4">Employee</th>
+              <th className="py-3.5 px-3">Platform Mode</th>
               <th className="py-3.5 px-3">Live Presence</th>
               <th className="py-3.5 px-4">Active Task & Work Window</th>
               <th className="py-3.5 px-3">First Check-in</th>
@@ -442,7 +477,7 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
           <tbody className="divide-y divide-slate-100 font-medium">
             {paginatedData.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-slate-400">
+                <td colSpan={8} className="py-12 text-center text-slate-400">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <Users className="w-8 h-8 text-slate-300" />
                     <p className="font-semibold text-slate-600">No matching employees found.</p>
@@ -455,6 +490,9 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
                 const isOnline = row.calculatedStatus === 'online';
                 const isIdle = row.calculatedStatus === 'idle';
                 const isOffline = row.calculatedStatus === 'offline';
+
+                const isDesktop = row.presenceMode === 'tracking' || row.presenceMode === 'desktop_online' || (row.presence?.loginPlatform === 'software');
+                const isWeb = row.presenceMode === 'web_online' || (row.presence?.loginPlatform === 'webapp');
 
                 return (
                   <tr
@@ -497,6 +535,25 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
                       </div>
                     </td>
 
+                    {/* Platform Mode (Desktop Tracker vs Website vs Offline) */}
+                    <td className="py-3 px-3">
+                      {isDesktop ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 shadow-2xs">
+                          <Laptop className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                          <span>Desktop Tracker</span>
+                        </span>
+                      ) : isWeb ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-teal-50 border border-teal-200 text-teal-700 shadow-2xs">
+                          <Activity className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                          <span>Website</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-100 border border-slate-200 text-slate-400">
+                          <span>None / Offline</span>
+                        </span>
+                      )}
+                    </td>
+
                     {/* Live Presence Status Badge */}
                     <td className="py-3 px-3">
                       {row.presenceMode === 'tracking' && (
@@ -515,7 +572,7 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
                       {row.presenceMode === 'web_online' && (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-teal-50 border border-teal-200 text-teal-800 shadow-2xs">
                           <span className="w-2 h-2 rounded-full bg-teal-500" />
-                          Web Online
+                          Website Active
                         </span>
                       )}
                       {row.presenceMode === 'idle' && (

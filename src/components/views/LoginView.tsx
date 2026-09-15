@@ -208,7 +208,8 @@ export const LoginView: React.FC = () => {
       return;
     }
 
-    login(foundUser, activeMode);
+    const resolvedMode: 'webapp' | 'software' = isSoftwareEnv ? 'software' : 'webapp';
+    login(foundUser, resolvedMode);
   };
 
   const handleSaveUniquePassword = (e: React.FormEvent) => {
@@ -263,7 +264,8 @@ export const LoginView: React.FC = () => {
     setIsSavingPassword(false);
 
     // Complete login smoothly
-    login(updatedUserObj, activeMode);
+    const resolvedMode: 'webapp' | 'software' = isSoftwareEnv ? 'software' : 'webapp';
+    login(updatedUserObj, resolvedMode);
   };
 
   const handleSimulateDownload = () => {
@@ -322,53 +324,28 @@ export const LoginView: React.FC = () => {
 
         {/* Login Form Box */}
         <div className="w-full max-w-xl bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative">
-          {/* Platform Mode Selector Tabs */}
-          <div className="mb-6 p-1.5 rounded-2xl bg-slate-950/80 border border-slate-800 grid grid-cols-2 gap-1.5 shadow-inner">
-            <button
-              type="button"
-              onClick={() => setActiveMode('software')}
-              className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl font-bold text-xs transition-all cursor-pointer ${
-                activeMode === 'software'
-                  ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              }`}
-            >
-              <Laptop className="w-4 h-4" />
-              <span>Desktop Tracker</span>
-              {isSoftwareEnv && (
-                <span className="text-[9px] bg-emerald-950/80 text-emerald-200 px-1.5 py-0.5 rounded-full border border-emerald-400/40">
-                  Detected
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveMode('webapp')}
-              className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl font-bold text-xs transition-all cursor-pointer ${
-                activeMode === 'webapp'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-              }`}
-            >
-              <Globe className="w-4 h-4" />
-              <span>Website Portal</span>
-              {!isSoftwareEnv && (
-                <span className="text-[9px] bg-blue-950/80 text-blue-200 px-1.5 py-0.5 rounded-full border border-blue-400/40">
-                  Detected
-                </span>
-              )}
-            </button>
-          </div>
-
           <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-800">
             <div>
+              <div className="flex items-center gap-2 mb-1">
+                {isSoftwareEnv ? (
+                  <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Laptop className="w-3 h-3 text-emerald-400" />
+                    DESKTOP TRACKER SOFTWARE
+                  </span>
+                ) : (
+                  <span className="bg-blue-500/20 text-blue-300 border border-blue-400/30 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Globe className="w-3 h-3 text-blue-400" />
+                    WEBSITE DASHBOARD PORTAL
+                  </span>
+                )}
+              </div>
               <h2 className="text-xl font-extrabold text-white tracking-tight">
-                {activeMode === 'webapp' ? 'Sign In to LLC Website Portal' : 'Sign In to LLC Desktop Tracker'}
+                {isSoftwareEnv ? 'Sign In to LLC Desktop Tracker' : 'Sign In to LLC Website Dashboard'}
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                {activeMode === 'webapp'
-                  ? 'Platform Mode: Website • Presence: Website Active • Portal tools & logs'
-                  : 'Platform Mode: Desktop Tracker • Presence: Desktop Online / Live Tracking'}
+                {isSoftwareEnv
+                  ? 'Desktop Client: Sign in to clock in, pick your task, and track live activity & shifts.'
+                  : 'Website Portal: Sign in to view live dashboards, team logs, timesheets, and reports.'}
               </p>
             </div>
           </div>

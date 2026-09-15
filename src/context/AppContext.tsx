@@ -27,6 +27,7 @@ import {
   DEFAULT_SPREADSHEET_ID,
   fetchEmployeesFromGoogleSheets,
   fetchTimeLogsFromGoogleSheets,
+  fetchLivePresenceFromGoogleSheets,
   isValidWebhookUrl,
 } from '../lib/googleSheetsSync';
 import { playInactivityChime, playUrgentPulse } from '../lib/soundAlerts';
@@ -248,6 +249,11 @@ interface AppContextType {
   triggerGoogleSheetsSync: (overrideUrl?: string) => Promise<{ success: boolean; message: string }>;
   importEmployeesFromGoogleSheets: (overrideUrl?: string) => Promise<{ success: boolean; count: number; message: string }>;
   importTimeLogsFromGoogleSheets: (overrideUrl?: string) => Promise<{ success: boolean; count: number; message: string }>;
+  importPresenceFromGoogleSheets: (overrideUrl?: string) => Promise<{ success: boolean; count: number; message: string }>;
+  syncAllFromGoogleSheets: (overrideUrl?: string) => Promise<{ success: boolean; message: string }>;
+  startAgentLiveShift: (userId: string, task?: TaskCategory) => void;
+  stopAgentLiveShift: (userId: string) => void;
+  simulateActiveTraineesShift: () => void;
   // Desktop dock view toggle
   isDesktopDockView: boolean;
   setIsDesktopDockView: (val: boolean) => void;
@@ -643,7 +649,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [isAutoSyncToSheetsEnabled, setIsAutoSyncToSheetsEnabledState] = useState<boolean>(() => {
-    return localStorage.getItem('trackpulse_auto_sync_enabled') === 'true'; // Defaults to false to prevent spreadsheet refreshes
+    return localStorage.getItem('trackpulse_auto_sync_enabled') !== 'false'; // Defaults to TRUE for automatic real-time spreadsheet persistence
   });
 
   const setIsAutoSyncToSheetsEnabled = (enabled: boolean) => {
@@ -967,6 +973,295 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Two-Way Sync: Pull Live Presence directly from Google Sheets Live_Presence / Live_Sessions tab
+  const importPresenceFromGoogleSheets = async (
+    overrideUrl?: string
+  ): Promise<{ success: boolean; count: number; message: string }> => {
+    const targetUrl = overrideUrl || googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
+    const res = await fetchLivePresenceFromGoogleSheets(targetUrl, DEFAULT_SPREADSHEET_ID, users);
+
+    if (res.success && res.presenceList.length > 0) {
+      setUserPresenceList((prev) => {
+        const map = new Map<string, UserPresence>(prev.map((p) => [p.userId, p]));
+        for (const p of res.presenceList) {
+          if (p && p.userId) {
+            const existing = map.get(p.userId);
+            const updatedItem = { ...(existing || p), ...p };
+            map.set(p.userId, updatedItem);
+            safeSetDoc(doc(db, 'user_presence', p.userId), updatedItem, { merge: true }).catch(() => {});
+            fetch('/api/presence', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updatedItem),
+            }).catch(() => {});
+          }
+        }
+        const merged = Array.from(map.values());
+        localStorage.setItem('trackpulse_presence', JSON.stringify(merged));
+        safeSetDoc(doc(db, 'system_state', 'presence'), { data: merged }).catch(() => {});
+        return merged;
+      });
+
+      setSaveToast(`✓ Two-Way Sync: Extracted ${res.presenceList.length} presence records from Google Sheets!`);
+      setTimeout(() => setSaveToast(null), 7000);
+      return { success: true, count: res.presenceList.length, message: res.message };
+    } else {
+      setSaveToast(`⚠️ Google Sheets Presence: ${res.message}`);
+      setTimeout(() => setSaveToast(null), 7000);
+      return { success: false, count: 0, message: res.message };
+    }
+  };
+
+  // Comprehensive One-Click Two-Way Sync for All Tabs from Google Sheets
+  const syncAllFromGoogleSheets = async (overrideUrl?: string): Promise<{ success: boolean; message: string }> => {
+    const targetUrl = overrideUrl || googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
+    setSaveToast('⏳ Connecting to Google Sheets and pulling latest tables...');
+    try {
+      const [empRes, timeRes, presRes] = await Promise.all([
+        importEmployeesFromGoogleSheets(targetUrl),
+        importTimeLogsFromGoogleSheets(targetUrl),
+        importPresenceFromGoogleSheets(targetUrl),
+      ]);
+      const success = empRes.success || timeRes.success || presRes.success;
+      const msg = `Synced from Google Sheets: ${empRes.count} employees, ${timeRes.count} time logs, ${presRes.count} presence records.`;
+      setSaveToast(success ? `✓ ${msg}` : `⚠️ Sync Notice: ${empRes.message || timeRes.message || presRes.message}`);
+      setTimeout(() => setSaveToast(null), 8000);
+      return { success, message: msg };
+    } catch (err: any) {
+      setSaveToast(`⚠️ Google Sheets Sync Failed: ${err?.message || 'Network error'}`);
+      setTimeout(() => setSaveToast(null), 7000);
+      return { success: false, message: err?.message || 'Sync failed' };
+    }
+  };
+
+  // Start a live shift for any agent/trainee (updates presence, attendance, running time log, and auto-syncs to Google Sheets)
+  const startAgentLiveShift = (userId: string, taskCategory?: TaskCategory) => {
+    const targetUser = users.find((u) => u.id === userId);
+    if (!targetUser) return;
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const taskName = taskCategory || 'Email Reachout';
+    const timeStr = getManilaTimeString(now);
+    const todayStr = getManilaDateString(now);
+
+    const presenceDoc: UserPresence = {
+      userId: targetUser.id,
+      userName: targetUser.name,
+      employeeCode: targetUser.employeeCode || '',
+      role: targetUser.role,
+      designation: targetUser.designation || 'Agent',
+      department: targetUser.department || 'Operations',
+      teamLeaderId: targetUser.teamLeaderId || '',
+      isOnline: true,
+      status: 'online',
+      isTracking: true,
+      isPaused: false,
+      elapsedSeconds: 0,
+      mouseActivity: 92,
+      keyboardActivity: 88,
+      currentTask: taskName,
+      currentApp: 'LLC Time Tracker Desktop App',
+      lastHeartbeat: nowIso,
+      loginTime: nowIso,
+      loginPlatform: 'software',
+    };
+
+    // Update presence
+    setUserPresenceList((prev) => {
+      const map = new Map<string, UserPresence>(prev.map((p) => [p.userId, p]));
+      map.set(targetUser.id, presenceDoc);
+      const merged = Array.from(map.values());
+      localStorage.setItem('trackpulse_presence', JSON.stringify(merged));
+      safeSetDoc(doc(db, 'system_state', 'presence'), { data: merged }).catch(() => {});
+      return merged;
+    });
+
+    safeSetDoc(doc(db, 'user_presence', targetUser.id), presenceDoc, { merge: true }).catch(() => {});
+    fetch('/api/presence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(presenceDoc),
+    }).catch(() => {});
+
+    // Update Attendance
+    setDailyAttendanceLogs((prev) => {
+      const existing = prev.find((a) => a.userId === targetUser.id && a.date === todayStr);
+      let updated: DailyAttendanceLog[];
+      if (existing) {
+        updated = prev.map((a) =>
+          a.userId === targetUser.id && a.date === todayStr
+            ? { ...a, firstLoginTime: a.firstLoginTime === '--:--' ? timeStr : a.firstLoginTime, status: 'present' as const }
+            : a
+        );
+      } else {
+        const newAtt: DailyAttendanceLog = {
+          id: `att-${targetUser.id}-${Date.now()}`,
+          userId: targetUser.id,
+          userName: targetUser.name,
+          employeeCode: targetUser.employeeCode || '',
+          date: todayStr,
+          firstLoginTime: timeStr,
+          lastLogoutTime: '',
+          totalLoggedSeconds: 0,
+          totalLoggedHours: 0,
+          totalIdleDeductionsMinutes: 0,
+          requiredExtensionMinutes: 0,
+          status: 'present',
+        };
+        updated = [newAtt, ...prev];
+      }
+      localStorage.setItem('trackpulse_attendance', JSON.stringify(updated));
+      safeSetDoc(doc(db, 'system_state', 'attendance'), { data: updated }).catch(() => {});
+      return updated;
+    });
+
+    // Create active time log
+    const newLog: TimeLog = {
+      id: `log-${targetUser.id}-${Date.now()}`,
+      userId: targetUser.id,
+      userName: targetUser.name,
+      userAvatar: '',
+      designation: targetUser.designation || 'Agent',
+      task: taskName,
+      startTime: nowIso,
+      endTime: '',
+      durationSeconds: 0,
+      status: 'running',
+      geoTimezone: 'Asia/Manila',
+      geoLocalStartTime: timeStr,
+      geoLocalEndTime: '',
+      mouseActivityAvg: 92,
+      keyboardActivityAvg: 88,
+      idleSeconds: 0,
+      date: todayStr,
+      notes: 'Desktop Software Live Shift',
+      appsUsed: [{ appName: 'LLC Time Tracker Desktop App', icon: 'laptop', durationSeconds: 0, category: 'productive' }],
+    };
+
+    setTimeLogs((prev) => {
+      const merged = [newLog, ...prev];
+      localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
+      safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: merged }).catch(() => {});
+      fetch('/api/timelogs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(merged),
+      }).catch(() => {});
+      return merged;
+    });
+
+    addAuditLog({
+      actorId: currentUser?.id || 'sys',
+      actorName: currentUser?.name || 'Trainer',
+      actorRole: currentUser?.role || 'trainer',
+      category: 'Time Tracking',
+      targetEmployeeId: targetUser.id,
+      targetEmployeeName: targetUser.name,
+      details: `Started Desktop Live Tracker session for ${targetUser.name} on task "${taskName}". Synced to Google Sheets & Database.`,
+    });
+
+    setSaveToast(`✓ Connected ${targetUser.name} to Desktop Tracker (${taskName})! Synced to Google Sheets.`);
+    setTimeout(() => setSaveToast(null), 8000);
+
+    triggerAutoSync();
+  };
+
+  // Stop a live shift for an agent/trainee
+  const stopAgentLiveShift = (userId: string) => {
+    const targetUser = users.find((u) => u.id === userId);
+    if (!targetUser) return;
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const timeStr = getManilaTimeString(now);
+    const todayStr = getManilaDateString(now);
+
+    const offlineDoc = {
+      isOnline: false,
+      status: 'offline' as const,
+      isTracking: false,
+      isPaused: false,
+      currentTask: 'Shift Concluded',
+      lastHeartbeat: nowIso,
+    };
+
+    setUserPresenceList((prev) => {
+      const updated = prev.map((p) => (p.userId === targetUser.id ? { ...p, ...offlineDoc } : p));
+      localStorage.setItem('trackpulse_presence', JSON.stringify(updated));
+      safeSetDoc(doc(db, 'system_state', 'presence'), { data: updated }).catch(() => {});
+      return updated;
+    });
+
+    safeSetDoc(doc(db, 'user_presence', targetUser.id), offlineDoc, { merge: true }).catch(() => {});
+    fetch('/api/presence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: targetUser.id, ...offlineDoc }),
+    }).catch(() => {});
+
+    // Finalize running logs
+    setTimeLogs((prev) => {
+      const updated = prev.map((l) => {
+        if (l.userId === targetUser.id && l.status === 'running') {
+          const startMs = new Date(l.startTime).getTime();
+          const durSec = startMs > 0 ? Math.max(60, Math.floor((Date.now() - startMs) / 1000)) : 300;
+          return {
+            ...l,
+            endTime: nowIso,
+            geoLocalEndTime: timeStr,
+            durationSeconds: durSec,
+            status: 'completed' as const,
+          };
+        }
+        return l;
+      });
+      localStorage.setItem('trackpulse_timelogs', JSON.stringify(updated));
+      safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updated }).catch(() => {});
+      fetch('/api/timelogs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      }).catch(() => {});
+      return updated;
+    });
+
+    // Update Attendance
+    setDailyAttendanceLogs((prev) => {
+      const updated = prev.map((a) =>
+        a.userId === targetUser.id && a.date === todayStr ? { ...a, lastLogoutTime: timeStr } : a
+      );
+      localStorage.setItem('trackpulse_attendance', JSON.stringify(updated));
+      safeSetDoc(doc(db, 'system_state', 'attendance'), { data: updated }).catch(() => {});
+      return updated;
+    });
+
+    addAuditLog({
+      actorId: currentUser?.id || 'sys',
+      actorName: currentUser?.name || 'Trainer',
+      actorRole: currentUser?.role || 'trainer',
+      category: 'Time Tracking',
+      targetEmployeeId: targetUser.id,
+      targetEmployeeName: targetUser.name,
+      details: `Concluded Desktop Tracker shift for ${targetUser.name}. Timesheet saved & synced to Google Sheets.`,
+    });
+
+    setSaveToast(`✓ Concluded shift for ${targetUser.name}. Timesheet saved & synced to Google Sheets!`);
+    setTimeout(() => setSaveToast(null), 8000);
+
+    triggerAutoSync();
+  };
+
+  // Simulate multiple active trainees tracking in parallel for testing & verification
+  const simulateActiveTraineesShift = () => {
+    const trainees = users.filter((u) => u.role === 'agent' && u.id !== currentUser?.id).slice(0, 4);
+    if (trainees.length === 0) return;
+    const sampleTasks: TaskCategory[] = ['Email Reachout', 'Lead Generation', 'Customer Calling', 'Data Entry & Cleanup'];
+    trainees.forEach((t, idx) => {
+      startAgentLiveShift(t.id, sampleTasks[idx % sampleTasks.length]);
+    });
+    setSaveToast(`✓ Activated live tracking simulation for ${trainees.length} trainees! Synced to Google Sheets.`);
+    setTimeout(() => setSaveToast(null), 8000);
+  };
+
   // Flag to avoid overwriting Firestore with initial local defaults before loading
   const [isFirestoreLoaded, setIsFirestoreLoaded] = useState(false);
 
@@ -1061,7 +1356,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
           const remoteUsers: User[] = snapshot.data().data;
           if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-            const sanitizedUsers = ensureUsernames(remoteUsers);
+            const sanitizedUsers = deduplicateUsers(ensureUsernames(remoteUsers));
             setUsers((prev) => {
               const merged = deduplicateUsers([...prev, ...sanitizedUsers]);
               localStorage.setItem('trackpulse_users', JSON.stringify(merged));
@@ -1230,12 +1525,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .catch(() => {});
 
     // Pre-populate server with local users and timelogs if available so desktop and web share all records immediately
-    if (users.length > 0) {
+    const cleanRoster = deduplicateUsers(users);
+    if (cleanRoster.length !== users.length || JSON.stringify(cleanRoster) !== JSON.stringify(users)) {
+      setUsers(cleanRoster);
+      localStorage.setItem('trackpulse_users', JSON.stringify(cleanRoster));
+    }
+    if (cleanRoster.length > 0) {
       fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(users),
+        body: JSON.stringify(cleanRoster),
       }).catch(() => {});
+      safeSetDoc(doc(db, 'system_state', 'users'), { data: cleanRoster }).catch(() => {});
     }
     if (timeLogs.length > 0) {
       fetch('/api/timelogs', {
@@ -1365,7 +1666,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     fetchCentralSync();
-    const centralSyncInterval = setInterval(fetchCentralSync, 5000);
+    const centralSyncInterval = setInterval(fetchCentralSync, 3000);
 
     // 3. Background auto-import from Google Sheets CSV (100% quota-free)
     fetchEmployeesFromGoogleSheets('', DEFAULT_SPREADSHEET_ID, users)
@@ -2202,17 +2503,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [isAuthenticated]);
 
-  // 45-second periodic presence heartbeat to sync live presence, current task, and elapsed seconds
+  // 15-second periodic presence heartbeat to sync live presence, current task, and elapsed seconds
   useEffect(() => {
     if (!isAuthenticated || !currentUser) return;
 
     // Initial broadcast on login / load
     broadcastPresence();
 
-    // 45-second recurring heartbeat
+    // 15-second recurring heartbeat
     const interval = setInterval(() => {
       broadcastPresence(false, false);
-    }, 45000);
+    }, 15000);
 
     // On window unload / close, notify immediately that user went offline
     const handleUnload = () => {
@@ -2362,6 +2663,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             task: currentTask,
             designation: currentDesignation || currentUser?.designation || 'Agent',
           }));
+        }
+
+        // Auto-sync live progress and active task to Google Sheets every 30 seconds
+        if (liveSecs > 0 && liveSecs % 30 === 0) {
+          triggerAutoSync();
         }
 
         const now = Date.now();
@@ -2681,6 +2987,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : p
         )
       );
+
+      // Instantly sync active tracking status to Google Sheets database
+      triggerAutoSync();
     }
   };
 
@@ -2704,6 +3013,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       task: currentTask,
       designation: currentDesignation || currentUser?.designation || 'Agent',
     }));
+    triggerAutoSync();
   };
 
   // Resume tracking
@@ -2723,6 +3033,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       task: currentTask,
       designation: currentDesignation || currentUser?.designation || 'Agent',
     }));
+    triggerAutoSync();
   };
 
   // Stop tracking and create time log
@@ -2937,6 +3248,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStartTimeIso(null);
     setSessionIdleDeductionSeconds(0);
     setCurrentInactivitySeconds(0);
+
+    // Sync newly finalized time logs and updated attendance to Google Sheets database
+    triggerAutoSync(users, updatedLogs, auditLogs, updatedPayroll, updatedAttendance, idleLogs, leaveRequests, designationTasks, rolePermissions);
   };
 
   // 30-Minute Offline Connection Loss & Grace Period Engine
@@ -4472,6 +4786,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         triggerGoogleSheetsSync,
         importEmployeesFromGoogleSheets,
         importTimeLogsFromGoogleSheets,
+        importPresenceFromGoogleSheets,
+        syncAllFromGoogleSheets,
+        startAgentLiveShift,
+        stopAgentLiveShift,
+        simulateActiveTraineesShift,
         isDesktopDockView,
         setIsDesktopDockView,
         addUser,
