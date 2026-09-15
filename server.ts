@@ -44,16 +44,93 @@ let bridgeState: BridgeData = {
   },
 };
 
+const CANONICAL_STAFF: Record<string, string> = {
+  'SUPERADMIN': 'Admin',
+  'LLC-0003': 'Pia',
+  'LLC-0004': 'Alexa Gabrielle Bardaje',
+  'LLC-0005': 'April Sam Dimaano',
+  'LLC-0006': 'Boris Andrew Villanueva',
+  'LLC-0007': 'Cyril Diola Garcia',
+  'LLC-0008': 'Daina Yanez',
+  'LLC-0009': 'Fatima Dence David',
+  'LLC-0010': 'Gerald A. Salvador',
+  'LLC-0011': 'Jayson Cariaga',
+  'LLC-0012': 'Jenalyn Nueva',
+  'LLC-0013': 'Kathleen Ann L. Totaan',
+  'LLC-0014': 'Lourdes Mary Cenina',
+  'LLC-0015': 'Luis David Ramirez',
+  'LLC-0016': 'Maria Racquel Gracia M. Libarios',
+  'LLC-0017': 'Mark Jesus A. Egoy',
+  'LLC-0018': 'Raquel Guiapal',
+  'LLC-0019': 'Ron Louie Logan',
+  'LLC-0020': 'Rubilyne Barrameda',
+  'LLC-0021': 'Shiela Romey',
+  'LLC-0022': 'Trixy Ashley Decena Mabutol',
+};
+
+const resolveStaffName = (code?: string, username?: string, name?: string, id?: string): string => {
+  const c = (code || '').toUpperCase().trim();
+  const num = c.replace(/^[A-Z\-_]+/, '');
+  for (const [k, v] of Object.entries(CANONICAL_STAFF)) {
+    const kNum = k.replace(/^[A-Z\-_]+/, '');
+    if (c === k || (num && num === kNum)) return v;
+  }
+  const u = (username || '').toLowerCase().trim();
+  const n = (name || '').toLowerCase().trim();
+  const rawId = (id || '').toLowerCase().trim();
+  if (u === 'agabr' || n === 'agabr' || rawId.includes('0004')) return 'Alexa Gabrielle Bardaje';
+  if (u === 'asamd' || n === 'asamd' || rawId.includes('0005')) return 'April Sam Dimaano';
+  if (u === 'bandr' || n === 'bandr' || rawId.includes('0006')) return 'Boris Andrew Villanueva';
+  if (u === 'cdiol' || n === 'cdiol' || rawId.includes('0007')) return 'Cyril Diola Garcia';
+  if (u === 'dyane' || n === 'dyane' || rawId.includes('0008')) return 'Daina Yanez';
+  if (u === 'fdenc' || n === 'fdenc' || rawId.includes('0009')) return 'Fatima Dence David';
+  if (u === 'gasal' || n === 'gasal' || rawId.includes('0010')) return 'Gerald A. Salvador';
+  if (u === 'jcari' || n === 'jcari' || rawId.includes('0011')) return 'Jayson Cariaga';
+  if (u === 'jnuev' || n === 'jnuev' || rawId.includes('0012')) return 'Jenalyn Nueva';
+  if (u === 'kannl' || n === 'kannl' || rawId.includes('0013')) return 'Kathleen Ann L. Totaan';
+  if (u === 'lmary' || n === 'lmary' || rawId.includes('0014')) return 'Lourdes Mary Cenina';
+  if (u === 'ldavi' || n === 'ldavi' || rawId.includes('0015')) return 'Luis David Ramirez';
+  if (u === 'mracq' || n === 'mracq' || rawId.includes('0016')) return 'Maria Racquel Gracia M. Libarios';
+  if (u === 'mjesu' || n === 'mjesu' || rawId.includes('0017')) return 'Mark Jesus A. Egoy';
+  if (u === 'rguia' || n === 'rguia' || rawId.includes('0018')) return 'Raquel Guiapal';
+  if (u === 'rloui' || n === 'rloui' || rawId.includes('0019')) return 'Ron Louie Logan';
+  if (u === 'rbarr' || n === 'rbarr' || rawId.includes('0020')) return 'Rubilyne Barrameda';
+  if (u === 'srome' || n === 'srome' || rawId.includes('0021')) return 'Shiela Romey';
+  if (u === 'tashl' || n === 'tashl' || rawId.includes('0022')) return 'Trixy Ashley Decena Mabutol';
+  if (u === 'trainer' || n === 'pia' || c === 'LLC-0003') return 'Pia';
+  if (u === 'admin' || c === 'SUPERADMIN') return 'Admin';
+  return name || username || 'Employee';
+};
+
 // Load initial bridge state if exists
 try {
   if (fs.existsSync(SYNC_BRIDGE_FILE)) {
     const raw = fs.readFileSync(SYNC_BRIDGE_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object') {
+      const sanitizedUsers = Array.isArray(parsed.users)
+        ? parsed.users.map((u: any) => ({
+            ...u,
+            name: resolveStaffName(u.employeeCode, u.username, u.name, u.id),
+          }))
+        : [];
+      const sanitizedPresence: Record<string, any> = {};
+      if (parsed.presence && typeof parsed.presence === 'object') {
+        for (const [k, v] of Object.entries(parsed.presence)) {
+          if (v && typeof v === 'object') {
+            const p = v as any;
+            sanitizedPresence[k] = {
+              ...p,
+              userName: resolveStaffName(p.employeeCode, p.userName, p.userName, p.userId),
+            };
+          }
+        }
+      }
+
       bridgeState = {
-        presence: parsed.presence || {},
+        presence: sanitizedPresence,
         timelogs: Array.isArray(parsed.timelogs) ? parsed.timelogs : [],
-        users: Array.isArray(parsed.users) ? parsed.users : [],
+        users: sanitizedUsers,
         attendance: Array.isArray(parsed.attendance) ? parsed.attendance : [],
         auditlogs: Array.isArray(parsed.auditlogs) ? parsed.auditlogs : [],
         config: parsed.config || { webhookUrl: '', spreadsheetId: '1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA' },
@@ -151,9 +228,11 @@ app.post('/api/presence', (req, res) => {
   }
 
   const existing = bridgeState.presence[p.userId] || {};
+  const sanitizedName = resolveStaffName(p.employeeCode || existing.employeeCode, p.userName || existing.userName, p.userName || existing.userName, p.userId);
   bridgeState.presence[p.userId] = {
     ...existing,
     ...p,
+    userName: sanitizedName,
     lastHeartbeat: p.lastHeartbeat || new Date().toISOString(),
   };
 
@@ -167,9 +246,11 @@ app.post('/api/presence/batch', (req, res) => {
     for (const p of list) {
       if (p && p.userId) {
         const existing = bridgeState.presence[p.userId] || {};
+        const sanitizedName = resolveStaffName(p.employeeCode || existing.employeeCode, p.userName || existing.userName, p.userName || existing.userName, p.userId);
         bridgeState.presence[p.userId] = {
           ...existing,
           ...p,
+          userName: sanitizedName,
           lastHeartbeat: p.lastHeartbeat || new Date().toISOString(),
         };
       }
@@ -217,7 +298,11 @@ app.post('/api/users', (req, res) => {
     const map = new Map<string, any>(bridgeState.users.map((u) => [u.id, u]));
     for (const u of incoming) {
       if (u && u.id) {
-        map.set(u.id, { ...(map.get(u.id) || {}), ...u });
+        const sanitized = {
+          ...u,
+          name: resolveStaffName(u.employeeCode, u.username, u.name, u.id),
+        };
+        map.set(u.id, { ...(map.get(u.id) || {}), ...sanitized });
       }
     }
     bridgeState.users = Array.from(map.values());
@@ -225,10 +310,14 @@ app.post('/api/users', (req, res) => {
     return res.json({ success: true, count: bridgeState.users.length });
   } else if (incoming && incoming.id) {
     const map = new Map<string, any>(bridgeState.users.map((u) => [u.id, u]));
-    map.set(incoming.id, { ...(map.get(incoming.id) || {}), ...incoming });
+    const sanitized = {
+      ...incoming,
+      name: resolveStaffName(incoming.employeeCode, incoming.username, incoming.name, incoming.id),
+    };
+    map.set(incoming.id, { ...(map.get(incoming.id) || {}), ...sanitized });
     bridgeState.users = Array.from(map.values());
     persistBridgeState();
-    return res.json({ success: true, user: incoming });
+    return res.json({ success: true, user: sanitized });
   }
   res.status(400).json({ error: 'Invalid user payload' });
 });

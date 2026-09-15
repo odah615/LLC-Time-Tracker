@@ -20,7 +20,7 @@ import {
 import { doc, setDoc, deleteDoc, onSnapshot, collection, getDoc, disableNetwork, enableNetwork } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { getManilaDateString, getManilaTimeString, formatLogStartTime, formatLogEndTime } from '../lib/dateUtils';
-import { generateUniqueUsername, deduplicateUsers } from '../lib/userUtils';
+import { generateUniqueUsername, deduplicateUsers, resolveCanonicalEmployee } from '../lib/userUtils';
 import {
   syncDataToGoogleSheetsWebhook,
   DEFAULT_SPREADSHEET_URL,
@@ -351,6 +351,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const result: User[] = [];
     for (const rawUser of userList) {
       let norm = normalizeSuperAdmin(rawUser);
+      const canon = resolveCanonicalEmployee(norm);
+      if (canon) {
+        norm = {
+          ...norm,
+          name: canon.name, // Guaranteed full employee name
+          username: canon.username, // Guaranteed username
+          employeeCode: canon.code,
+          email: canon.email || norm.email,
+          role: canon.role || norm.role,
+          designation: canon.designation || norm.designation,
+        };
+      }
       if (!norm.username || norm.username.trim() === '') {
         norm.username = generateUniqueUsername(norm.name, result, norm.id);
       }
@@ -523,18 +535,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (Array.isArray(parsed) && parsed.length > 0) {
           const now = Date.now();
           return parsed.map((p: UserPresence) => {
+            const canon = resolveCanonicalEmployee({
+              employeeCode: p.employeeCode,
+              username: p.userName,
+              name: p.userName,
+              id: p.userId,
+            });
+            const resolvedName = canon?.name || p.userName;
             const lastMs = p.lastHeartbeat ? new Date(p.lastHeartbeat).getTime() : 0;
             // Clean up stale inactive sessions (> 10 mins) on initial load
             if (p.isOnline && now - lastMs > 10 * 60 * 1000) {
               return {
                 ...p,
+                userName: resolvedName,
+                employeeCode: canon?.code || p.employeeCode,
                 isOnline: false,
                 status: 'offline' as const,
                 isTracking: false,
                 currentTask: 'Shift Concluded',
               };
             }
-            return p;
+            return {
+              ...p,
+              userName: resolvedName,
+              employeeCode: canon?.code || p.employeeCode,
+            };
           });
         }
       } catch {
@@ -1599,8 +1624,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const map = new Map<string, UserPresence>(prev.map((p) => [p.userId, p]));
               for (const p of remotePresence) {
                 if (p && p.userId) {
+                  const canon = resolveCanonicalEmployee({
+                    employeeCode: p.employeeCode,
+                    username: p.userName,
+                    name: p.userName,
+                    id: p.userId,
+                  });
+                  const sanitizedPresence = {
+                    ...p,
+                    userName: canon?.name || (p.userName && p.userName !== p.userId ? p.userName : 'Agent'),
+                    employeeCode: canon?.code || p.employeeCode || '',
+                  };
                   const existing = map.get(p.userId);
-                  map.set(p.userId, { ...(existing || p), ...p });
+                  map.set(p.userId, { ...(existing || sanitizedPresence), ...sanitizedPresence });
                 }
               }
               return Array.from(map.values());

@@ -1,5 +1,5 @@
 import { AuditLog, TimeLog, User, PayrollRecord, DailyAttendanceLog, IdleLog, LeaveRequest, UserPresence } from '../types';
-import { generateUniqueUsername, isPlaceholderName, deduplicateUsers } from './userUtils';
+import { generateUniqueUsername, isPlaceholderName, deduplicateUsers, resolveCanonicalEmployee } from './userUtils';
 
 export const DEFAULT_SPREADSHEET_ID = '1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA';
 export const DEFAULT_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA/edit?gid=1299988798#gid=1299988798';
@@ -748,10 +748,70 @@ function doPost(e) {
       var payrollRecords = data.payrollRecords || [];
       var rawPresenceList = data.userPresenceList || data.livePresence || [];
 
-      // Deduplicate users
+      var CANONICAL_STAFF = {
+        'SUPERADMIN': 'Admin',
+        'LLC-0003': 'Pia',
+        'LLC-0004': 'Alexa Gabrielle Bardaje',
+        'LLC-0005': 'April Sam Dimaano',
+        'LLC-0006': 'Boris Andrew Villanueva',
+        'LLC-0007': 'Cyril Diola Garcia',
+        'LLC-0008': 'Daina Yanez',
+        'LLC-0009': 'Fatima Dence David',
+        'LLC-0010': 'Gerald A. Salvador',
+        'LLC-0011': 'Jayson Cariaga',
+        'LLC-0012': 'Jenalyn Nueva',
+        'LLC-0013': 'Kathleen Ann L. Totaan',
+        'LLC-0014': 'Lourdes Mary Cenina',
+        'LLC-0015': 'Luis David Ramirez',
+        'LLC-0016': 'Maria Racquel Gracia M. Libarios',
+        'LLC-0017': 'Mark Jesus A. Egoy',
+        'LLC-0018': 'Raquel Guiapal',
+        'LLC-0019': 'Ron Louie Logan',
+        'LLC-0020': 'Rubilyne Barrameda',
+        'LLC-0021': 'Shiela Romey',
+        'LLC-0022': 'Trixy Ashley Decena Mabutol'
+      };
+
+      function resolveStaffFullName(code, username, name, id) {
+        var c = (code || '').toUpperCase().trim();
+        var num = c.replace(/^[A-Z\-_]+/, '');
+        for (var k in CANONICAL_STAFF) {
+          var kNum = k.replace(/^[A-Z\-_]+/, '');
+          if (c === k || (num && num === kNum)) return CANONICAL_STAFF[k];
+        }
+        var u = (username || '').toLowerCase().trim();
+        var n = (name || '').toLowerCase().trim();
+        var rawId = (id || '').toLowerCase().trim();
+        if (u === 'agabr' || n === 'agabr' || rawId.indexOf('0004') !== -1) return 'Alexa Gabrielle Bardaje';
+        if (u === 'asamd' || n === 'asamd' || rawId.indexOf('0005') !== -1) return 'April Sam Dimaano';
+        if (u === 'bandr' || n === 'bandr' || rawId.indexOf('0006') !== -1) return 'Boris Andrew Villanueva';
+        if (u === 'cdiol' || n === 'cdiol' || rawId.indexOf('0007') !== -1) return 'Cyril Diola Garcia';
+        if (u === 'dyane' || n === 'dyane' || rawId.indexOf('0008') !== -1) return 'Daina Yanez';
+        if (u === 'fdenc' || n === 'fdenc' || rawId.indexOf('0009') !== -1) return 'Fatima Dence David';
+        if (u === 'gasal' || n === 'gasal' || rawId.indexOf('0010') !== -1) return 'Gerald A. Salvador';
+        if (u === 'jcari' || n === 'jcari' || rawId.indexOf('0011') !== -1) return 'Jayson Cariaga';
+        if (u === 'jnuev' || n === 'jnuev' || rawId.indexOf('0012') !== -1) return 'Jenalyn Nueva';
+        if (u === 'kannl' || n === 'kannl' || rawId.indexOf('0013') !== -1) return 'Kathleen Ann L. Totaan';
+        if (u === 'lmary' || n === 'lmary' || rawId.indexOf('0014') !== -1) return 'Lourdes Mary Cenina';
+        if (u === 'ldavi' || n === 'ldavi' || rawId.indexOf('0015') !== -1) return 'Luis David Ramirez';
+        if (u === 'mracq' || n === 'mracq' || rawId.indexOf('0016') !== -1) return 'Maria Racquel Gracia M. Libarios';
+        if (u === 'mjesu' || n === 'mjesu' || rawId.indexOf('0017') !== -1) return 'Mark Jesus A. Egoy';
+        if (u === 'rguia' || n === 'rguia' || rawId.indexOf('0018') !== -1) return 'Raquel Guiapal';
+        if (u === 'rloui' || n === 'rloui' || rawId.indexOf('0019') !== -1) return 'Ron Louie Logan';
+        if (u === 'rbarr' || n === 'rbarr' || rawId.indexOf('0020') !== -1) return 'Rubilyne Barrameda';
+        if (u === 'srome' || n === 'srome' || rawId.indexOf('0021') !== -1) return 'Shiela Romey';
+        if (u === 'tashl' || n === 'tashl' || rawId.indexOf('0022') !== -1) return 'Trixy Ashley Decena Mabutol';
+        if (u === 'trainer' || n === 'pia' || c === 'LLC-0003') return 'Pia';
+        if (u === 'admin' || c === 'SUPERADMIN') return 'Admin';
+        return name || username || 'Employee';
+      }
+
+      // Deduplicate users and sanitize employee names
       var userMap = {};
       var users = [];
       rawUsers.forEach(function(u) {
+        var resolvedName = resolveStaffFullName(u.employeeCode, u.username, u.name, u.id);
+        u.name = resolvedName;
         var key = (u.employeeCode || u.id || u.username || '').toUpperCase();
         if (key && !userMap[key]) {
           userMap[key] = u;
@@ -759,6 +819,7 @@ function doPost(e) {
         }
         if (u.id) userMap[u.id] = u;
         if (u.name) userMap[u.name] = u;
+        if (u.employeeCode) userMap[u.employeeCode.toUpperCase()] = u;
       });
 
       // ==========================================
@@ -2042,8 +2103,14 @@ export const fetchEmployeesFromGoogleSheets = async (
         validRole = 'agent';
       }
 
-      const empName = name || existing?.name || (isSuperAdmin ? 'Admin' : `Employee ${code}`);
-      const finalUsername = (parsedUsername || existing?.username || (isSuperAdmin ? 'admin' : generateUniqueUsername(empName, existingUsers, existing?.id))).toLowerCase();
+      const canon = resolveCanonicalEmployee({
+        employeeCode: code,
+        username: parsedUsername || existing?.username,
+        name: name || existing?.name,
+      });
+
+      const empName = canon?.name || name || existing?.name || (isSuperAdmin ? 'Admin' : `Employee ${code}`);
+      const finalUsername = canon?.username || (parsedUsername || existing?.username || (isSuperAdmin ? 'admin' : generateUniqueUsername(empName, existingUsers, existing?.id))).toLowerCase();
 
       if (isPlaceholderName(empName, finalUsername, code)) {
         continue;
