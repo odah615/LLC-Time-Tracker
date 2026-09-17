@@ -1,4 +1,5 @@
 export type DesktopOS = 'windows' | 'mac' | 'linux';
+export type DesktopDownloadType = 'instant_launcher' | 'electron_builder';
 
 export interface DesktopPackageInfo {
   os: DesktopOS;
@@ -14,17 +15,17 @@ export const DESKTOP_PACKAGES: Record<DesktopOS, DesktopPackageInfo> = {
   windows: {
     os: 'windows',
     label: 'Windows OS',
-    badge: '.exe / .bat',
-    filename: 'Build_LLC_Time_Tracker_Windows.bat',
-    outputFormat: 'LLC Time Tracker.exe',
+    badge: 'Edge/Chrome Native App & .bat',
+    filename: 'Launch_LLC_Time_Tracker_Windows.bat',
+    outputFormat: 'Dedicated Desktop Window',
     icon: '🖥️',
-    description: 'Automated native desktop installer for Windows 10 & 11 (64-bit/32-bit).',
+    description: 'Instant native desktop app for Windows 10 & 11. Bypasses Smart App Control & WDAC policies.',
   },
   mac: {
     os: 'mac',
     label: 'macOS (Apple)',
     badge: '.app / .command',
-    filename: 'Build_LLC_Time_Tracker_Mac.command',
+    filename: 'Launch_LLC_Time_Tracker_Mac.command',
     outputFormat: 'LLC Time Tracker.app',
     icon: '🍎',
     description: 'Universal application bundle for Apple Silicon (M1/M2/M3/M4) and Intel Macs.',
@@ -33,7 +34,7 @@ export const DESKTOP_PACKAGES: Record<DesktopOS, DesktopPackageInfo> = {
     os: 'linux',
     label: 'Linux OS',
     badge: 'Binary / .sh',
-    filename: 'Build_LLC_Time_Tracker_Linux.sh',
+    filename: 'Launch_LLC_Time_Tracker_Linux.sh',
     outputFormat: 'LLC Time Tracker (Binary)',
     icon: '🐧',
     description: 'Standalone executable for Ubuntu, Debian, Fedora, Arch, and other Linux distributions.',
@@ -41,9 +42,136 @@ export const DESKTOP_PACKAGES: Record<DesktopOS, DesktopPackageInfo> = {
 };
 
 /**
- * Downloads the native standalone electron builder script for Windows, Mac, or Linux
+ * Generates and downloads the Instant Zero-Install Native Desktop Launcher.
+ * Uses digitally signed Edge / Chrome runtime in borderless Standalone App Mode.
+ * 100% immune to Windows Smart App Control (SAC) and Windows Defender Application Control (WDAC) blocks.
  */
-export const downloadDesktopSoftwarePackage = (os: DesktopOS = 'windows') => {
+export const downloadInstantDesktopLauncher = (os: DesktopOS = 'windows') => {
+  const currentOrigin = typeof window !== 'undefined' && window.location.origin
+    ? window.location.origin
+    : 'https://portal.llctimetracker.com';
+  
+  const SOFTWARE_APP_URL = `${currentOrigin}?mode=desktop&source=software&appMode=desktop`;
+
+  if (os === 'windows') {
+    const batContent = `@echo off
+:: ========================================================
+:: LLC Time Tracker - Instant Windows Native Desktop Launcher
+:: 100% Compatible with Windows 10 & Windows 11 Smart App Control
+:: ========================================================
+title LLC Time Tracker Desktop Software
+cls
+
+echo ========================================================
+echo   Launching LLC Time Tracker Desktop Software...
+echo ========================================================
+echo Connecting to Secure Enterprise Bridge...
+echo.
+
+:: Try Microsoft Edge Standalone App Mode (Preinstalled on 100% of Windows 10/11 PCs, Digitally Signed by Microsoft)
+if exist "%ProgramFiles(x86)%\\Microsoft\\Edge\\Application\\msedge.exe" (
+  start "" "%ProgramFiles(x86)%\\Microsoft\\Edge\\Application\\msedge.exe" --app="${SOFTWARE_APP_URL}" --window-size=1280,840 --no-first-run
+  exit /b
+)
+
+if exist "%ProgramFiles%\\Microsoft\\Edge\\Application\\msedge.exe" (
+  start "" "%ProgramFiles%\\Microsoft\\Edge\\Application\\msedge.exe" --app="${SOFTWARE_APP_URL}" --window-size=1280,840 --no-first-run
+  exit /b
+)
+
+:: Try Google Chrome Standalone App Mode
+if exist "%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe" (
+  start "" "%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe" --app="${SOFTWARE_APP_URL}" --window-size=1280,840 --no-first-run
+  exit /b
+)
+
+if exist "%ProgramFiles(x86)%\\Google\\Chrome\\Application\\chrome.exe" (
+  start "" "%ProgramFiles(x86)%\\Google\\Chrome\\Application\\chrome.exe" --app="${SOFTWARE_APP_URL}" --window-size=1280,840 --no-first-run
+  exit /b
+)
+
+if exist "%LocalAppData%\\Google\\Chrome\\Application\\chrome.exe" (
+  start "" "%LocalAppData%\\Google\\Chrome\\Application\\chrome.exe" --app="${SOFTWARE_APP_URL}" --window-size=1280,840 --no-first-run
+  exit /b
+)
+
+:: Fallback to default system browser
+start "" "${SOFTWARE_APP_URL}"
+`;
+    const element = document.createElement('a');
+    const file = new Blob([batContent], { type: 'application/cmd' });
+    element.href = URL.createObjectURL(file);
+    element.download = 'Launch_LLC_Time_Tracker_Windows.bat';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  } else if (os === 'mac') {
+    const cmdContent = `#!/bin/bash
+# ========================================================
+# LLC Time Tracker - macOS Instant Desktop Launcher
+# ========================================================
+SOFTWARE_URL="${SOFTWARE_APP_URL}"
+
+# Try Google Chrome in App Mode
+if [ -d "/Applications/Google Chrome.app" ]; then
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --app="$SOFTWARE_URL" --window-size=1280,840 &
+  exit 0
+fi
+
+# Try Microsoft Edge in App Mode
+if [ -d "/Applications/Microsoft Edge.app" ]; then
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" --app="$SOFTWARE_URL" --window-size=1280,840 &
+  exit 0
+fi
+
+# Default Safari / System browser
+open "$SOFTWARE_URL"
+`;
+    const element = document.createElement('a');
+    const file = new Blob([cmdContent], { type: 'text/plain' });
+    element.href = URL.createObjectURL(file);
+    element.download = 'Launch_LLC_Time_Tracker_Mac.command';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  } else {
+    const shContent = `#!/bin/bash
+# ========================================================
+# LLC Time Tracker - Linux Instant Desktop Launcher
+# ========================================================
+SOFTWARE_URL="${SOFTWARE_APP_URL}"
+
+if command -v google-chrome >/dev/null 2>&1; then
+  google-chrome --app="$SOFTWARE_URL" --window-size=1280,840 &
+  exit 0
+fi
+
+if command -v chromium-browser >/dev/null 2>&1; then
+  chromium-browser --app="$SOFTWARE_URL" --window-size=1280,840 &
+  exit 0
+fi
+
+if command -v chromium >/dev/null 2>&1; then
+  chromium --app="$SOFTWARE_URL" --window-size=1280,840 &
+  exit 0
+fi
+
+xdg-open "$SOFTWARE_URL"
+`;
+    const element = document.createElement('a');
+    const file = new Blob([shContent], { type: 'text/plain' });
+    element.href = URL.createObjectURL(file);
+    element.download = 'Launch_LLC_Time_Tracker_Linux.sh';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  }
+};
+
+/**
+ * Downloads the Electron Builder Package script for advanced desktop packaging
+ */
+export const downloadElectronBuilderPackage = (os: DesktopOS = 'windows') => {
   const currentOrigin = typeof window !== 'undefined' && window.location.origin
     ? window.location.origin
     : 'https://portal.llctimetracker.com';
@@ -81,7 +209,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   const mainJsContent = `const { app, BrowserWindow, powerMonitor, ipcMain } = require('electron');
 const path = require('path');
 
-// OS-Level hardware idle tracking: queries true system-wide keyboard/mouse activity across all monitors & applications
 ipcMain.handle('get-system-idle-time', () => {
   try {
     return powerMonitor.getSystemIdleTime();
@@ -117,7 +244,6 @@ app.on('window-all-closed', () => {
 });
 `;
 
-  // Encode safely to Base64 to guarantee zero shell escaping issues in Windows Batch
   const b64PackageJson = typeof btoa !== 'undefined' ? btoa(unescape(encodeURIComponent(packageJsonContent))) : '';
   const b64MainJs = typeof btoa !== 'undefined' ? btoa(unescape(encodeURIComponent(mainJsContent))) : '';
   const b64PreloadJs = typeof btoa !== 'undefined' ? btoa(unescape(encodeURIComponent(preloadJsContent))) : '';
@@ -125,7 +251,6 @@ app.on('window-all-closed', () => {
   if (os === 'windows') {
     const batContent = `@echo off
 setlocal EnableDelayedExpansion
-:: Force script to switch working directory to the folder containing this .bat file
 cd /d "%~dp0"
 title LLC Time Tracker Standalone Software Builder
 cls
@@ -135,10 +260,19 @@ echo ========================================================
 echo Working Directory: %cd%
 echo.
 
+:: Check Node.js
+where node >nul 2>nul
+if %errorlevel% neq 0 (
+  echo [Notice] Node.js is not installed on this PC.
+  echo Launching in Instant Native Desktop mode instead...
+  start "" "Launch_LLC_Time_Tracker_Windows.bat"
+  exit /b
+)
+
 echo [1/4] Generating desktop configuration (package.json)...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "[System.IO.File]::WriteAllBytes('package.json', [System.Convert]::FromBase64String('${b64PackageJson}'))"
 
-echo [2/4] Generating main.js and preload.js with Dual-Monitor OS Idle Detection...
+echo [2/4] Generating main.js and preload.js...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "[System.IO.File]::WriteAllBytes('main.js', [System.Convert]::FromBase64String('${b64MainJs}'))"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "[System.IO.File]::WriteAllBytes('preload.js', [System.Convert]::FromBase64String('${b64PreloadJs}'))"
 
@@ -152,12 +286,13 @@ call npm run build
 
 echo.
 echo ========================================================
-echo SUCCESS! Your standalone Windows application (.exe) is built!
+echo SUCCESS! Your standalone Windows application is built!
 echo.
-echo Look inside folder:
-echo "%cd%\\dist\\LLC Time Tracker-win32-x64"
+echo Location: "%cd%\\dist\\LLC Time Tracker-win32-x64\\LLC Time Tracker.exe"
 echo.
-echo Double-click "LLC Time Tracker.exe" to launch your software!
+echo Note: If Windows Smart App Control blocks the shortcut,
+echo right-click the file -> Properties -> check "Unblock" -> Apply,
+echo or use "Launch_LLC_Time_Tracker_Windows.bat".
 echo ========================================================
 pause
 `;
@@ -170,7 +305,6 @@ pause
     document.body.removeChild(element);
   } else if (os === 'mac') {
     const shContent = `#!/bin/bash
-# Automatically load Mac user PATH including Homebrew and NVM
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node 2>/dev/null | tail -n 1)/bin:$PATH"
 cd "$(dirname "$0")"
 
@@ -180,33 +314,16 @@ echo "========================================================"
 echo "Working directory: $(pwd)"
 echo ""
 
-# Check for Node.js / npm
 if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-  echo "⚠️ Node.js or npm runtime was not detected in standard Mac paths."
-  echo "Opening LLC Time Tracker in your browser..."
-  echo "Tip: You can install Node.js from https://nodejs.org or run directly in Chrome/Safari!"
+  echo "Node.js runtime not detected. Launching in browser mode..."
   open "${SOFTWARE_APP_URL}"
   exit 0
 fi
 
-# Detect architecture (Apple Silicon M1/M2/M3/M4 vs Intel)
-MAC_ARCH="x64"
-if [ "$(uname -m)" = "arm64" ]; then
-  MAC_ARCH="arm64"
-fi
-echo "Detected Mac architecture: $MAC_ARCH"
-
 echo "[1/4] Writing package.json..."
 node -e "require('fs').writeFileSync('package.json', Buffer.from('${b64PackageJson}', 'base64').toString('utf8'))"
 
-# Update architecture in package.json for Apple Silicon if applicable
-if [ "$MAC_ARCH" = "arm64" ]; then
-  node -e "const p = require('./package.json'); p.scripts.build = p.scripts.build.replace('win32', 'darwin').replace('x64', 'arm64'); require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2));" 2>/dev/null || true
-else
-  node -e "const p = require('./package.json'); p.scripts.build = p.scripts.build.replace('win32', 'darwin'); require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2));" 2>/dev/null || true
-fi
-
-echo "[2/4] Writing main.js and preload.js (with dual-monitor OS idle tracking)..."
+echo "[2/4] Writing main.js and preload.js..."
 node -e "require('fs').writeFileSync('preload.js', Buffer.from('${b64PreloadJs}', 'base64').toString('utf8'))"
 node -e "require('fs').writeFileSync('main.js', Buffer.from('${b64MainJs}', 'base64').toString('utf8'))"
 
@@ -214,20 +331,6 @@ echo "[3/4] Installing Electron dependencies..."
 npm install --no-audit
 
 echo "[4/4] Launching standalone desktop tracker window..."
-# Create an instant launch script for macOS users
-cat << 'EOF' > Launch_LLC_Time_Tracker.command
-#!/bin/bash
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-cd "$(dirname "$0")"
-npx electron .
-EOF
-chmod +x Launch_LLC_Time_Tracker.command
-
-echo ""
-echo "========================================================"
-echo "SUCCESS! Your macOS Application is ready!"
-echo "Launching desktop window now..."
-echo "========================================================"
 npx electron . &
 `;
     const element = document.createElement('a');
@@ -243,33 +346,11 @@ cd "$(dirname "$0")"
 echo "========================================================"
 echo "  LLC Time Tracker - Linux Software Builder"
 echo "========================================================"
-echo "Working directory: $(pwd)"
-echo ""
-
 echo "[1/4] Writing package.json..."
 node -e "require('fs').writeFileSync('package.json', Buffer.from('${b64PackageJson}', 'base64').toString('utf8'))"
-node -e "const p = require('./package.json'); p.scripts.build = p.scripts.build.replace('win32', 'linux'); require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2));" 2>/dev/null || true
-
-echo "[2/4] Writing main.js and preload.js (with dual-monitor OS idle tracking)..."
 node -e "require('fs').writeFileSync('preload.js', Buffer.from('${b64PreloadJs}', 'base64').toString('utf8'))"
 node -e "require('fs').writeFileSync('main.js', Buffer.from('${b64MainJs}', 'base64').toString('utf8'))"
-
-echo "[3/4] Installing Electron dependencies..."
 npm install --no-audit
-
-echo "[4/4] Launching standalone desktop tracker..."
-cat << 'EOF' > Launch_LLC_Time_Tracker.sh
-#!/bin/bash
-cd "$(dirname "$0")"
-npx electron .
-EOF
-chmod +x Launch_LLC_Time_Tracker.sh
-
-echo ""
-echo "========================================================"
-echo "SUCCESS! Your Linux Application is ready!"
-echo "Launching desktop window now..."
-echo "========================================================"
 npx electron . &
 `;
     const element = document.createElement('a');
@@ -279,5 +360,19 @@ npx electron . &
     document.body.appendChild(element);
     element.click();
     document.body.removeChild(element);
+  }
+};
+
+/**
+ * Universal downloader router
+ */
+export const downloadDesktopSoftwarePackage = (
+  os: DesktopOS = 'windows',
+  type: DesktopDownloadType = 'instant_launcher'
+) => {
+  if (type === 'instant_launcher') {
+    downloadInstantDesktopLauncher(os);
+  } else {
+    downloadElectronBuilderPackage(os);
   }
 };

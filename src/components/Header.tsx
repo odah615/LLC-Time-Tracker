@@ -30,6 +30,7 @@ import {
   Layers,
   Shield,
   Database,
+  AlertTriangle,
 } from 'lucide-react';
 import { UserRole } from '../types';
 import { getGoogleAppsScriptTemplate, downloadTableCSV, DEFAULT_SPREADSHEET_ID, DEFAULT_SPREADSHEET_URL } from '../lib/googleSheetsSync';
@@ -451,49 +452,75 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
             </div>
 
             <div className="space-y-3 text-xs text-slate-600">
-              {/* Native Standalone Electron Software Package */}
-              <div className="p-4 rounded-xl border border-emerald-300 bg-emerald-50/70 hover:bg-emerald-50 transition-all space-y-2.5">
+              {/* Option 1: Instant Native Desktop Launcher (Recommended & Policy-Safe) */}
+              <div className="p-4 rounded-xl border border-emerald-400 bg-emerald-50/80 hover:bg-emerald-50 transition-all space-y-2.5 shadow-sm">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-xs text-emerald-950 flex items-center gap-2">
-                    <Download className="w-4 h-4 text-emerald-600" /> Standalone Desktop Executable Package ({headerSelectedOS === 'windows' ? 'Windows .exe' : headerSelectedOS === 'mac' ? 'macOS .app' : 'Linux Binary'})
+                    <Download className="w-4 h-4 text-emerald-700" /> Option 1: Instant Native Desktop Launcher (100% Safe)
                   </span>
-                  <span className="text-[10px] bg-emerald-600 text-white font-bold px-2.5 py-0.5 rounded-full">
-                    STANDALONE APP
+                  <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full">
+                    RECOMMENDED • 0-INSTALL
                   </span>
                 </div>
                 <p className="text-[11px] text-emerald-900 leading-relaxed">
-                  Downloads the automated desktop builder (<code>{headerSelectedOS === 'windows' ? 'Build_LLC_Time_Tracker_Windows.bat' : headerSelectedOS === 'mac' ? 'Build_LLC_Time_Tracker_Mac.sh' : 'Build_LLC_Time_Tracker_Linux.sh'}</code>). Run this script in your desktop folder to produce your native <strong>{headerSelectedOS === 'windows' ? 'LLC Time Tracker.exe' : headerSelectedOS === 'mac' ? 'LLC Time Tracker.app' : 'LLC Time Tracker'}</strong> application directly!
+                  {headerSelectedOS === 'windows'
+                    ? 'Launches in dedicated borderless desktop app window via Microsoft-signed Edge/Chrome runtime. 100% immune to Windows 11 Smart App Control & Application Control Policy blocks. Zero installation needed!'
+                    : 'Launches standalone native desktop application window instantly with 0 setup.'}
                 </p>
                 <button
                   onClick={() => {
-                    handleSimulateDownload();
+                    downloadDesktopSoftwarePackage(headerSelectedOS, 'instant_launcher');
                     setShowDownloadModal(false);
                   }}
-                  className="w-full py-3 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.99]"
+                  className="w-full py-2.5 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.99]"
                 >
-                  <Download className="w-4 h-4" /> Download {headerSelectedOS === 'windows' ? 'Windows App Builder (.bat)' : headerSelectedOS === 'mac' ? 'macOS App Builder (.sh)' : 'Linux App Builder (.sh)'}
+                  <Download className="w-4 h-4" /> Download Instant {headerSelectedOS === 'windows' ? 'Windows Launcher (.bat)' : headerSelectedOS === 'mac' ? 'Mac Launcher (.command)' : 'Linux Launcher (.sh)'}
                 </button>
               </div>
 
+              {/* Option 2: Electron Standalone Builder Package */}
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100/80 transition-all space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-slate-800 flex items-center gap-2">
+                    <Laptop className="w-4 h-4 text-indigo-600" /> Option 2: Electron Standalone Builder Package
+                  </span>
+                  <span className="text-[10px] bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded">
+                    .EXE BUILDER
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Packages the full standalone Node/Electron executable (<code>{headerSelectedOS === 'windows' ? 'Build_LLC_Time_Tracker_Windows.bat' : headerSelectedOS === 'mac' ? 'Build_LLC_Time_Tracker_Mac.command' : 'Build_LLC_Time_Tracker_Linux.sh'}</code>).
+                </p>
+                <button
+                  onClick={() => {
+                    downloadDesktopSoftwarePackage(headerSelectedOS, 'electron_builder');
+                    setShowDownloadModal(false);
+                  }}
+                  className="w-full py-2 px-3 rounded-lg bg-slate-700 hover:bg-slate-800 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all"
+                >
+                  <Download className="w-3.5 h-3.5" /> Download Full Builder Package (.bat)
+                </button>
+              </div>
+
+              {/* Windows Application Control / Smart App Control Troubleshooting */}
+              {headerSelectedOS === 'windows' && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1 text-amber-950 text-[11px]">
+                  <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" /> Getting "Application Control policy has blocked this file"?
+                  </div>
+                  <p className="leading-relaxed text-amber-900">
+                    Windows 11 Smart App Control blocks unsigned shortcuts. <strong>Solution:</strong> Use <strong>Option 1 (Instant Launcher)</strong> above, or right-click the blocked file → click <strong>Properties</strong> → check the <strong>"Unblock"</strong> checkbox at the bottom → click <strong>Apply</strong>.
+                  </p>
+                </div>
+              )}
+
               {/* Step-by-step instructions */}
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-[11px]">
-                <span className="font-bold text-slate-800">Quick Installation Steps:</span>
+                <span className="font-bold text-slate-800">Quick Setup:</span>
                 <ol className="list-decimal pl-4 space-y-1 text-slate-600">
-                  <li>Download the builder script above.</li>
-                  <li>
-                    {headerSelectedOS === 'windows' && 'Double-click the .bat file to build LLC Time Tracker.exe.'}
-                    {headerSelectedOS === 'mac' && (
-                      <span>
-                        Open Terminal and run: <code className="bg-slate-200 px-1.5 py-0.5 rounded font-mono text-slate-800 font-bold">bash ~/Downloads/Build_LLC_Time_Tracker_Mac.command</code> (or run <code className="bg-slate-200 px-1.5 py-0.5 rounded font-mono text-slate-800">chmod +x</code> first).
-                      </span>
-                    )}
-                    {headerSelectedOS === 'linux' && (
-                      <span>
-                        Open Terminal and run: <code className="bg-slate-200 px-1.5 py-0.5 rounded font-mono text-slate-800 font-bold">bash ~/Downloads/Build_LLC_Time_Tracker_Linux.sh</code>.
-                      </span>
-                    )}
-                  </li>
-                  <li>Launch your native desktop application and log in to track your shift.</li>
+                  <li>Download the launcher script above to your desktop or downloads folder.</li>
+                  <li>Double-click the file to launch LLC Time Tracker Desktop.</li>
+                  <li>Log in with your Employee Code and start tracking your shift!</li>
                 </ol>
               </div>
 

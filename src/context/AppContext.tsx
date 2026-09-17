@@ -682,6 +682,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('trackpulse_auto_sync_enabled', enabled ? 'true' : 'false');
   };
 
+  const liveTrackingSnapshotRef = useRef<{
+    isTracking: boolean;
+    elapsedSeconds: number;
+    currentTask: string;
+    currentDesignation: string;
+    startTimeIso: string | null;
+    mouseActivity: number;
+    keyboardActivity: number;
+    activeApp: string;
+  }>({
+    isTracking: false,
+    elapsedSeconds: 0,
+    currentTask: 'Email Reachout',
+    currentDesignation: 'Agent',
+    startTimeIso: null,
+    mouseActivity: 95,
+    keyboardActivity: 95,
+    activeApp: 'LLC Time Tracker Desktop App',
+  });
+
   // Dedicated automatic sync dispatcher with fallback API Bridge & Firestore config fetch
   const triggerAutoSync = useCallback(
     async (
@@ -735,33 +755,81 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (activeUrl && isValidWebhookUrl(activeUrl)) {
-        // Collect active live sessions from employees currently tracking time on Desktop App
-        const liveSessions: TimeLog[] = userPresenceList
-          .filter((p) => p.isTracking && p.isOnline)
-          .map((p) => {
-            const pStart = p.startTime || p.loginTime || p.lastHeartbeat || new Date().toISOString();
-            const startFormatted = formatLogStartTime(pStart, 'Asia/Manila');
-            return {
-              id: `live-${p.userId}`,
+        // Collect active live sessions from all employees currently tracking time
+        const activeTrackersMap = new Map<string, {
+          userId: string;
+          userName: string;
+          employeeCode?: string;
+          designation: string;
+          currentTask: string;
+          elapsedSeconds: number;
+          startTime: string;
+          mouseActivity: number;
+          keyboardActivity: number;
+          currentApp: string;
+        }>();
+
+        // 1. Collect from presence list
+        userPresenceList.forEach((p) => {
+          if (p && p.isTracking && p.userId) {
+            activeTrackersMap.set(p.userId, {
               userId: p.userId,
               userName: p.userName,
-              userAvatar: '',
+              employeeCode: p.employeeCode,
               designation: p.designation || 'Agent',
-              task: p.currentTask || 'Active Task',
-              startTime: pStart,
-              endTime: 'Running Live',
-              durationSeconds: p.elapsedSeconds || 1,
-              status: 'running' as const,
-              geoTimezone: 'Asia/Manila',
-              geoLocalStartTime: startFormatted,
-              mouseActivityAvg: p.mouseActivity || 100,
-              keyboardActivityAvg: p.keyboardActivity || 100,
-              idleSeconds: 0,
-              date: getManilaDateString(),
-              notes: 'Tracking live in Desktop Client Software',
-              appsUsed: [{ appName: p.currentApp || 'Desktop App', icon: 'Globe', durationSeconds: p.elapsedSeconds || 1, category: 'productive' as const }],
-            };
+              currentTask: p.currentTask || 'Active Work',
+              elapsedSeconds: p.elapsedSeconds || 1,
+              startTime: p.startTime || p.loginTime || p.lastHeartbeat || new Date().toISOString(),
+              mouseActivity: p.mouseActivity || 95,
+              keyboardActivity: p.keyboardActivity || 95,
+              currentApp: p.currentApp || 'LLC Time Tracker Desktop App',
+            });
+          }
+        });
+
+        // 2. Ensure current client user is included if actively tracking
+        const liveSnap = liveTrackingSnapshotRef.current;
+        if (currentUser && liveSnap.isTracking) {
+          const currentElapsed = Math.max(liveSnap.elapsedSeconds, 1);
+          const currentStart = liveSnap.startTimeIso || new Date(Date.now() - currentElapsed * 1000).toISOString();
+          activeTrackersMap.set(currentUser.id, {
+            userId: currentUser.id,
+            userName: currentUser.name,
+            employeeCode: currentUser.employeeCode,
+            designation: liveSnap.currentDesignation || currentUser.designation || 'Agent',
+            currentTask: liveSnap.currentTask || 'Active Work',
+            elapsedSeconds: currentElapsed,
+            startTime: currentStart,
+            mouseActivity: liveSnap.mouseActivity || 95,
+            keyboardActivity: liveSnap.keyboardActivity || 95,
+            currentApp: liveSnap.activeApp || 'LLC Time Tracker Desktop App',
           });
+        }
+
+        const liveSessions: TimeLog[] = Array.from(activeTrackersMap.values()).map((p) => {
+          const startFormatted = formatLogStartTime(p.startTime, 'Asia/Manila');
+          return {
+            id: `live-${p.userId}`,
+            userId: p.userId,
+            userName: p.userName,
+            employeeCode: p.employeeCode,
+            userAvatar: '',
+            designation: p.designation,
+            task: p.currentTask,
+            startTime: p.startTime,
+            endTime: 'Running Live',
+            durationSeconds: p.elapsedSeconds,
+            status: 'running' as const,
+            geoTimezone: 'Asia/Manila',
+            geoLocalStartTime: startFormatted,
+            mouseActivityAvg: p.mouseActivity,
+            keyboardActivityAvg: p.keyboardActivity,
+            idleSeconds: 0,
+            date: getManilaDateString(),
+            notes: 'Tracking live in LLC Time Tracker Client',
+            appsUsed: [{ appName: p.currentApp, icon: 'Globe', durationSeconds: p.elapsedSeconds, category: 'productive' as const }],
+          };
+        });
 
         syncDataToGoogleSheetsWebhook(
           activeUrl.trim(),
@@ -779,10 +847,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ).catch((err) => console.warn('Auto-sync to Google Sheets warning:', err));
       }
     },
-    [isAutoSyncToSheetsEnabled, googleSheetsWebhookUrl, users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions, userPresenceList]
+    [isAutoSyncToSheetsEnabled, googleSheetsWebhookUrl, users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions, userPresenceList, currentUser]
   );
-
-  // Background auto-refresh timer removed to keep the Google Spreadsheet stable and prevent unexpected sheet refreshing while viewing!
 
   const triggerGoogleSheetsSync = async (overrideUrl?: string): Promise<{ success: boolean; message: string }> => {
     const targetUrl = overrideUrl || googleSheetsWebhookUrl;
@@ -792,32 +858,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'No webhook URL provided' };
     }
 
-    const liveSessions: TimeLog[] = userPresenceList
-      .filter((p) => p.isTracking && p.isOnline)
-      .map((p) => {
-        const pStart = p.startTime || p.loginTime || p.lastHeartbeat || new Date().toISOString();
-        const startFormatted = formatLogStartTime(pStart, 'Asia/Manila');
-        return {
-          id: `live-${p.userId}`,
+    const activeTrackersMap = new Map<string, {
+      userId: string;
+      userName: string;
+      employeeCode?: string;
+      designation: string;
+      currentTask: string;
+      elapsedSeconds: number;
+      startTime: string;
+      mouseActivity: number;
+      keyboardActivity: number;
+      currentApp: string;
+    }>();
+
+    userPresenceList.forEach((p) => {
+      if (p && p.isTracking && p.userId) {
+        activeTrackersMap.set(p.userId, {
           userId: p.userId,
           userName: p.userName,
-          userAvatar: '',
+          employeeCode: p.employeeCode,
           designation: p.designation || 'Agent',
-          task: p.currentTask || 'Active Task',
-          startTime: pStart,
-          endTime: 'Running Live',
-          durationSeconds: p.elapsedSeconds || 1,
-          status: 'running' as const,
-          geoTimezone: 'Asia/Manila',
-          geoLocalStartTime: startFormatted,
-          mouseActivityAvg: p.mouseActivity || 100,
-          keyboardActivityAvg: p.keyboardActivity || 100,
-          idleSeconds: 0,
-          date: getManilaDateString(),
-          notes: 'Tracking live in Desktop Client Software',
-          appsUsed: [{ appName: p.currentApp || 'Desktop App', icon: 'Globe', durationSeconds: p.elapsedSeconds || 1, category: 'productive' as const }],
-        };
+          currentTask: p.currentTask || 'Active Work',
+          elapsedSeconds: p.elapsedSeconds || 1,
+          startTime: p.startTime || p.loginTime || p.lastHeartbeat || new Date().toISOString(),
+          mouseActivity: p.mouseActivity || 95,
+          keyboardActivity: p.keyboardActivity || 95,
+          currentApp: p.currentApp || 'LLC Time Tracker Desktop App',
+        });
+      }
+    });
+
+    const liveSnap = liveTrackingSnapshotRef.current;
+    if (currentUser && liveSnap.isTracking) {
+      const currentElapsed = Math.max(liveSnap.elapsedSeconds, 1);
+      const currentStart = liveSnap.startTimeIso || new Date(Date.now() - currentElapsed * 1000).toISOString();
+      activeTrackersMap.set(currentUser.id, {
+        userId: currentUser.id,
+        userName: currentUser.name,
+        employeeCode: currentUser.employeeCode,
+        designation: liveSnap.currentDesignation || currentUser.designation || 'Agent',
+        currentTask: liveSnap.currentTask || 'Active Work',
+        elapsedSeconds: currentElapsed,
+        startTime: currentStart,
+        mouseActivity: liveSnap.mouseActivity || 95,
+        keyboardActivity: liveSnap.keyboardActivity || 95,
+        currentApp: liveSnap.activeApp || 'LLC Time Tracker Desktop App',
       });
+    }
+
+    const liveSessions: TimeLog[] = Array.from(activeTrackersMap.values()).map((p) => {
+      const startFormatted = formatLogStartTime(p.startTime, 'Asia/Manila');
+      return {
+        id: `live-${p.userId}`,
+        userId: p.userId,
+        userName: p.userName,
+        employeeCode: p.employeeCode,
+        userAvatar: '',
+        designation: p.designation,
+        task: p.currentTask,
+        startTime: p.startTime,
+        endTime: 'Running Live',
+        durationSeconds: p.elapsedSeconds,
+        status: 'running' as const,
+        geoTimezone: 'Asia/Manila',
+        geoLocalStartTime: startFormatted,
+        mouseActivityAvg: p.mouseActivity,
+        keyboardActivityAvg: p.keyboardActivity,
+        idleSeconds: 0,
+        date: getManilaDateString(),
+        notes: 'Tracking live in LLC Time Tracker Client',
+        appsUsed: [{ appName: p.currentApp, icon: 'Globe', durationSeconds: p.elapsedSeconds, category: 'productive' as const }],
+      };
+    });
 
     const res = await syncDataToGoogleSheetsWebhook(
       targetUrl,
@@ -2267,6 +2379,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return stored === null ? true : stored === 'true';
   });
 
+  // Keep live tracking snapshot ref continuously synced for auto-sync operations
+  useEffect(() => {
+    liveTrackingSnapshotRef.current = {
+      isTracking,
+      elapsedSeconds: getLiveElapsedSeconds ? getLiveElapsedSeconds() : elapsedSeconds,
+      currentTask,
+      currentDesignation,
+      startTimeIso,
+      mouseActivity: currentMouseActivity || 95,
+      keyboardActivity: currentKeyboardActivity || 95,
+      activeApp: currentActiveApp || 'LLC Time Tracker Desktop App',
+    };
+  }, [isTracking, elapsedSeconds, currentTask, currentDesignation, startTimeIso, currentMouseActivity, currentKeyboardActivity, currentActiveApp, getLiveElapsedSeconds]);
+
   const toggleDualMonitorMode = () => {
     setIsDualMonitorMode((prev) => {
       const next = !prev;
@@ -2959,6 +3085,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setScreenshots((prev) => [newScreenshot, ...prev]);
     }
   }, [elapsedSeconds, isTracking, isPaused, currentUser, currentActiveApp, currentMouseActivity, currentKeyboardActivity, currentDesignation]);
+
+  // Periodic 45-Second Auto-Sync to Google Sheets & Enterprise Database while actively working
+  useEffect(() => {
+    if (isTracking && !isPaused && elapsedSeconds > 0 && elapsedSeconds % 45 === 0) {
+      triggerAutoSync();
+    }
+  }, [elapsedSeconds, isTracking, isPaused, triggerAutoSync]);
 
   // Start tracking
   const startTracking = () => {

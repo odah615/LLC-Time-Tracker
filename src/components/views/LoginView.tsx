@@ -26,6 +26,7 @@ import {
   X,
   Sparkles,
   WifiOff,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const LoginView: React.FC = () => {
@@ -590,59 +591,67 @@ export const LoginView: React.FC = () => {
 
             {/* Step-by-Step Installation Instructions */}
             <div className="space-y-3 text-xs">
-              <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-xl text-blue-900 space-y-2">
-                <div className="font-bold flex items-center gap-1.5 text-xs text-blue-950">
-                  <HelpCircle className="w-4 h-4 text-blue-600" /> Step-by-Step Installation & Setup Instructions
+              {/* Option 1: Instant Native Desktop Launcher (Recommended & Policy-Safe) */}
+              <div className="p-4 rounded-xl border border-emerald-400 bg-emerald-50/80 hover:bg-emerald-50 transition-all space-y-2.5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-emerald-950 flex items-center gap-2">
+                    <Download className="w-4 h-4 text-emerald-700" /> Option 1: Instant Native Desktop Launcher (100% Safe)
+                  </span>
+                  <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full">
+                    RECOMMENDED • 0-INSTALL
+                  </span>
                 </div>
-                <ol className="space-y-2 text-[11px] text-blue-900 pl-4 list-decimal leading-relaxed">
-                  <li>
-                    <strong>Download Installer:</strong> Click the green <em>"Download Installer"</em> button below to save the file to your Downloads or Desktop folder.
-                  </li>
-                  {downloadOS === 'mac' ? (
-                    <>
-                      <li className="bg-emerald-50 p-3 rounded-lg border border-emerald-300 text-emerald-950 space-y-1.5">
-                        <div className="font-bold flex items-center gap-1.5 text-xs text-emerald-900">
-                          🍎 Option 1: 1-Click Desktop App (Fastest & Zero Terminal)
-                        </div>
-                        <div className="text-[11px] text-emerald-900 leading-normal">
-                          • In <strong>Google Chrome</strong>: Click the <em>Install LLC Time Tracker</em> icon on the right side of your address bar (or Menu <code>⋮</code> → <em>Save and share</em> → <em>Install page as app</em>).<br/>
-                          • In <strong>Safari</strong> (macOS Sonoma, Sequoia, Ventura): Click <em>File → Add to Dock</em>.<br/>
-                          This immediately adds a native <strong>LLC Time Tracker.app</strong> directly to your Applications & Dock without needing any script or terminal!
-                        </div>
-                      </li>
-                      <li className="bg-amber-50 p-3 rounded-lg border border-amber-300 text-amber-950 space-y-1.5">
-                        <div className="font-bold flex items-center gap-1.5 text-xs text-amber-950">
-                          ⚙️ Option 2: Run Automated Mac Builder Script
-                        </div>
-                        <div className="text-[11px] text-amber-900 leading-relaxed">
-                          If you downloaded <code>Build_LLC_Time_Tracker_Mac.command</code>, you can simply double-click it directly, or open <strong>Terminal</strong> and run:
-                          <div className="mt-1.5 bg-slate-900 text-emerald-300 font-mono text-[11px] p-2 rounded-md select-all">
-                            bash ~/Downloads/Build_LLC_Time_Tracker_Mac.command
-                          </div>
-                          <span className="text-[10px] text-amber-800 block mt-1">
-                            <em>⚠️ Note: Do not paste the file path alone, or macOS will say "Permission denied". You must include <code>bash </code> at the start.</em>
-                          </span>
-                        </div>
-                      </li>
-                    </>
-                  ) : (
-                    <li>
-                      <strong>Run Installer / Builder:</strong> Double-click the downloaded file (<code>{downloadOS === 'windows' ? 'Build_LLC_Time_Tracker_Windows.bat' : 'Build_LLC_Time_Tracker_Linux.sh'}</code>).
-                    </li>
-                  )}
-                  {downloadOS === 'windows' && (
-                    <li className="bg-amber-100/70 p-2 rounded-lg border border-amber-300/80 text-amber-950">
-                      <strong>Windows Defender / SmartScreen prompt?</strong> If a blue <em>"Windows protected your PC"</em> popup appears, click <u>"More info"</u> and then click <u>"Run anyway"</u>.
-                    </li>
-                  )}
-                  <li>
-                    <strong>Login with Assigned Credentials:</strong> Once opened, sign in using your Employee Code and password.
-                  </li>
-                  <li>
-                    <strong>Start Shift & Activity Tracking:</strong> Select your task designation and click <em>"Start Shift"</em>. The app will quietly monitor active hours, capture periodic screen snapshots, and auto-sync to the central database.
-                  </li>
-                </ol>
+                <p className="text-[11px] text-emerald-900 leading-relaxed">
+                  {downloadOS === 'windows'
+                    ? 'Launches in dedicated borderless desktop app window via Microsoft-signed Edge/Chrome runtime. 100% immune to Windows 11 Smart App Control & Application Control Policy blocks. Zero installation needed!'
+                    : 'Launches standalone native desktop application window instantly with 0 setup.'}
+                </p>
+                <button
+                  onClick={() => {
+                    downloadDesktopSoftwarePackage(downloadOS, 'instant_launcher');
+                    setShowDownloadModal(false);
+                  }}
+                  className="w-full py-2.5 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.99]"
+                >
+                  <Download className="w-4 h-4" /> Download Instant {downloadOS === 'windows' ? 'Windows Launcher (.bat)' : downloadOS === 'mac' ? 'Mac Launcher (.command)' : 'Linux Launcher (.sh)'}
+                </button>
               </div>
+
+              {/* Option 2: Electron Standalone Builder Package */}
+              <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100/80 transition-all space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-slate-800 flex items-center gap-2">
+                    <Laptop className="w-4 h-4 text-indigo-600" /> Option 2: Electron Standalone Builder Package
+                  </span>
+                  <span className="text-[10px] bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded">
+                    .EXE BUILDER
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Packages the full standalone Node/Electron executable (<code>{downloadOS === 'windows' ? 'Build_LLC_Time_Tracker_Windows.bat' : downloadOS === 'mac' ? 'Build_LLC_Time_Tracker_Mac.command' : 'Build_LLC_Time_Tracker_Linux.sh'}</code>).
+                </p>
+                <button
+                  onClick={() => {
+                    downloadDesktopSoftwarePackage(downloadOS, 'electron_builder');
+                    setShowDownloadModal(false);
+                  }}
+                  className="w-full py-2 px-3 rounded-lg bg-slate-700 hover:bg-slate-800 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all"
+                >
+                  <Download className="w-3.5 h-3.5" /> Download Full Builder Package (.bat)
+                </button>
+              </div>
+
+              {/* Windows Application Control / Smart App Control Troubleshooting */}
+              {downloadOS === 'windows' && (
+                <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-1 text-amber-950 text-[11px]">
+                  <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" /> Getting "Application Control policy has blocked this file"?
+                  </div>
+                  <p className="leading-relaxed text-amber-900">
+                    Windows 11 Smart App Control blocks unsigned shortcuts. <strong>Solution:</strong> Use <strong>Option 1 (Instant Launcher)</strong> above, or right-click the blocked file → click <strong>Properties</strong> → check the <strong>"Unblock"</strong> checkbox at the bottom → click <strong>Apply</strong>.
+                  </p>
+                </div>
+              )}
 
               {/* Desktop Tracker Features Summary */}
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-slate-700">
@@ -707,12 +716,12 @@ export const LoginView: React.FC = () => {
               </div>
               <button
                 onClick={() => {
-                  handleSimulateDownload();
+                  downloadDesktopSoftwarePackage(downloadOS, 'instant_launcher');
                   setShowDownloadModal(false);
                 }}
                 className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-md transition-all"
               >
-                <Download className="w-4 h-4" /> Download {downloadOS === 'windows' ? 'Windows App Package (.bat)' : downloadOS === 'mac' ? 'macOS App Package (.command)' : 'Linux App Package (.sh)'}
+                <Download className="w-4 h-4" /> Download Instant Launcher
               </button>
             </div>
           </div>
