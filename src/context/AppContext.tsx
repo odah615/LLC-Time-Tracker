@@ -703,6 +703,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     activeApp: 'LLC Time Tracker Desktop App',
   });
 
+  const lastAutoSyncTimestampRef = useRef<number>(0);
+
   // Dedicated automatic sync dispatcher with fallback API Bridge & Firestore config fetch
   const triggerAutoSync = useCallback(
     async (
@@ -714,12 +716,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedIdle = idleLogs,
       updatedLeaves = leaveRequests,
       updatedDesignationTasks = designationTasks,
-      updatedRolePermissions = rolePermissions
+      updatedRolePermissions = rolePermissions,
+      forcePush = false
     ) => {
       // If auto-sync is disabled, do not execute background pushes (keeps Google Sheets calm and static without constant reloading)
-      if (!isAutoSyncToSheetsEnabled) {
+      if (!isAutoSyncToSheetsEnabled && !forcePush) {
         return;
       }
+
+      // Throttle background pushes to at most once per 60 seconds unless explicitly forced
+      const now = Date.now();
+      if (!forcePush && now - lastAutoSyncTimestampRef.current < 60000) {
+        return;
+      }
+      lastAutoSyncTimestampRef.current = now;
 
       let activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
       if (activeUrl && !isValidWebhookUrl(activeUrl)) {
@@ -2866,8 +2876,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }));
         }
 
-        // Auto-sync live progress and active task to Google Sheets every 30 seconds
-        if (liveSecs > 0 && liveSecs % 30 === 0) {
+        // Auto-sync live progress and active task to Google Sheets every 15 minutes (900 seconds)
+        if (liveSecs > 0 && liveSecs % 900 === 0) {
           triggerAutoSync();
         }
 

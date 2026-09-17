@@ -890,148 +890,220 @@ function doPost(e) {
       });
 
       var presenceHeaders = ['Employee Code', 'Employee Name', 'System Role', 'Designation', 'Platform Mode', 'Live Presence Status', 'Current Active Task', 'Current Application', 'Shift Hours Today', 'First Check-In (Manila)', 'Device Timezone', 'Last Active Heartbeat (Manila)', 'Last Heartbeat (ISO)'];
-      var presenceRows = [];
       var nowMs = new Date().getTime();
       var todayStr = Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
 
-      users.forEach(function(u) {
-        var p = presenceMap[u.id] ||
-                presenceMap[String(u.id).toLowerCase()] ||
-                (u.employeeCode && (presenceMap[u.employeeCode] || presenceMap[String(u.employeeCode).toLowerCase()] || presenceMap[String(u.employeeCode).toUpperCase()])) ||
-                (u.name && (presenceMap[u.name] || presenceMap[String(u.name).toLowerCase().trim()])) ||
-                (u.username && (presenceMap[u.username] || presenceMap[String(u.username).toLowerCase()])) ||
-                (u.email && (presenceMap[u.email] || presenceMap[String(u.email).toLowerCase()])) ||
-                null;
-
-        var pLastHeartbeatMs = p && p.lastHeartbeat ? new Date(p.lastHeartbeat).getTime() : 0;
-        var isRecent = pLastHeartbeatMs > 0 && (nowMs - pLastHeartbeatMs < 15 * 60 * 1000);
-
-        // Check if there is an active running time log in rawTimeLogs for this user
-        var hasRunningLog = false;
-        var runningTask = '';
-        var runningApp = '';
-        var userTodaySec = 0;
-        var earliestCheckinMs = Infinity;
-        var userFirstCheckin = '--:--';
-
-        // 1. Check daily attendance logs for official first login
-        dailyAttendanceLogs.forEach(function(att) {
-          var matchAtt = att.userId === u.id || (u.employeeCode && att.employeeCode === u.employeeCode) || att.userName === u.name;
-          if (matchAtt && (att.date === todayStr || (att.date && att.date.indexOf(todayStr) !== -1))) {
-            if (att.firstLoginTime && att.firstLoginTime !== '--:--') {
-              userFirstCheckin = att.firstLoginTime;
-            }
-          }
-        });
-
-        // 2. Aggregate today's time logs & find earliest check-in time
-        rawTimeLogs.forEach(function(tl) {
-          var matchU = tl.userId === u.id || tl.userName === u.name || (u.employeeCode && tl.employeeCode === u.employeeCode);
-          if (matchU) {
-            var tlDate = tl.date || (tl.startTime ? Utilities.formatDate(new Date(tl.startTime), 'Asia/Manila', 'yyyy-MM-dd') : '');
-            var isTodayLog = tlDate === todayStr || (tl.startTime && tl.startTime.indexOf(todayStr) !== -1);
-
-            if (isTodayLog) {
-              var dur = typeof tl.durationSeconds === 'number' ? tl.durationSeconds : 0;
-              userTodaySec += dur;
-
-              if (tl.startTime) {
-                try {
-                  var startD = new Date(tl.startTime);
-                  var sMs = startD.getTime();
-                  if (!isNaN(sMs) && sMs < earliestCheckinMs) {
-                    earliestCheckinMs = sMs;
-                    var formattedStartTime = Utilities.formatDate(startD, 'Asia/Manila', 'hh:mm a');
-                    if (userFirstCheckin === '--:--' || earliestCheckinMs !== Infinity) {
-                      userFirstCheckin = tl.geoLocalStartTime || formattedStartTime;
-                    }
-                  }
-                } catch (e) {}
-              }
-            }
-
-            if (tl.status === 'running' || tl.endTime === 'Running Live') {
-              hasRunningLog = true;
-              runningTask = tl.task || runningTask;
-              if (tl.appsUsed && tl.appsUsed.length > 0 && tl.appsUsed[0].appName) {
-                runningApp = tl.appsUsed[0].appName;
-              }
-            }
-          }
-        });
-
-        // 3. Fallback to presence login time if check-in is still unset
-        if (userFirstCheckin === '--:--' && p && p.loginTime) {
+      // Helper function to update Live Presence while preserving other active agents across clients
+      function updateLivePresenceMerged(targetSheet) {
+        if (!targetSheet) return [];
+        var existingMap = {};
+        var lastRow = targetSheet.getLastRow();
+        if (lastRow > 1) {
           try {
-            var pLoginD = new Date(p.loginTime);
-            if (!isNaN(pLoginD.getTime())) {
-              userFirstCheckin = Utilities.formatDate(pLoginD, 'Asia/Manila', 'hh:mm a');
+            var existingData = targetSheet.getRange(2, 1, lastRow - 1, Math.min(targetSheet.getLastColumn(), 13)).getValues();
+            existingData.forEach(function(r) {
+              var eCode = String(r[0] || '').trim().toUpperCase();
+              var eName = String(r[1] || '').trim().toLowerCase();
+              var entry = {
+                code: r[0],
+                name: r[1],
+                role: r[2],
+                designation: r[3],
+                platformMode: r[4],
+                statusLabel: r[5],
+                currentTask: r[6],
+                currentApp: r[7],
+                shiftHours: r[8],
+                firstCheckin: r[9],
+                timezone: r[10],
+                lastHbFormatted: r[11],
+                lastHbIso: r[12]
+              };
+              if (eCode) existingMap[eCode] = entry;
+              if (eName) existingMap[eName] = entry;
+            });
+          } catch(e) {}
+        }
+
+        var presenceRows = [];
+        users.forEach(function(u) {
+          var uCode = (u.employeeCode || '').trim().toUpperCase();
+          var uName = (u.name || '').trim().toLowerCase();
+          var exist = (uCode && existingMap[uCode]) || (uName && existingMap[uName]) || null;
+
+          var p = presenceMap[u.id] ||
+                  presenceMap[String(u.id).toLowerCase()] ||
+                  (u.employeeCode && (presenceMap[u.employeeCode] || presenceMap[String(u.employeeCode).toLowerCase()] || presenceMap[String(u.employeeCode).toUpperCase()])) ||
+                  (u.name && (presenceMap[u.name] || presenceMap[String(u.name).toLowerCase().trim()])) ||
+                  (u.username && (presenceMap[u.username] || presenceMap[String(u.username).toLowerCase()])) ||
+                  (u.email && (presenceMap[u.email] || presenceMap[String(u.email).toLowerCase()])) ||
+                  null;
+
+          var pLastHeartbeatMs = p && p.lastHeartbeat ? new Date(p.lastHeartbeat).getTime() : 0;
+          var existHbMs = exist && exist.lastHbIso ? new Date(exist.lastHbIso).getTime() : 0;
+
+          // Check if incoming payload has fresh active tracking (within 30m)
+          var incomingIsTracking = p && (p.isTracking || p.status === 'online') && (nowMs - pLastHeartbeatMs < 30 * 60 * 1000);
+          // Check if existing row in spreadsheet was live tracking within last 30 minutes
+          var existIsTracking = exist && String(exist.statusLabel || '').indexOf('Live Tracking') !== -1 && (nowMs - existHbMs < 30 * 60 * 1000);
+
+          // Check if there is an active running time log in rawTimeLogs for this user
+          var hasRunningLog = false;
+          var runningTask = '';
+          var runningApp = '';
+          var userTodaySec = 0;
+          var earliestCheckinMs = Infinity;
+          var userFirstCheckin = (exist && exist.firstCheckin && exist.firstCheckin !== '--:--') ? exist.firstCheckin : '--:--';
+
+          // Check daily attendance logs for official first login
+          dailyAttendanceLogs.forEach(function(att) {
+            var matchAtt = att.userId === u.id || (u.employeeCode && att.employeeCode === u.employeeCode) || att.userName === u.name;
+            if (matchAtt && (att.date === todayStr || (att.date && att.date.indexOf(todayStr) !== -1))) {
+              if (att.firstLoginTime && att.firstLoginTime !== '--:--') {
+                userFirstCheckin = att.firstLoginTime;
+              }
             }
-          } catch (e) {}
+          });
+
+          // Aggregate today's time logs
+          rawTimeLogs.forEach(function(tl) {
+            var matchU = tl.userId === u.id || tl.userName === u.name || (u.employeeCode && tl.employeeCode === u.employeeCode);
+            if (matchU) {
+              var tlDate = tl.date || (tl.startTime ? Utilities.formatDate(new Date(tl.startTime), 'Asia/Manila', 'yyyy-MM-dd') : '');
+              var isTodayLog = tlDate === todayStr || (tl.startTime && tl.startTime.indexOf(todayStr) !== -1);
+
+              if (isTodayLog) {
+                var dur = typeof tl.durationSeconds === 'number' ? tl.durationSeconds : 0;
+                userTodaySec += dur;
+
+                if (tl.startTime) {
+                  try {
+                    var startD = new Date(tl.startTime);
+                    var sMs = startD.getTime();
+                    if (!isNaN(sMs) && sMs < earliestCheckinMs) {
+                      earliestCheckinMs = sMs;
+                      var formattedStartTime = Utilities.formatDate(startD, 'Asia/Manila', 'hh:mm a');
+                      if (userFirstCheckin === '--:--' || earliestCheckinMs !== Infinity) {
+                        userFirstCheckin = tl.geoLocalStartTime || formattedStartTime;
+                      }
+                    }
+                  } catch (e) {}
+                }
+              }
+
+              if (tl.status === 'running' || tl.endTime === 'Running Live') {
+                hasRunningLog = true;
+                runningTask = tl.task || runningTask;
+                if (tl.appsUsed && tl.appsUsed.length > 0 && tl.appsUsed[0].appName) {
+                  runningApp = tl.appsUsed[0].appName;
+                }
+              }
+            }
+          });
+
+          if (userFirstCheckin === '--:--' && p && p.loginTime) {
+            try {
+              var pLoginD = new Date(p.loginTime);
+              if (!isNaN(pLoginD.getTime())) {
+                userFirstCheckin = Utilities.formatDate(pLoginD, 'Asia/Manila', 'hh:mm a');
+              }
+            } catch (e) {}
+          }
+
+          var isTracking = hasRunningLog || incomingIsTracking || existIsTracking;
+          var isDesktop = isTracking || (p ? (p.loginPlatform === 'software' || (p.currentApp && p.currentApp.toLowerCase().indexOf('desktop') !== -1) || !!p.isTracking) : false) || (exist && String(exist.platformMode).indexOf('Desktop') !== -1);
+          var isIdle = (p && (p.status === 'idle' || !!p.isPaused)) || (exist && String(exist.statusLabel).indexOf('Idle') !== -1 && (nowMs - existHbMs < 30 * 60 * 1000));
+          var isDesktopOnline = !isTracking && !isIdle && (isDesktop && ((p && (p.isOnline || pLastHeartbeatMs > 0)) || (exist && (nowMs - existHbMs < 30 * 60 * 1000) && String(exist.statusLabel).indexOf('Offline') === -1)));
+          var isWebOnline = !isTracking && !isDesktopOnline && !isIdle && ((p && p.loginPlatform === 'webapp') || (exist && String(exist.platformMode).indexOf('Website') !== -1 && (nowMs - existHbMs < 30 * 60 * 1000)));
+
+          var platformMode = isDesktop ? 'Desktop Tracker' : (isWebOnline ? 'Website' : 'None / Offline');
+          var statusLabel = '⚪ Offline';
+          var currentTask = 'Shift Concluded';
+          var currentApp = 'None';
+
+          if (isTracking) {
+            statusLabel = '🟢 Live Tracking';
+            currentTask = (incomingIsTracking && p && p.currentTask) ? p.currentTask : (runningTask || (exist && exist.currentTask && exist.currentTask !== 'Shift Concluded' ? exist.currentTask : 'Active Work in Progress'));
+            currentApp = (incomingIsTracking && p && p.currentApp) ? p.currentApp : (runningApp || (exist && exist.currentApp && exist.currentApp !== 'None' ? exist.currentApp : 'LLC Time Tracker Desktop App'));
+            platformMode = 'Desktop Tracker';
+          } else if (isIdle) {
+            statusLabel = '🟡 Idle / Break';
+            currentTask = (p && p.currentTask) || (exist && exist.currentTask) || 'Paused / Break';
+            currentApp = (p && p.currentApp) || (exist && exist.currentApp) || 'LLC Time Tracker Desktop App';
+            platformMode = 'Desktop Tracker';
+          } else if (isDesktopOnline) {
+            statusLabel = '🔵 Desktop Online';
+            currentTask = (p && p.currentTask) || (exist && exist.currentTask) || 'Desktop App Standby (Timer Not Started)';
+            currentApp = (p && p.currentApp) || (exist && exist.currentApp) || 'LLC Time Tracker Desktop App';
+            platformMode = 'Desktop Tracker';
+          } else if (isWebOnline) {
+            statusLabel = '🌐 Website Active';
+            currentTask = (p && p.currentTask) || (exist && exist.currentTask) || 'Website Portal Active';
+            currentApp = 'Web Browser';
+            platformMode = 'Website';
+          }
+
+          if (isTracking) {
+            if (p && p.elapsedSeconds && p.elapsedSeconds > 0) {
+              userTodaySec = Math.max(userTodaySec, p.elapsedSeconds);
+            } else if (exist && exist.shiftHours) {
+              var mDur = String(exist.shiftHours).match(/(\d+)h\s*(\d+)m/);
+              if (mDur) {
+                var prevSecs = parseInt(mDur[1], 10) * 3600 + parseInt(mDur[2], 10) * 60;
+                userTodaySec = Math.max(userTodaySec, prevSecs);
+              }
+            }
+          }
+
+          var todayTimeFormatted = formatTotalTime(userTodaySec);
+          var latestHbMs = Math.max(pLastHeartbeatMs, existHbMs);
+          var lastHbFormatted = latestHbMs > 0 ? Utilities.formatDate(new Date(latestHbMs), 'Asia/Manila', 'yyyy-MM-dd hh:mm:ss a') : '--:--';
+          var latestHbIso = (pLastHeartbeatMs >= existHbMs && p && p.lastHeartbeat) ? p.lastHeartbeat : ((exist && exist.lastHbIso) || (p && p.lastHeartbeat) || '');
+          var devTimezone = u.geoTimezone ? u.geoTimezone + ' (GMT+8)' : 'Asia/Manila (GMT+8)';
+
+          presenceRows.push([
+            u.employeeCode || 'N/A',
+            u.name || 'Unknown',
+            u.role || 'agent',
+            u.designation || 'Agent',
+            platformMode,
+            statusLabel,
+            currentTask,
+            currentApp,
+            todayTimeFormatted,
+            userFirstCheckin,
+            devTimezone,
+            lastHbFormatted,
+            latestHbIso
+          ]);
+        });
+
+        // In-place row writing: Avoid clearing headers or rebuilding styles
+        if (targetSheet.getLastRow() === 0) {
+          targetSheet.appendRow(presenceHeaders);
+          targetSheet.getRange(1, 1, 1, presenceHeaders.length)
+            .setFontWeight('bold')
+            .setBackground('#065f46')
+            .setFontColor('#ffffff');
+          targetSheet.setFrozenRows(1);
         }
-
-        var isTracking = hasRunningLog || (p ? (!!p.isTracking && (isRecent || !!p.isOnline)) : false);
-        var isDesktop = hasRunningLog || (p ? (p.loginPlatform === 'software' || (p.currentApp && p.currentApp.toLowerCase().indexOf('desktop') !== -1) || !!p.isTracking) : false);
-        var isIdle = p ? ((isDesktop || isTracking) && (p.status === 'idle' || !!p.isPaused)) : false;
-        var isDesktopOnline = isDesktop && (p ? (p.isOnline || isRecent) : false) && !isTracking && !isIdle;
-        var isWebOnline = p ? (p.loginPlatform === 'webapp' || (!isDesktop && (!!p.isOnline || isRecent))) && !isTracking && !isDesktopOnline && !isIdle : false;
-
-        var platformMode = isDesktop ? 'Desktop Tracker' : (isWebOnline ? 'Website' : 'None / Offline');
-        var statusLabel = '⚪ Offline';
-        var currentTask = 'Shift Concluded';
-        var currentApp = 'None';
-
-        if (isTracking) {
-          statusLabel = '🟢 Live Tracking';
-          currentTask = (p && p.currentTask) || runningTask || 'Active Work in Progress';
-          currentApp = (p && p.currentApp) || runningApp || 'LLC Time Tracker Desktop App';
-          platformMode = 'Desktop Tracker';
-        } else if (isDesktopOnline) {
-          statusLabel = '🔵 Desktop Online';
-          currentTask = (p && p.currentTask) || 'Desktop App Standby (Timer Not Started)';
-          currentApp = (p && p.currentApp) || 'LLC Time Tracker Desktop App';
-          platformMode = 'Desktop Tracker';
-        } else if (isWebOnline) {
-          statusLabel = '🌐 Website Active';
-          currentTask = (p && p.currentTask) || 'Website Portal Active';
-          currentApp = 'Web Browser';
-          platformMode = 'Website';
-        } else if (isIdle) {
-          statusLabel = '🟡 Idle / Break';
-          currentTask = (p && p.currentTask) || 'Paused / Break';
-          currentApp = (p && p.currentApp) || 'LLC Time Tracker Desktop App';
-          platformMode = 'Desktop Tracker';
+        if (presenceRows.length > 0) {
+          targetSheet.getRange(2, 1, presenceRows.length, presenceHeaders.length).setValues(presenceRows);
+          var curLastRow = targetSheet.getLastRow();
+          if (curLastRow > presenceRows.length + 1) {
+            try {
+              targetSheet.getRange(presenceRows.length + 2, 1, curLastRow - (presenceRows.length + 1), presenceHeaders.length).clearContent();
+            } catch(e) {}
+          }
         }
-
-        if (isTracking && p && p.elapsedSeconds && p.elapsedSeconds > 0) {
-          userTodaySec += p.elapsedSeconds;
-        }
-
-        var todayTimeFormatted = formatTotalTime(userTodaySec);
-        var lastHbFormatted = pLastHeartbeatMs > 0 ? Utilities.formatDate(new Date(pLastHeartbeatMs), 'Asia/Manila', 'yyyy-MM-dd hh:mm:ss a') : '--:--';
-        var devTimezone = u.geoTimezone ? u.geoTimezone + ' (GMT+8)' : 'Asia/Manila (GMT+8)';
-
-        presenceRows.push([
-          u.employeeCode || 'N/A',
-          u.name || 'Unknown',
-          u.role || 'agent',
-          u.designation || 'Agent',
-          platformMode,
-          statusLabel,
-          currentTask,
-          currentApp,
-          todayTimeFormatted,
-          userFirstCheckin,
-          devTimezone,
-          lastHbFormatted,
-          (p && p.lastHeartbeat) || ''
-        ]);
-      });
+        return presenceRows;
+      }
 
       var presenceSheet = ss.getSheetByName('Live_Presence');
-      if (presenceSheet) populateCleanSheet(presenceSheet, presenceHeaders, presenceRows, '#065f46');
       var presenceAliasSheet = ss.getSheetByName('Live_Sessions');
-      if (presenceAliasSheet) populateCleanSheet(presenceAliasSheet, presenceHeaders, presenceRows, '#065f46');
+      var finalPresenceRows = [];
+      if (presenceSheet) finalPresenceRows = updateLivePresenceMerged(presenceSheet);
+      if (presenceAliasSheet) updateLivePresenceMerged(presenceAliasSheet);
 
       // ==========================================
       // 1. POPULATE LOGIN LOGS (Support both 'Login_Logs' and 'Login_Session_Logs')
@@ -1327,30 +1399,45 @@ function doPost(e) {
         if (isLive) entry.hasLive = true;
       });
 
-      // Also ensure all actively tracking users in rawPresenceList for today have a running entry
-      users.forEach(function(u) {
-        var p = presenceMap[u.id] || (u.employeeCode && presenceMap[u.employeeCode]) || presenceMap[u.name];
-        if (p && p.isTracking && p.elapsedSeconds && p.elapsedSeconds > 0) {
-          var dKey = todayStr + '___' + (u.employeeCode || u.name);
+      // Also ensure all actively tracking users in finalPresenceRows for today have an active running entry in Daily_Summary
+      finalPresenceRows.forEach(function(r) {
+        var eCode = String(r[0] || 'N/A').trim();
+        var eName = String(r[1] || 'Staff').trim();
+        var eDesig = String(r[3] || 'Agent').trim();
+        var eStatus = String(r[5] || '');
+        var eTask = String(r[6] || 'Active Work').trim();
+        var eShiftHours = String(r[8] || '');
+        var eCheckin = String(r[9] || '--:--');
+
+        if (eStatus.indexOf('Live Tracking') !== -1) {
+          var dKey = todayStr + '___' + (eCode !== 'N/A' ? eCode : eName);
+          var mSecs = 0;
+          var mMatch = eShiftHours.match(/(\d+)h\s*(\d+)m/);
+          if (mMatch) {
+            mSecs = parseInt(mMatch[1], 10) * 3600 + parseInt(mMatch[2], 10) * 60;
+          }
+
           if (!dailyMap[dKey]) {
             dailyMap[dKey] = {
               date: todayStr,
-              code: u.employeeCode || 'N/A',
-              name: u.name,
-              designation: u.designation || 'Agent',
-              tasks: { [p.currentTask || 'Active Work']: true },
-              firstClockIn: p.loginTime ? Utilities.formatDate(new Date(p.loginTime), 'Asia/Manila', 'hh:mm a') : '--:--',
+              code: eCode,
+              name: eName,
+              designation: eDesig,
+              tasks: { [eTask]: true },
+              firstClockIn: eCheckin,
               lastClockOut: 'Running Live',
-              grossSecs: p.elapsedSeconds,
+              grossSecs: Math.max(mSecs, 60),
               idleSecs: 0,
-              mouseSum: p.mouseActivity || 90,
-              keyboardSum: p.keyboardActivity || 90,
+              mouseSum: 95,
+              keyboardSum: 95,
               count: 1,
               hasLive: true
             };
           } else {
             dailyMap[dKey].hasLive = true;
-            if (p.currentTask) dailyMap[dKey].tasks[p.currentTask] = true;
+            dailyMap[dKey].lastClockOut = 'Running Live';
+            if (mSecs > dailyMap[dKey].grossSecs) dailyMap[dKey].grossSecs = mSecs;
+            if (eTask && eTask !== 'Shift Concluded') dailyMap[dKey].tasks[eTask] = true;
           }
         }
       });
@@ -1379,7 +1466,9 @@ function doPost(e) {
         ]);
       });
       dailyRows.sort(function(a, b) {
-        return new Date(b[0] || 0).getTime() - new Date(a[0] || 0).getTime();
+        var d1 = new Date(b[0] || 0).getTime() - new Date(a[0] || 0).getTime();
+        if (d1 !== 0) return d1;
+        return String(a[1] || '').localeCompare(String(b[1] || ''));
       });
       if (dailySummarySheet) populateCleanSheet(dailySummarySheet, dailyHeaders, dailyRows, '#0284c7');
 
