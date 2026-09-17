@@ -31,6 +31,8 @@ import {
   Shield,
   Database,
   AlertTriangle,
+  Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import { UserRole } from '../types';
 import { getGoogleAppsScriptTemplate, downloadTableCSV, DEFAULT_SPREADSHEET_ID, DEFAULT_SPREADSHEET_URL } from '../lib/googleSheetsSync';
@@ -72,10 +74,13 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
     isCloudQuotaExhausted,
     storageEngineMode,
     setStorageEngineMode,
+    resetDatabaseToFreshState,
   } = useApp();
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showSheetsModal, setShowSheetsModal] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [showTaskManagerModal, setShowTaskManagerModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [sheetsWebhookInput, setSheetsWebhookInput] = useState(googleSheetsWebhookUrl);
@@ -833,6 +838,29 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                   </button>
                 </div>
               </div>
+
+              {/* Clean Slate / Reset Everything */}
+              {isSuperAdmin && (
+                <div className="p-4 rounded-xl border border-red-200 bg-red-50/50 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-red-100 flex items-center justify-center text-red-600">
+                        <Trash2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-red-900">System Reset & Clean Slate</h4>
+                        <p className="text-[11px] text-red-700">Wipe all time logs, daily summaries, idle logs, and reset shift sessions</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowResetModal(true)}
+                      className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-sm transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" /> Reset Everything
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="pt-2 border-t border-slate-200 flex items-center justify-end">
@@ -841,6 +869,68 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                 className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Reset Everything */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 text-slate-800">
+          <div className="bg-white border border-red-200 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center text-red-600 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Confirm Full System Reset</h3>
+                <p className="text-xs text-slate-500">This action will restore a completely clean slate</p>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-xs text-slate-600 bg-slate-50 p-3.5 rounded-xl border border-slate-200 leading-relaxed">
+              <p className="font-semibold text-slate-800">What will happen when you reset:</p>
+              <ul className="list-disc list-inside space-y-1 text-slate-600 pl-1">
+                <li>All recorded <strong>time logs</strong> and <strong>tasks</strong> are cleared</li>
+                <li>All <strong>daily attendance & summaries</strong> are reset to 0</li>
+                <li>All active shift sessions, timers, and idle logs are reset</li>
+                <li>Google Sheets data tabs will be cleanly purged (preserving column headers)</li>
+                <li>The Super Admin account and standard employee roster are retained</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                disabled={isResetting}
+                onClick={() => setShowResetModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={isResetting}
+                onClick={async () => {
+                  setIsResetting(true);
+                  try {
+                    await resetDatabaseToFreshState();
+                    setShowResetModal(false);
+                    setShowSheetsModal(false);
+                  } finally {
+                    setIsResetting(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-2 shadow-sm disabled:opacity-50"
+              >
+                {isResetting ? (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5 animate-spin" /> Resetting System...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" /> Yes, Reset Everything
+                  </>
+                )}
               </button>
             </div>
           </div>

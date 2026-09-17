@@ -486,7 +486,7 @@ function repairAndCleanAllTabs() {
  * Guarantees that records from other agents/trainees are preserved and not wiped out during sync.
  */
 function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColIdx, dateSortColIdx) {
-  if (!sheet) return;
+  if (!sheet) return [];
 
   try {
     var existingFilter = sheet.getFilter();
@@ -524,7 +524,7 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
       if (inKey && inKey !== 'N/A') {
         rowMap[inKey] = inRow;
       } else {
-        rowMap['auto_' + i + '_' + (inRow[1] || '') + '_' + (inRow[2] || '')] = inRow;
+        rowMap['auto_' + i + '_' + (inRow[1] || '') + '_' + (inRow[2] || '') + '_' + (inRow[5] || '')] = inRow;
       }
     }
   }
@@ -534,15 +534,14 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
   // Optional date sort descending
   if (dateSortColIdx !== undefined && dateSortColIdx !== null) {
     mergedList.sort(function(a, b) {
-      var valA = a[dateSortColIdx] ? new Date(a[dateSortColIdx]).getTime() : 0;
-      var valB = b[dateSortColIdx] ? new Date(b[dateSortColIdx]).getTime() : 0;
-      if (isNaN(valA)) valA = 0;
-      if (isNaN(valB)) valB = 0;
-      return valB - valA;
+      var valA = a[dateSortColIdx] ? new Date(a[dateSortColIdx] + ' ' + (a[6] || '')).getTime() : 0;
+      var valB = b[dateSortColIdx] ? new Date(b[dateSortColIdx] + ' ' + (b[6] || '')).getTime() : 0;
+      if (isNaN(valA)) valA = new Date(a[dateSortColIdx] || 0).getTime();
+      if (isNaN(valB)) valB = new Date(b[dateSortColIdx] || 0).getTime();
+      return (valB || 0) - (valA || 0);
     });
   }
 
-  sheet.clear();
   var allData = [headers];
   if (mergedList.length > 0) {
     allData = allData.concat(mergedList);
@@ -550,7 +549,17 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
 
   var numRows = allData.length;
   var numCols = headers.length;
+  var prevLastRow = sheet.getLastRow();
+  var prevLastCol = sheet.getLastColumn();
+
+  // Set values in-place smoothly without clearing formatting
   sheet.getRange(1, 1, numRows, numCols).setValues(allData);
+
+  if (prevLastRow > numRows) {
+    try {
+      sheet.getRange(numRows + 1, 1, prevLastRow - numRows, Math.max(prevLastCol, numCols)).clearContent();
+    } catch (e) {}
+  }
 
   sheet.getRange(1, 1, 1, numCols)
     .setFontWeight('bold')
@@ -558,12 +567,7 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
     .setFontColor('#ffffff');
   sheet.setFrozenRows(1);
 
-  try {
-    var maxRows = sheet.getMaxRows();
-    if (maxRows > numRows + 5 && maxRows > 25) {
-      sheet.deleteRows(numRows + 6, maxRows - (numRows + 5));
-    }
-  } catch (rErr) {}
+  return mergedList;
 }
 
 /**
@@ -736,6 +740,47 @@ function doPost(e) {
       }
     } else {
       data = { action: 'SYNC_ALL' };
+    }
+
+    if (data.action === 'RESET_ALL') {
+      var allDataTabs = [
+        'Time_Logs',
+        'Active_Logs',
+        'Daily_Summary',
+        'Weekly_Summary',
+        'Monthly_Summary',
+        'Inactive_Logs',
+        'Daily_Attendance_Logs',
+        'Idle_Logs',
+        'Audit_Logs',
+        'Admin_Audit_Logs',
+        'Login_Logs',
+        'Login_Session_Logs',
+        'Leave_Requests',
+        'Manual_Time_Requests',
+        'Payroll_Summary'
+      ];
+      allDataTabs.forEach(function(tName) {
+        var sh = ss.getSheetByName(tName);
+        if (sh && sh.getLastRow() > 1) {
+          try {
+            sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(sh.getLastColumn(), 1)).clearContent();
+          } catch(e) {}
+        }
+      });
+      // Clear Live_Presence rows below header
+      var presSheet = ss.getSheetByName('Live_Presence') || ss.getSheetByName('Live_Sessions');
+      if (presSheet && presSheet.getLastRow() > 1) {
+        try {
+          presSheet.getRange(2, 1, presSheet.getLastRow() - 1, Math.max(presSheet.getLastColumn(), 1)).clearContent();
+        } catch(e) {}
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'SUCCESS',
+        success: true,
+        message: 'All Google Sheets data tables successfully reset to a clean state!'
+      })).setMimeType(ContentService.MimeType.JSON);
     }
 
     if (data.action === 'SYNC_ALL' || data.action === 'APPEND_LOG') {
@@ -1195,14 +1240,25 @@ function doPost(e) {
       });
 
       var timeLogsSheet = ss.getSheetByName('Time_Logs');
-      if (timeLogsSheet) populateMergedSheet(timeLogsSheet, activeHeaders, activeRows, '#047857', 0, 5);
-
       var activeSheet = ss.getSheetByName('Active_Logs');
-      if (activeSheet) populateMergedSheet(activeSheet, activeHeaders, activeRows, '#047857', 0, 5);
+      var mergedTimeLogs = [];
+
+      if (timeLogsSheet) {
+        mergedTimeLogs = populateMergedSheet(timeLogsSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
+      }
+      if (activeSheet) {
+        var actMerged = populateMergedSheet(activeSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
+        if (!mergedTimeLogs.length) mergedTimeLogs = actMerged;
+      }
 
       if (!timeLogsSheet && !activeSheet) {
         timeLogsSheet = ss.insertSheet('Time_Logs');
-        populateMergedSheet(timeLogsSheet, activeHeaders, activeRows, '#047857', 0, 5);
+        mergedTimeLogs = populateMergedSheet(timeLogsSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
+      }
+
+      // If mergedTimeLogs is empty, fallback to activeRows
+      if (!mergedTimeLogs || mergedTimeLogs.length === 0) {
+        mergedTimeLogs = activeRows;
       }
 
       // ==========================================
@@ -1214,11 +1270,31 @@ function doPost(e) {
       }
       var dailyHeaders = ['Date', 'Employee Code', 'Employee Name', 'Designation', 'Tasks Worked On', 'First Clock-In (Manila)', 'Last Clock-Out (Manila)', 'Gross Tracked Shift', 'Total Idle / Breaks', 'Net Productive Work', 'Duration (Seconds)', 'Avg Activity %', 'Shift Status', 'Log Entries'];
       var dailyMap = {};
-      rawTimeLogs.forEach(function(t) {
-        var d = t.date || (t.startTime ? t.startTime.slice(0, 10) : '2026-09-10');
-        var matchedUser = userMap[t.userId] || userMap[t.userName] || {};
-        var empCode = matchedUser.employeeCode || t.employeeCode || 'N/A';
-        var empName = resolveStaffFullName(empCode, t.userName, matchedUser.name || t.userName, t.userId);
+
+      mergedTimeLogs.forEach(function(row) {
+        var logId = String(row[0] || '').trim();
+        var empCode = String(row[1] || 'N/A').trim();
+        var empName = String(row[2] || 'Staff').trim();
+        var designation = String(row[3] || 'Agent').trim();
+        var task = String(row[4] || 'General Work').trim();
+        var d = String(row[5] || '').trim();
+        var sTime = String(row[6] || '').trim();
+        var eTime = String(row[7] || '').trim();
+        var rawDur = row[8];
+        var sSecs = 0;
+        if (typeof rawDur === 'number') {
+          sSecs = Math.max(0, Math.floor(rawDur));
+        } else {
+          sSecs = parseInt(String(rawDur || '0').replace(/[^0-9]/g, ''), 10) || 0;
+        }
+
+        var idleStr = String(row[10] || '0').replace(/[^0-9]/g, '');
+        var idleSecs = (parseInt(idleStr, 10) || 0) * 60;
+        var mousePct = parseInt(String(row[11] || '0').replace(/[^0-9]/g, ''), 10) || 0;
+        var kbPct = parseInt(String(row[12] || '0').replace(/[^0-9]/g, ''), 10) || 0;
+        var isLive = (eTime === 'Running Live' || String(row[13] || '').toLowerCase() === 'running');
+
+        if (!d) d = todayStr;
         var dKey = d + '___' + (empCode !== 'N/A' ? empCode : empName);
 
         if (!dailyMap[dKey]) {
@@ -1226,10 +1302,10 @@ function doPost(e) {
             date: d,
             code: empCode,
             name: empName,
-            designation: t.designation || matchedUser.designation || 'Agent',
+            designation: designation,
             tasks: {},
-            firstClockIn: t.geoLocalStartTime || '',
-            lastClockOut: t.geoLocalEndTime || '',
+            firstClockIn: sTime,
+            lastClockOut: eTime,
             grossSecs: 0,
             idleSecs: 0,
             mouseSum: 0,
@@ -1240,33 +1316,15 @@ function doPost(e) {
         }
 
         var entry = dailyMap[dKey];
-        if (t.task) entry.tasks[t.task] = true;
-        if (!entry.firstClockIn && (t.geoLocalStartTime || t.startTime)) {
-          entry.firstClockIn = t.geoLocalStartTime || t.startTime;
-        }
-        if (t.geoLocalEndTime || t.endTime) {
-          entry.lastClockOut = t.geoLocalEndTime || t.endTime;
-        }
-        var sSecs = typeof t.durationSeconds === 'number' ? Math.max(0, Math.floor(t.durationSeconds)) : 0;
-        if (sSecs === 0 && (t.endTime === 'Running Live' || t.status === 'running' || !t.endTime)) {
-          var pUser = presenceMap[t.userId] || presenceMap[empCode] || presenceMap[empName];
-          if (pUser && pUser.elapsedSeconds && pUser.elapsedSeconds > 0) {
-            sSecs = pUser.elapsedSeconds;
-          } else if (t.startTime) {
-            try {
-              var sMs = new Date(t.startTime).getTime();
-              if (!isNaN(sMs) && nowMs > sMs) {
-                sSecs = Math.floor((nowMs - sMs) / 1000);
-              }
-            } catch(e) {}
-          }
-        }
+        if (task) entry.tasks[task] = true;
+        if (!entry.firstClockIn && sTime) entry.firstClockIn = sTime;
+        if (eTime) entry.lastClockOut = eTime;
         entry.grossSecs += sSecs;
-        entry.idleSecs += (t.idleSeconds || 0);
-        entry.mouseSum += (t.mouseActivityAvg || 0);
-        entry.keyboardSum += (t.keyboardActivityAvg || 0);
+        entry.idleSecs += idleSecs;
+        entry.mouseSum += mousePct;
+        entry.keyboardSum += kbPct;
         entry.count += 1;
-        if (t.endTime === 'Running Live' || !t.endTime || t.status === 'running') entry.hasLive = true;
+        if (isLive) entry.hasLive = true;
       });
 
       // Also ensure all actively tracking users in rawPresenceList for today have a running entry
@@ -1290,6 +1348,9 @@ function doPost(e) {
               count: 1,
               hasLive: true
             };
+          } else {
+            dailyMap[dKey].hasLive = true;
+            if (p.currentTask) dailyMap[dKey].tasks[p.currentTask] = true;
           }
         }
       });
@@ -1331,9 +1392,15 @@ function doPost(e) {
       }
       var weeklyHeaders = ['Week Period (Mon-Sun)', 'Employee Code', 'Employee Name', 'Designation', 'Tasks Breakdown', 'Days Rendered', 'Gross Tracked Hours', 'Total Idle / Breaks', 'Net Productive Work', 'Regular Hours', 'Overtime Hours', 'Avg Activity %'];
       var weeklyMap = {};
-      rawTimeLogs.forEach(function(t) {
-        var dStr = t.date || (t.startTime ? t.startTime.slice(0, 10) : '2026-09-10');
+
+      mergedTimeLogs.forEach(function(row) {
+        var empCode = String(row[1] || 'N/A').trim();
+        var empName = String(row[2] || 'Staff').trim();
+        var designation = String(row[3] || 'Agent').trim();
+        var task = String(row[4] || 'General Work').trim();
+        var dStr = String(row[5] || '').trim() || todayStr;
         var logD = new Date(dStr);
+        if (isNaN(logD.getTime())) logD = new Date();
         var dayOfWeek = logD.getDay();
         var diffToMon = (dayOfWeek === 0 ? -6 : 1) - dayOfWeek;
         var monDate = new Date(logD);
@@ -1344,9 +1411,12 @@ function doPost(e) {
         var sunStr = (sunDate.getMonth() + 1) + '/' + sunDate.getDate() + '/' + sunDate.getFullYear();
         var weekLabel = 'Week (' + monStr + ' - ' + sunStr + ')';
 
-        var matchedUser = userMap[t.userId] || userMap[t.userName] || {};
-        var empCode = matchedUser.employeeCode || t.employeeCode || 'N/A';
-        var empName = resolveStaffFullName(empCode, t.userName, matchedUser.name || t.userName, t.userId);
+        var rawDur = row[8];
+        var sSecs = typeof rawDur === 'number' ? Math.max(0, Math.floor(rawDur)) : (parseInt(String(rawDur || '0').replace(/[^0-9]/g, ''), 10) || 0);
+        var idleSecs = (parseInt(String(row[10] || '0').replace(/[^0-9]/g, ''), 10) || 0) * 60;
+        var mousePct = parseInt(String(row[11] || '0').replace(/[^0-9]/g, ''), 10) || 0;
+        var kbPct = parseInt(String(row[12] || '0').replace(/[^0-9]/g, ''), 10) || 0;
+
         var wKey = weekLabel + '___' + (empCode !== 'N/A' ? empCode : empName);
 
         if (!weeklyMap[wKey]) {
@@ -1354,7 +1424,7 @@ function doPost(e) {
             week: weekLabel,
             code: empCode,
             name: empName,
-            designation: t.designation || matchedUser.designation || 'Agent',
+            designation: designation,
             tasks: {},
             days: {},
             grossSecs: 0,
@@ -1366,19 +1436,12 @@ function doPost(e) {
         }
 
         var wEntry = weeklyMap[wKey];
-        if (t.task) wEntry.tasks[t.task] = (wEntry.tasks[t.task] || 0) + (t.durationSeconds || 0);
-        if (t.date) wEntry.days[t.date] = true;
-        var sSecs = typeof t.durationSeconds === 'number' ? Math.max(0, Math.floor(t.durationSeconds)) : 0;
-        if (sSecs === 0 && (t.endTime === 'Running Live' || t.status === 'running' || !t.endTime)) {
-          var pUser = presenceMap[t.userId] || presenceMap[empCode] || presenceMap[empName];
-          if (pUser && pUser.elapsedSeconds && pUser.elapsedSeconds > 0) {
-            sSecs = pUser.elapsedSeconds;
-          }
-        }
+        if (task) wEntry.tasks[task] = (wEntry.tasks[task] || 0) + sSecs;
+        if (dStr) wEntry.days[dStr] = true;
         wEntry.grossSecs += sSecs;
-        wEntry.idleSecs += (t.idleSeconds || 0);
-        wEntry.mouseSum += (t.mouseActivityAvg || 0);
-        wEntry.keyboardSum += (t.keyboardActivityAvg || 0);
+        wEntry.idleSecs += idleSecs;
+        wEntry.mouseSum += mousePct;
+        wEntry.keyboardSum += kbPct;
         wEntry.count += 1;
       });
 
@@ -1419,23 +1482,32 @@ function doPost(e) {
       }
       var monthlyHeaders = ['Month Period', 'Employee Code', 'Employee Name', 'Designation', 'Primary Tasks', 'Total Days Rendered', 'Gross Tracked Hours', 'Total Idle / Breaks', 'Net Productive Work', 'Avg Activity %'];
       var monthlyMap = {};
-      rawTimeLogs.forEach(function(t) {
-        var dStr = t.date || (t.startTime ? t.startTime.slice(0, 10) : '2026-09-10');
+
+      mergedTimeLogs.forEach(function(row) {
+        var empCode = String(row[1] || 'N/A').trim();
+        var empName = String(row[2] || 'Staff').trim();
+        var designation = String(row[3] || 'Agent').trim();
+        var task = String(row[4] || 'General Work').trim();
+        var dStr = String(row[5] || '').trim() || todayStr;
         var logD = new Date(dStr);
+        if (isNaN(logD.getTime())) logD = new Date();
         var monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
         var monthLabel = monthNames[logD.getMonth()] + ' ' + logD.getFullYear();
 
-        var matchedUser = userMap[t.userId] || userMap[t.userName] || {};
-        var empCode = matchedUser.employeeCode || 'N/A';
-        var empName = t.userName || 'Unknown';
-        var mKey = monthLabel + '___' + empName;
+        var rawDur = row[8];
+        var sSecs = typeof rawDur === 'number' ? Math.max(0, Math.floor(rawDur)) : (parseInt(String(rawDur || '0').replace(/[^0-9]/g, ''), 10) || 0);
+        var idleSecs = (parseInt(String(row[10] || '0').replace(/[^0-9]/g, ''), 10) || 0) * 60;
+        var mousePct = parseInt(String(row[11] || '0').replace(/[^0-9]/g, ''), 10) || 0;
+        var kbPct = parseInt(String(row[12] || '0').replace(/[^0-9]/g, ''), 10) || 0;
+
+        var mKey = monthLabel + '___' + (empCode !== 'N/A' ? empCode : empName);
 
         if (!monthlyMap[mKey]) {
           monthlyMap[mKey] = {
             month: monthLabel,
             code: empCode,
             name: empName,
-            designation: t.designation || matchedUser.designation || 'Agent',
+            designation: designation,
             tasks: {},
             days: {},
             grossSecs: 0,
@@ -1447,13 +1519,12 @@ function doPost(e) {
         }
 
         var mEntry = monthlyMap[mKey];
-        if (t.task) mEntry.tasks[t.task] = true;
-        if (t.date) mEntry.days[t.date] = true;
-        var sSecs = typeof t.durationSeconds === 'number' ? Math.max(0, Math.floor(t.durationSeconds)) : 0;
+        if (task) mEntry.tasks[task] = true;
+        if (dStr) mEntry.days[dStr] = true;
         mEntry.grossSecs += sSecs;
-        mEntry.idleSecs += (t.idleSeconds || 0);
-        mEntry.mouseSum += (t.mouseActivityAvg || 0);
-        mEntry.keyboardSum += (t.keyboardActivityAvg || 0);
+        mEntry.idleSecs += idleSecs;
+        mEntry.mouseSum += mousePct;
+        mEntry.keyboardSum += kbPct;
         mEntry.count += 1;
       });
 
@@ -2564,6 +2635,39 @@ export const downloadTableCSV = (filename: string, headers: string[], rows: (str
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+};
+
+export const resetGoogleSpreadsheetData = async (
+  webhookUrl: string
+): Promise<{ success: boolean; message: string }> => {
+  if (!webhookUrl || !webhookUrl.startsWith('https://')) {
+    return { success: false, message: 'Invalid or missing webhook URL.' };
+  }
+
+  try {
+    const payload = { action: 'RESET_ALL' };
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      return {
+        success: true,
+        message: json.message || 'Google Sheets data tables reset successfully!',
+      };
+    }
+    return {
+      success: true,
+      message: 'Reset command dispatched to Google Sheets webhook.',
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `Failed to reset Google Sheets: ${err?.message || 'Network error'}`,
+    };
+  }
 };
 
 export const getGoogleAppsScriptTemplate = generateAppsScriptCode;

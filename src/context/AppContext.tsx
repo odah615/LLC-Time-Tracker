@@ -29,6 +29,7 @@ import {
   fetchTimeLogsFromGoogleSheets,
   fetchLivePresenceFromGoogleSheets,
   isValidWebhookUrl,
+  resetGoogleSpreadsheetData,
 } from '../lib/googleSheetsSync';
 import { playInactivityChime, playUrgentPulse } from '../lib/soundAlerts';
 import {
@@ -3086,13 +3087,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [elapsedSeconds, isTracking, isPaused, currentUser, currentActiveApp, currentMouseActivity, currentKeyboardActivity, currentDesignation]);
 
-  // Periodic 45-Second Auto-Sync to Google Sheets & Enterprise Database while actively working
-  useEffect(() => {
-    if (isTracking && !isPaused && elapsedSeconds > 0 && elapsedSeconds % 45 === 0) {
-      triggerAutoSync();
-    }
-  }, [elapsedSeconds, isTracking, isPaused, triggerAutoSync]);
-
   // Start tracking
   const startTracking = () => {
     const nowMs = Date.now();
@@ -4481,6 +4475,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Reset database to fresh Super Admin only state
   const resetDatabaseToFreshState = async () => {
+    // Stop any active tracking session immediately
+    setIsTracking(false);
+    setIsPaused(false);
+    setElapsedSeconds(0);
+    setStartTimeIso(null);
+    trackingSessionStartMsRef.current = 0;
+    lastActiveIntervalStartMsRef.current = 0;
+    trackingAccumulatedSecondsRef.current = 0;
+    currentTaskSegmentStartMsRef.current = 0;
+    currentTaskSegmentStartTimeIsoRef.current = null;
+    mouseActivityHistoryRef.current = [];
+    keyboardActivityHistoryRef.current = [];
+    setCurrentInactivitySeconds(0);
+    setSessionIdleDeductionSeconds(0);
+    setIsIdleAlertActive(false);
+
     setUsers(INITIAL_USERS);
     setCurrentUser(INITIAL_USERS[0]);
     setTimeLogs([]);
@@ -4490,24 +4500,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setManualTimeRequests([]);
     setPayrollRecords(INITIAL_PAYROLL);
     setDailyAttendanceLogs([]);
-    setUserPresenceList(
-      INITIAL_USERS.map((u) => ({
-        userId: u.id,
-        userName: u.name,
-        role: u.role,
-        designation: u.designation,
-        employeeCode: u.employeeCode,
-        department: u.department || 'Executive Management',
-        teamLeaderId: u.teamLeaderId || '',
-        isOnline: false,
-        status: 'offline',
-        mouseActivity: 0,
-        keyboardActivity: 0,
-        lastHeartbeat: new Date().toISOString(),
-      }))
-    );
+    const cleanPresenceList = INITIAL_USERS.map((u) => ({
+      userId: u.id,
+      userName: u.name,
+      role: u.role,
+      designation: u.designation,
+      employeeCode: u.employeeCode,
+      department: u.department || 'Executive Management',
+      teamLeaderId: u.teamLeaderId || '',
+      isOnline: false,
+      status: 'offline' as const,
+      mouseActivity: 0,
+      keyboardActivity: 0,
+      lastHeartbeat: new Date().toISOString(),
+    }));
+    setUserPresenceList(cleanPresenceList);
     setAuditLogs(INITIAL_AUDIT_LOGS);
 
+    // Clean all localStorage keys
+    localStorage.removeItem('trackpulse_active_tracking');
     localStorage.setItem('trackpulse_users', JSON.stringify(INITIAL_USERS));
     localStorage.setItem('trackpulse_timelogs', JSON.stringify([]));
     localStorage.setItem('trackpulse_screenshots', JSON.stringify([]));
@@ -4519,6 +4530,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('trackpulse_presence', JSON.stringify([]));
     localStorage.setItem('trackpulse_auditlogs', JSON.stringify(INITIAL_AUDIT_LOGS));
     localStorage.setItem('trackpulse_clean_v8', 'true');
+
+    // Notify backend bridge to reset in-memory caches
+    fetch('/api/timelogs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'RESET_ALL' }),
+    }).catch(() => {});
+
+    // If connected to Google Sheets webhook, trigger RESET_ALL in Google Spreadsheet as well
+    const webhookUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
+    if (webhookUrl && isValidWebhookUrl(webhookUrl)) {
+      resetGoogleSpreadsheetData(webhookUrl).catch((err) =>
+        console.warn('Google Sheets reset error:', err)
+      );
+    }
 
     try {
       await Promise.all([
@@ -4532,12 +4558,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         safeSetDoc(doc(db, 'system_state', 'attendance'), { data: [] }),
         safeSetDoc(doc(db, 'system_state', 'auditlogs'), { data: INITIAL_AUDIT_LOGS }),
       ]);
-      setSaveToast('✓ Database reset to clean state! Super Admin account retained.');
+      setSaveToast('✓ Complete System Reset! All time logs, tasks, sessions, and database tables have been reset to clean state.');
     } catch (err) {
       console.warn('Reset database error:', err);
-      setSaveToast('✓ Local database cleared! (Firestore update queued)');
+      setSaveToast('✓ Local system & cache reset to clean state! (Firestore update queued)');
     }
-    setTimeout(() => setSaveToast(null), 5000);
+    setTimeout(() => setSaveToast(null), 7000);
   };
 
   // World Clocks CRUD
