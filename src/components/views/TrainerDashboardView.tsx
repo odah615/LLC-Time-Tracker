@@ -72,9 +72,26 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
     stopAgentLiveShift,
     simulateActiveTraineesShift,
     syncAllFromGoogleSheets,
+    triggerGoogleSheetsSync,
+    googleSheetsWebhookUrl,
   } = useApp();
 
   const [isPullingSheets, setIsPullingSheets] = useState(false);
+  const [isPushingSheets, setIsPushingSheets] = useState(false);
+  const [trainerSyncMsg, setTrainerSyncMsg] = useState<string | null>(null);
+
+  const handlePushToSheets = async () => {
+    setIsPushingSheets(true);
+    setTrainerSyncMsg('Syncing all agent shifts and timesheets to Google Sheets...');
+    const res = await triggerGoogleSheetsSync();
+    setIsPushingSheets(false);
+    if (res && res.success) {
+      setTrainerSyncMsg(`✓ ${res.message || 'Successfully updated Google Spreadsheet!'}`);
+      setTimeout(() => setTrainerSyncMsg(null), 7000);
+    } else {
+      setTrainerSyncMsg(`Notice: ${res?.message || 'Check Webhook configuration'}`);
+    }
+  };
 
   // Desktop App OS Selection State
   const [selectedOS, setSelectedOS] = useState<DesktopOS>('windows');
@@ -668,15 +685,6 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
                 <span>{isPullingSheets ? 'Pulling Sheets...' : 'Pull Google Sheets'}</span>
               </button>
 
-              <button
-                onClick={simulateActiveTraineesShift}
-                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
-                title="Activate live desktop tracking session for trainees to verify real-time monitoring and sheet sync"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>⚡ Test: Activate Live Shift</span>
-              </button>
-
               {/* Pagination Controls */}
               {totalAgentPages > 1 && (
                 <div className="flex items-center gap-1.5">
@@ -861,9 +869,19 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
                           <span>Web Portal Connected (Auto-Standby)</span>
                         </div>
                       ) : (
-                        <div className="w-full bg-slate-100/80 border border-slate-200/80 rounded-lg px-2.5 py-1.5 text-[11px] text-slate-500 font-medium flex items-center justify-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          <span>Offline • Auto-Starts on Login</span>
+                        <div className="w-full flex items-center justify-between bg-slate-100/80 border border-slate-200/80 rounded-lg px-2.5 py-1.5 text-[11px]">
+                          <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            Offline
+                          </span>
+                          <button
+                            onClick={() => startAgentLiveShift(agent.id)}
+                            className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold hover:underline cursor-pointer flex items-center gap-1"
+                            title="Start live shift for this trainee"
+                          >
+                            <Play className="w-3 h-3" />
+                            Start Shift
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1095,6 +1113,16 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
             </button>
 
             <button
+              onClick={handlePushToSheets}
+              disabled={isPushingSheets}
+              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+              title="Force push timesheets and shift logs to Google Sheets"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isPushingSheets ? 'animate-spin' : ''}`} />
+              <span>{isPushingSheets ? 'Syncing...' : '⚡ Push to Google Sheets'}</span>
+            </button>
+
+            <button
               onClick={handleQuickPopulateTodayLogs}
               className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
               title="Quickly populate standard shift records for today for active trainees"
@@ -1159,6 +1187,21 @@ export const TrainerDashboardView: React.FC<TrainerDashboardViewProps> = ({
             </div>
           </div>
         </div>
+
+        {trainerSyncMsg && (
+          <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-indigo-900 text-xs flex items-center justify-between gap-3 animate-fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>{trainerSyncMsg}</span>
+            </div>
+            <button
+              onClick={() => setTrainerSyncMsg(null)}
+              className="text-indigo-500 hover:text-indigo-700 text-xs font-bold"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">

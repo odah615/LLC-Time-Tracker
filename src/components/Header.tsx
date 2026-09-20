@@ -63,6 +63,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
     isSessionWarningActive,
     webSessionWarningCountdown,
     refreshWebSession,
+    login,
     logout,
     googleSheetsWebhookUrl,
     setGoogleSheetsWebhookUrl,
@@ -101,7 +102,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
   const handleRoleSelect = (userId: string) => {
     const selected = users.find((u) => u.id === userId);
     if (selected) {
-      setCurrentUser(selected);
+      login(selected, 'webapp');
       setShowLoginModal(false);
     }
   };

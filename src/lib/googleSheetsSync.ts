@@ -496,6 +496,14 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
   var rowMap = {};
   var keyIdx = (keyColIdx !== undefined && keyColIdx !== null) ? keyColIdx : 0;
 
+  var incomingKeyMap = {};
+  if (incomingRows && incomingRows.length > 0) {
+    for (var ik = 0; ik < incomingRows.length; ik++) {
+      var kVal = String(incomingRows[ik][keyIdx] || '').trim();
+      if (kVal) incomingKeyMap[kVal] = true;
+    }
+  }
+
   // Read existing rows from sheet
   try {
     var lastRow = sheet.getLastRow();
@@ -505,6 +513,10 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
       for (var r = 0; r < existingData.length; r++) {
         var exRow = existingData[r];
         var k = String(exRow[keyIdx] || '').trim();
+        // Skip stale live tracking rows that are no longer actively incoming
+        if (k.indexOf('live-') === 0 && !incomingKeyMap[k]) {
+          continue;
+        }
         if (k && k !== 'N/A') {
           var normalized = [];
           for (var c = 0; c < headers.length; c++) {
@@ -625,6 +637,11 @@ function setupSheetsSchema() {
       tab: 'Idle_Logs',
       color: '#d97706', // Amber
       headers: ['Idle Log ID', 'Timestamp', 'Employee Code', 'Employee Name', 'Inactivity Duration (Mins)', 'Deducted From Shift', 'Required Shift Extension', 'Active Task', 'Reason / Trigger', 'Status']
+    },
+    {
+      tab: 'Timesheets',
+      color: '#059669', // Emerald
+      headers: ['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Duration (Seconds)', 'Total Time', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes']
     },
     {
       tab: 'Time_Logs',
@@ -1311,21 +1328,28 @@ function doPost(e) {
         return (tB || 0) - (tA || 0);
       });
 
+      var timesheetsSheet = ss.getSheetByName('Timesheets') || ss.getSheetByName('Timesheet');
       var timeLogsSheet = ss.getSheetByName('Time_Logs');
       var activeSheet = ss.getSheetByName('Active_Logs');
       var mergedTimeLogs = [];
 
+      if (timesheetsSheet) {
+        mergedTimeLogs = populateMergedSheet(timesheetsSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
+      }
       if (timeLogsSheet) {
-        mergedTimeLogs = populateMergedSheet(timeLogsSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
+        var tlMerged = populateMergedSheet(timeLogsSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
+        if (!mergedTimeLogs.length) mergedTimeLogs = tlMerged;
       }
       if (activeSheet) {
         var actMerged = populateMergedSheet(activeSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
         if (!mergedTimeLogs.length) mergedTimeLogs = actMerged;
       }
 
-      if (!timeLogsSheet && !activeSheet) {
+      if (!timesheetsSheet && !timeLogsSheet && !activeSheet) {
+        timesheetsSheet = ss.insertSheet('Timesheets');
         timeLogsSheet = ss.insertSheet('Time_Logs');
-        mergedTimeLogs = populateMergedSheet(timeLogsSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
+        mergedTimeLogs = populateMergedSheet(timesheetsSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
+        populateMergedSheet(timeLogsSheet, activeHeaders, activeRows, '#047857', 0, 5);
       }
 
       // If mergedTimeLogs is empty, fallback to activeRows

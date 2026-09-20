@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getManilaDateString, formatTotalTime } from '../../lib/dateUtils';
+import { DEFAULT_SPREADSHEET_ID, DEFAULT_SPREADSHEET_URL, generateAppsScriptCode } from '../../lib/googleSheetsSync';
 import {
   Calendar,
   Trash2,
@@ -22,6 +23,12 @@ import {
   Play,
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
+  RefreshCw,
+  Check,
+  Copy,
+  AlertTriangle,
+  Code,
 } from 'lucide-react';
 import {
   BarChart,
@@ -60,7 +67,52 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     isPaused,
     currentTask,
     elapsedSeconds,
+    googleSheetsWebhookUrl,
+    setGoogleSheetsWebhookUrl,
+    triggerGoogleSheetsSync,
   } = useApp();
+
+  const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
+  const [showWebhookSetup, setShowWebhookSetup] = useState(false);
+  const [webhookInputVal, setWebhookInputVal] = useState(googleSheetsWebhookUrl || '');
+  const [copiedScript, setCopiedScript] = useState(false);
+
+  useEffect(() => {
+    setWebhookInputVal(googleSheetsWebhookUrl || '');
+  }, [googleSheetsWebhookUrl]);
+
+  const handleManualSheetsSync = async () => {
+    setIsSyncingSheets(true);
+    setSyncStatusMsg('Pushing all timesheets & shift records to Google Sheets...');
+    const res = await triggerGoogleSheetsSync(webhookInputVal.trim() || googleSheetsWebhookUrl);
+    setIsSyncingSheets(false);
+    if (res && res.success) {
+      setSyncStatusMsg(`✓ ${res.message || 'Successfully recorded timesheets into Google Sheets (Time_Logs, Timesheets & Daily_Summary)!'}`);
+      setTimeout(() => setSyncStatusMsg(null), 8000);
+    } else {
+      setSyncStatusMsg(`⚠️ Sync notice: ${res?.message || 'Check Apps Script Webhook URL'}`);
+    }
+  };
+
+  const handleSaveWebhook = async () => {
+    if (!webhookInputVal.trim() || webhookInputVal.includes('...') || !webhookInputVal.trim().startsWith('https://')) {
+      setSyncStatusMsg('Please enter a valid Google Apps Script Web App URL ending in /exec');
+      return;
+    }
+    setGoogleSheetsWebhookUrl(webhookInputVal.trim());
+    setIsSyncingSheets(true);
+    setSyncStatusMsg('Saving Webhook & testing Google Sheets sync...');
+    const res = await triggerGoogleSheetsSync(webhookInputVal.trim());
+    setIsSyncingSheets(false);
+    if (res && res.success) {
+      setSyncStatusMsg('✓ Connected! Timesheets are now actively streaming to Google Sheets.');
+      setShowWebhookSetup(false);
+      setTimeout(() => setSyncStatusMsg(null), 8000);
+    } else {
+      setSyncStatusMsg(`Sync attempted: ${res?.message || 'Please verify Apps Script permissions'}`);
+    }
+  };
 
   // Tab View Mode: 'daily' | 'weekly' | 'monthly'
   const [viewTab, setViewTab] = useState<ViewTabMode>('daily');
@@ -597,6 +649,17 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {/* Force Push to Google Sheets Button */}
+            <button
+              onClick={handleManualSheetsSync}
+              disabled={isSyncingSheets}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-2 transition-all shadow-sm disabled:opacity-50"
+              title="Force sync all timesheets, shift records, and daily summaries to Google Sheets"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncingSheets ? 'animate-spin' : ''}`} />
+              <span>{isSyncingSheets ? 'Syncing Sheets...' : '⚡ Push to Google Sheets'}</span>
+            </button>
+
             {/* Add / Request Time Button (Restricted from Agents unless in Personal view) */}
             {(currentUser.role !== 'agent' || isPersonalOnly) && (
               <button
@@ -619,13 +682,115 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
             ) : (
               <button
                 onClick={handleExportCSV}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-2 transition-all shadow-sm"
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs flex items-center gap-2 transition-all shadow-sm"
               >
                 <FileSpreadsheet className="w-4 h-4" /> Export CSV / Spreadsheet
               </button>
             )}
           </div>
         </div>
+
+        {/* Sync Status Banner */}
+        {syncStatusMsg && (
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 text-xs flex items-center justify-between gap-3 animate-fade-in">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>{syncStatusMsg}</span>
+            </div>
+            <button
+              onClick={() => setSyncStatusMsg(null)}
+              className="text-blue-500 hover:text-blue-700 text-xs font-bold"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Google Sheets Status & Webhook Connection Accordion */}
+        <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" /> Google Sheets Database:
+            </span>
+            {googleSheetsWebhookUrl ? (
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-[11px] flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> LIVE SYNC CONNECTED
+              </span>
+            ) : (
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 font-bold text-[11px] flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3 text-amber-600" /> WEBHOOK URL REQUIRED FOR SPREADSHEET WRITES
+              </span>
+            )}
+            <a
+              href={DEFAULT_SPREADSHEET_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="text-emerald-700 hover:text-emerald-800 font-bold underline flex items-center gap-1 ml-1"
+            >
+              Open Sheet <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+
+          <button
+            onClick={() => setShowWebhookSetup(!showWebhookSetup)}
+            className="text-blue-600 hover:text-blue-800 font-bold underline flex items-center gap-1 shrink-0"
+          >
+            {showWebhookSetup ? 'Hide Webhook Setup ▲' : (googleSheetsWebhookUrl ? '⚙️ Webhook Settings ▼' : '📋 Connect Google Spreadsheet Webhook ▼')}
+          </button>
+        </div>
+
+        {/* Expandable Webhook Setup Box */}
+        {showWebhookSetup && (
+          <div className="mt-3 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-xs animate-fade-in">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                <Code className="w-4 h-4 text-blue-600" /> Google Apps Script Webhook Configuration
+              </h4>
+              <button
+                onClick={() => {
+                  const code = generateAppsScriptCode(DEFAULT_SPREADSHEET_ID);
+                  navigator.clipboard.writeText(code);
+                  setCopiedScript(true);
+                  setTimeout(() => setCopiedScript(false), 4000);
+                }}
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[11px] flex items-center gap-1.5 shadow-sm transition-all"
+              >
+                {copiedScript ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedScript ? '✓ Copied Script Code!' : 'Copy Apps Script Code'}</span>
+              </button>
+            </div>
+
+            <p className="text-slate-600 text-[11px] leading-relaxed">
+              To automatically record employee timesheets and live sessions directly into your Google Sheet (Spreadsheet ID: <code>{DEFAULT_SPREADSHEET_ID}</code>):
+              <br />
+              1. Open your Google Sheet → Click <b>Extensions</b> → <b>Apps Script</b>.
+              <br />
+              2. Paste the copied code and click <b>Save</b> (💾).
+              <br />
+              3. Click <b>Deploy</b> → <b>New deployment</b> → Select <b>Web app</b> (Execute as: <b>Me</b>, Who has access: <b>Anyone</b>) → <b>Deploy</b>.
+              <br />
+              4. Paste the resulting Web App URL below and click <b>Save & Test Connection</b>.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+              <input
+                type="url"
+                value={webhookInputVal}
+                onChange={(e) => setWebhookInputVal(e.target.value)}
+                placeholder="https://script.google.com/macros/s/.../exec"
+                className="flex-1 bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-mono text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+              <button
+                onClick={handleSaveWebhook}
+                disabled={isSyncingSheets}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0 shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <Check className="w-4 h-4" />
+                <span>Save & Test Connection</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MY PERSONAL TIMESHEET HERO BANNER (When in Personal Mode OR for TL in Team view) */}

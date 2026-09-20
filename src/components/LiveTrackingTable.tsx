@@ -334,17 +334,6 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
             <span>{isPullingSheets ? 'Pulling Sheets...' : 'Pull Google Sheets'}</span>
           </button>
 
-          {(currentUser?.role === 'trainer' || currentUser?.role === 'admin') && (
-            <button
-              onClick={simulateActiveTraineesShift}
-              className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 transition-all flex items-center gap-1.5 text-xs font-bold shadow-xs cursor-pointer"
-              title="Activate live desktop tracking for trainees to test real-time monitoring and sheet sync"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>⚡ Test: Activate Live Trainees</span>
-            </button>
-          )}
-
           <button
             onClick={handleRefresh}
             className="p-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition-all flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
