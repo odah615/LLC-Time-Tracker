@@ -23,6 +23,7 @@ import { getManilaDateString, getManilaTimeString, formatLogStartTime, formatLog
 import { generateUniqueUsername, deduplicateUsers, resolveCanonicalEmployee } from '../lib/userUtils';
 import {
   syncDataToGoogleSheetsWebhook,
+  syncAgentHeartbeatToSheets,
   DEFAULT_SPREADSHEET_URL,
   DEFAULT_SPREADSHEET_ID,
   fetchEmployeesFromGoogleSheets,
@@ -2744,6 +2745,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!isAuthenticated || !currentUser) return;
     broadcastPresence();
   }, [isAuthenticated, currentUser?.id, isTracking, isPaused, currentTask, broadcastPresence]);
+
+  // Dedicated 60-second individual agent heartbeat loop to Google Sheets (action: 'HEARTBEAT_UPDATE')
+  // Transmits targeted individual tracking pulses while user runs the tracker app
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser || !googleSheetsWebhookUrl || !isValidWebhookUrl(googleSheetsWebhookUrl)) {
+      return;
+    }
+
+    const sendGoogleSheetsAgentHeartbeat = () => {
+      const snap = liveTrackingSnapshotRef.current;
+      const isEffTracking = isTracking && !isPaused;
+      const statusLabel = isEffTracking
+        ? '🟢 Live Tracking'
+        : isPaused
+        ? '🟡 Idle / Break'
+        : '🔵 Desktop Online';
+
+      const isDesktop = typeof window !== 'undefined' && Boolean((window as any).electronAPI || navigator.userAgent.includes('Electron'));
+      const startFormatted = snap.startTimeIso
+        ? formatLogStartTime(snap.startTimeIso, 'Asia/Manila')
+        : '--:--';
+
+      syncAgentHeartbeatToSheets(googleSheetsWebhookUrl, {
+        userId: currentUser.id,
+        employeeCode: currentUser.employeeCode || '',
+        userName: currentUser.name,
+        role: currentUser.role,
+        designation: currentDesignation || currentUser.designation || 'Agent',
+        platformMode: isDesktop ? 'Desktop Tracker' : 'Website',
+        status: isPaused ? 'idle' : 'online',
+        statusLabel,
+        isOnline: true,
+        isTracking: isEffTracking,
+        isPaused: isPaused,
+        elapsedSeconds: Math.max(snap.elapsedSeconds, 0),
+        currentTask: currentTask || 'Active Work',
+        currentApp: currentActiveApp || (isDesktop ? 'LLC Time Tracker Desktop App' : 'Web Browser'),
+        loginPlatform: isDesktop ? 'software' : 'webapp',
+        firstCheckin: startFormatted,
+        timezone: currentUser.geoTimezone || 'Asia/Manila (GMT+8)',
+        lastHeartbeat: new Date().toISOString(),
+        mouseActivity: snap.mouseActivity || 95,
+        keyboardActivity: snap.keyboardActivity || 95,
+      }).catch((err) => console.warn('Google Sheets agent heartbeat pulse warning:', err));
+    };
+
+    // Initial pulse after 3 seconds
+    const initialTimer = setTimeout(sendGoogleSheetsAgentHeartbeat, 3000);
+
+    // 60-second recurring heartbeat
+    const sheetHbInterval = setInterval(sendGoogleSheetsAgentHeartbeat, 60000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(sheetHbInterval);
+    };
+  }, [
+    isAuthenticated,
+    currentUser?.id,
+    currentUser?.employeeCode,
+    currentUser?.name,
+    currentUser?.role,
+    currentUser?.designation,
+    currentUser?.geoTimezone,
+    isTracking,
+    isPaused,
+    currentTask,
+    currentActiveApp,
+    currentDesignation,
+    googleSheetsWebhookUrl,
+  ]);
 
   // Task Switch Confirmation Modal state
   const [taskSwitchPending, setTaskSwitchPending] = useState<TaskSwitchPending | null>(null);

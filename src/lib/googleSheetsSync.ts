@@ -800,6 +800,27 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // ==========================================
+    // HEARTBEAT_UPDATE (Targeted Single-Row Agent Tracking Pulse)
+    // ==========================================
+    if (data.action === 'HEARTBEAT_UPDATE') {
+      var presSheet = ss.getSheetByName('Live_Presence');
+      var presAliasSheet = ss.getSheetByName('Live_Sessions');
+      if (!presSheet) {
+        presSheet = ss.insertSheet('Live_Presence');
+      }
+      var pData = data.presence || data.userPresence || data.agent || data;
+      if (pData) {
+        upsertSinglePresenceRow(presSheet, pData);
+        if (presAliasSheet) upsertSinglePresenceRow(presAliasSheet, pData);
+      }
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'SUCCESS',
+        action: 'HEARTBEAT_UPDATE',
+        message: 'Heartbeat recorded successfully for ' + (pData.userName || pData.employeeCode || 'Agent')
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (data.action === 'SYNC_ALL' || data.action === 'APPEND_LOG') {
       var rawAuditLogs = data.auditLogs || [];
       var rawUsers = data.users || [];
@@ -808,7 +829,7 @@ function doPost(e) {
       var dailyAttendanceLogs = data.dailyAttendanceLogs || [];
       var leaveRequests = data.leaveRequests || [];
       var payrollRecords = data.payrollRecords || [];
-      var rawPresenceList = data.userPresenceList || data.livePresence || [];
+      var rawPresenceList = data.userPresenceList || data.livePresence || data.presence || [];
 
       var CANONICAL_STAFF = {
         'SUPERADMIN': 'Admin',
@@ -885,242 +906,143 @@ function doPost(e) {
       });
 
       // ==========================================
-      // 0. POPULATE LIVE PRESENCE & SESSIONS (Dedicated Live Real-Time Tab)
+      // 0. POPULATE LIVE PRESENCE & SESSIONS (Targeted Single-Row Upsert)
       // ==========================================
-      var presenceMap = {};
-      rawPresenceList.forEach(function(p) {
-        if (!p) return;
-        var pKeys = [
-          p.userId,
-          p.employeeCode,
-          p.userName,
-          p.email
-        ];
-        pKeys.forEach(function(k) {
-          if (k) {
-            var kStr = String(k).trim();
-            presenceMap[kStr] = p;
-            presenceMap[kStr.toLowerCase()] = p;
-            presenceMap[kStr.toUpperCase()] = p;
-          }
-        });
-      });
-
       var presenceHeaders = ['Employee Code', 'Employee Name', 'System Role', 'Designation', 'Platform Mode', 'Live Presence Status', 'Current Active Task', 'Current Application', 'Shift Hours Today', 'First Check-In (Manila)', 'Device Timezone', 'Last Active Heartbeat (Manila)', 'Last Heartbeat (ISO)'];
       var nowMs = new Date().getTime();
       var todayStr = Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
 
-      // Helper function to update Live Presence while preserving other active agents across clients
-      function updateLivePresenceMerged(targetSheet) {
-        if (!targetSheet) return [];
-        var existingMap = {};
-        var lastRow = targetSheet.getLastRow();
-        if (lastRow > 1) {
-          try {
-            var existingData = targetSheet.getRange(2, 1, lastRow - 1, Math.min(targetSheet.getLastColumn(), 13)).getValues();
-            existingData.forEach(function(r) {
-              var eCode = String(r[0] || '').trim().toUpperCase();
-              var eName = String(r[1] || '').trim().toLowerCase();
-              var entry = {
-                code: r[0],
-                name: r[1],
-                role: r[2],
-                designation: r[3],
-                platformMode: r[4],
-                statusLabel: r[5],
-                currentTask: r[6],
-                currentApp: r[7],
-                shiftHours: r[8],
-                firstCheckin: r[9],
-                timezone: r[10],
-                lastHbFormatted: r[11],
-                lastHbIso: r[12]
-              };
-              if (eCode) existingMap[eCode] = entry;
-              if (eName) existingMap[eName] = entry;
-            });
-          } catch(e) {}
-        }
+      /**
+       * Targeted Single-Row Lookup Upsert pattern:
+       * - Isolates the specific agent's Employee Code.
+       * - Scans column 1 (Employee Code) to locate that single user's unique row index.
+       * - If found, rewrites ONLY that targeted row's specific column cells.
+       * - If not found, appends a single row at the bottom.
+       * - Leaves all other agent rows completely untouched!
+       */
+      function upsertSinglePresenceRow(sheet, p) {
+        if (!sheet || !p) return null;
 
-        var presenceRows = [];
-        users.forEach(function(u) {
-          var uCode = (u.employeeCode || '').trim().toUpperCase();
-          var uName = (u.name || '').trim().toLowerCase();
-          var exist = (uCode && existingMap[uCode]) || (uName && existingMap[uName]) || null;
-
-          var p = presenceMap[u.id] ||
-                  presenceMap[String(u.id).toLowerCase()] ||
-                  (u.employeeCode && (presenceMap[u.employeeCode] || presenceMap[String(u.employeeCode).toLowerCase()] || presenceMap[String(u.employeeCode).toUpperCase()])) ||
-                  (u.name && (presenceMap[u.name] || presenceMap[String(u.name).toLowerCase().trim()])) ||
-                  (u.username && (presenceMap[u.username] || presenceMap[String(u.username).toLowerCase()])) ||
-                  (u.email && (presenceMap[u.email] || presenceMap[String(u.email).toLowerCase()])) ||
-                  null;
-
-          var pLastHeartbeatMs = p && p.lastHeartbeat ? new Date(p.lastHeartbeat).getTime() : 0;
-          var existHbMs = exist && exist.lastHbIso ? new Date(exist.lastHbIso).getTime() : 0;
-
-          // Check if incoming payload has fresh active tracking (within 30m)
-          var incomingIsTracking = p && (p.isTracking || p.status === 'online') && (nowMs - pLastHeartbeatMs < 30 * 60 * 1000);
-          // Check if existing row in spreadsheet was live tracking within last 30 minutes
-          var existIsTracking = exist && String(exist.statusLabel || '').indexOf('Live Tracking') !== -1 && (nowMs - existHbMs < 30 * 60 * 1000);
-
-          // Check if there is an active running time log in rawTimeLogs for this user
-          var hasRunningLog = false;
-          var runningTask = '';
-          var runningApp = '';
-          var userTodaySec = 0;
-          var earliestCheckinMs = Infinity;
-          var userFirstCheckin = (exist && exist.firstCheckin && exist.firstCheckin !== '--:--') ? exist.firstCheckin : '--:--';
-
-          // Check daily attendance logs for official first login
-          dailyAttendanceLogs.forEach(function(att) {
-            var matchAtt = att.userId === u.id || (u.employeeCode && att.employeeCode === u.employeeCode) || att.userName === u.name;
-            if (matchAtt && (att.date === todayStr || (att.date && att.date.indexOf(todayStr) !== -1))) {
-              if (att.firstLoginTime && att.firstLoginTime !== '--:--') {
-                userFirstCheckin = att.firstLoginTime;
-              }
-            }
-          });
-
-          // Aggregate today's time logs
-          rawTimeLogs.forEach(function(tl) {
-            var matchU = tl.userId === u.id || tl.userName === u.name || (u.employeeCode && tl.employeeCode === u.employeeCode);
-            if (matchU) {
-              var tlDate = tl.date || (tl.startTime ? Utilities.formatDate(new Date(tl.startTime), 'Asia/Manila', 'yyyy-MM-dd') : '');
-              var isTodayLog = tlDate === todayStr || (tl.startTime && tl.startTime.indexOf(todayStr) !== -1);
-
-              if (isTodayLog) {
-                var dur = typeof tl.durationSeconds === 'number' ? tl.durationSeconds : 0;
-                userTodaySec += dur;
-
-                if (tl.startTime) {
-                  try {
-                    var startD = new Date(tl.startTime);
-                    var sMs = startD.getTime();
-                    if (!isNaN(sMs) && sMs < earliestCheckinMs) {
-                      earliestCheckinMs = sMs;
-                      var formattedStartTime = Utilities.formatDate(startD, 'Asia/Manila', 'hh:mm a');
-                      if (userFirstCheckin === '--:--' || earliestCheckinMs !== Infinity) {
-                        userFirstCheckin = tl.geoLocalStartTime || formattedStartTime;
-                      }
-                    }
-                  } catch (e) {}
-                }
-              }
-
-              if (tl.status === 'running' || tl.endTime === 'Running Live') {
-                hasRunningLog = true;
-                runningTask = tl.task || runningTask;
-                if (tl.appsUsed && tl.appsUsed.length > 0 && tl.appsUsed[0].appName) {
-                  runningApp = tl.appsUsed[0].appName;
-                }
-              }
-            }
-          });
-
-          if (userFirstCheckin === '--:--' && p && p.loginTime) {
-            try {
-              var pLoginD = new Date(p.loginTime);
-              if (!isNaN(pLoginD.getTime())) {
-                userFirstCheckin = Utilities.formatDate(pLoginD, 'Asia/Manila', 'hh:mm a');
-              }
-            } catch (e) {}
-          }
-
-          var isTracking = hasRunningLog || incomingIsTracking || existIsTracking;
-          var isDesktop = isTracking || (p ? (p.loginPlatform === 'software' || (p.currentApp && p.currentApp.toLowerCase().indexOf('desktop') !== -1) || !!p.isTracking) : false) || (exist && String(exist.platformMode).indexOf('Desktop') !== -1);
-          var isIdle = (p && (p.status === 'idle' || !!p.isPaused)) || (exist && String(exist.statusLabel).indexOf('Idle') !== -1 && (nowMs - existHbMs < 30 * 60 * 1000));
-          var isDesktopOnline = !isTracking && !isIdle && (isDesktop && ((p && (p.isOnline || pLastHeartbeatMs > 0)) || (exist && (nowMs - existHbMs < 30 * 60 * 1000) && String(exist.statusLabel).indexOf('Offline') === -1)));
-          var isWebOnline = !isTracking && !isDesktopOnline && !isIdle && ((p && p.loginPlatform === 'webapp') || (exist && String(exist.platformMode).indexOf('Website') !== -1 && (nowMs - existHbMs < 30 * 60 * 1000)));
-
-          var platformMode = isDesktop ? 'Desktop Tracker' : (isWebOnline ? 'Website' : 'None / Offline');
-          var statusLabel = '⚪ Offline';
-          var currentTask = 'Shift Concluded';
-          var currentApp = 'None';
-
-          if (isTracking) {
-            statusLabel = '🟢 Live Tracking';
-            currentTask = (incomingIsTracking && p && p.currentTask) ? p.currentTask : (runningTask || (exist && exist.currentTask && exist.currentTask !== 'Shift Concluded' ? exist.currentTask : 'Active Work in Progress'));
-            currentApp = (incomingIsTracking && p && p.currentApp) ? p.currentApp : (runningApp || (exist && exist.currentApp && exist.currentApp !== 'None' ? exist.currentApp : 'LLC Time Tracker Desktop App'));
-            platformMode = 'Desktop Tracker';
-          } else if (isIdle) {
-            statusLabel = '🟡 Idle / Break';
-            currentTask = (p && p.currentTask) || (exist && exist.currentTask) || 'Paused / Break';
-            currentApp = (p && p.currentApp) || (exist && exist.currentApp) || 'LLC Time Tracker Desktop App';
-            platformMode = 'Desktop Tracker';
-          } else if (isDesktopOnline) {
-            statusLabel = '🔵 Desktop Online';
-            currentTask = (p && p.currentTask) || (exist && exist.currentTask) || 'Desktop App Standby (Timer Not Started)';
-            currentApp = (p && p.currentApp) || (exist && exist.currentApp) || 'LLC Time Tracker Desktop App';
-            platformMode = 'Desktop Tracker';
-          } else if (isWebOnline) {
-            statusLabel = '🌐 Website Active';
-            currentTask = (p && p.currentTask) || (exist && exist.currentTask) || 'Website Portal Active';
-            currentApp = 'Web Browser';
-            platformMode = 'Website';
-          }
-
-          if (isTracking) {
-            if (p && p.elapsedSeconds && p.elapsedSeconds > 0) {
-              userTodaySec = Math.max(userTodaySec, p.elapsedSeconds);
-            } else if (exist && exist.shiftHours) {
-              var mDur = String(exist.shiftHours).match(/(\d+)h\s*(\d+)m/);
-              if (mDur) {
-                var prevSecs = parseInt(mDur[1], 10) * 3600 + parseInt(mDur[2], 10) * 60;
-                userTodaySec = Math.max(userTodaySec, prevSecs);
-              }
-            }
-          }
-
-          var todayTimeFormatted = formatTotalTime(userTodaySec);
-          var latestHbMs = Math.max(pLastHeartbeatMs, existHbMs);
-          var lastHbFormatted = latestHbMs > 0 ? Utilities.formatDate(new Date(latestHbMs), 'Asia/Manila', 'yyyy-MM-dd hh:mm:ss a') : '--:--';
-          var latestHbIso = (pLastHeartbeatMs >= existHbMs && p && p.lastHeartbeat) ? p.lastHeartbeat : ((exist && exist.lastHbIso) || (p && p.lastHeartbeat) || '');
-          var devTimezone = u.geoTimezone ? u.geoTimezone + ' (GMT+8)' : 'Asia/Manila (GMT+8)';
-
-          presenceRows.push([
-            u.employeeCode || 'N/A',
-            u.name || 'Unknown',
-            u.role || 'agent',
-            u.designation || 'Agent',
-            platformMode,
-            statusLabel,
-            currentTask,
-            currentApp,
-            todayTimeFormatted,
-            userFirstCheckin,
-            devTimezone,
-            lastHbFormatted,
-            latestHbIso
-          ]);
-        });
-
-        // In-place row writing: Avoid clearing headers or rebuilding styles
-        if (targetSheet.getLastRow() === 0) {
-          targetSheet.appendRow(presenceHeaders);
-          targetSheet.getRange(1, 1, 1, presenceHeaders.length)
+        if (sheet.getLastRow() === 0) {
+          sheet.appendRow(presenceHeaders);
+          sheet.getRange(1, 1, 1, presenceHeaders.length)
             .setFontWeight('bold')
             .setBackground('#065f46')
             .setFontColor('#ffffff');
-          targetSheet.setFrozenRows(1);
+          sheet.setFrozenRows(1);
         }
-        if (presenceRows.length > 0) {
-          targetSheet.getRange(2, 1, presenceRows.length, presenceHeaders.length).setValues(presenceRows);
-          var curLastRow = targetSheet.getLastRow();
-          if (curLastRow > presenceRows.length + 1) {
-            try {
-              targetSheet.getRange(presenceRows.length + 2, 1, curLastRow - (presenceRows.length + 1), presenceHeaders.length).clearContent();
-            } catch(e) {}
+
+        var targetCode = String(p.employeeCode || '').trim().toUpperCase();
+        var targetName = String(p.userName || p.name || '').trim().toLowerCase();
+        var targetUserId = String(p.userId || '').trim().toLowerCase();
+
+        // Resolve staff name from directory mapping
+        var resolvedName = resolveStaffFullName(targetCode, targetName, p.userName || p.name, p.userId);
+
+        var lastRow = sheet.getLastRow();
+        var matchRow = -1;
+        var existingRow = null;
+
+        if (lastRow > 1) {
+          try {
+            var maxCols = Math.max(sheet.getLastColumn(), 13);
+            var sheetData = sheet.getRange(2, 1, lastRow - 1, maxCols).getValues();
+            for (var r = 0; r < sheetData.length; r++) {
+              var row = sheetData[r];
+              var rowCode = String(row[0] || '').trim().toUpperCase();
+              var rowName = String(row[1] || '').trim().toLowerCase();
+              if ((targetCode && targetCode !== 'N/A' && rowCode === targetCode) ||
+                  (targetName && rowName === targetName) ||
+                  (resolvedName && rowName === resolvedName.toLowerCase())) {
+                matchRow = r + 2;
+                existingRow = row;
+                break;
+              }
+            }
+          } catch (e) {}
+        }
+
+        var isTracking = p.isTracking === true || (p.status === 'online' && p.isTracking) || (p.statusLabel && p.statusLabel.indexOf('Live Tracking') !== -1);
+        var isIdle = p.status === 'idle' || p.isPaused === true || (p.statusLabel && p.statusLabel.indexOf('Idle') !== -1);
+        var isOffline = p.status === 'offline' || (p.isOnline === false && !isTracking && !isIdle);
+
+        var platformMode = p.platformMode || (p.loginPlatform === 'software' || isTracking || (existingRow && String(existingRow[4]).indexOf('Desktop') !== -1) ? 'Desktop Tracker' : 'Website');
+        if (isOffline && !p.platformMode) platformMode = 'None / Offline';
+
+        var statusLabel = p.statusLabel || (isTracking ? '🟢 Live Tracking' : (isIdle ? '🟡 Idle / Break' : (isOffline ? '⚪ Offline' : '🔵 Desktop Online')));
+        var currentTask = p.currentTask || (existingRow && existingRow[6] && existingRow[6] !== 'Shift Concluded' ? existingRow[6] : (isOffline ? 'Shift Concluded' : 'Active Work in Progress'));
+        var currentApp = p.currentApp || (existingRow && existingRow[7] && existingRow[7] !== 'None' ? existingRow[7] : (platformMode.indexOf('Desktop') !== -1 ? 'LLC Time Tracker Desktop App' : 'Web Browser'));
+
+        var userElapsed = typeof p.elapsedSeconds === 'number' ? p.elapsedSeconds : 0;
+        if (!userElapsed && existingRow && existingRow[8]) {
+          var mDur = String(existingRow[8]).match(/(\d+)h\s*(\d+)m/);
+          if (mDur) {
+            userElapsed = parseInt(mDur[1], 10) * 3600 + parseInt(mDur[2], 10) * 60;
           }
         }
-        return presenceRows;
+        var shiftHours = p.shiftHoursToday || formatTotalTime(userElapsed);
+
+        var firstCheckin = p.firstCheckin || (existingRow && existingRow[9] && existingRow[9] !== '--:--' ? existingRow[9] : '--:--');
+        if (firstCheckin === '--:--' && (isTracking || p.loginTime)) {
+          try {
+            firstCheckin = Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm a');
+          } catch(e) {}
+        }
+
+        var timezone = p.timezone || (existingRow && existingRow[10] ? existingRow[10] : 'Asia/Manila (GMT+8)');
+        var now = new Date();
+        var lastHbFormatted = Utilities.formatDate(now, 'Asia/Manila', 'yyyy-MM-dd hh:mm:ss a');
+        var lastHbIso = p.lastHeartbeat || now.toISOString();
+
+        var empCode = targetCode && targetCode !== 'N/A' ? targetCode : (existingRow && existingRow[0] ? existingRow[0] : 'N/A');
+        var empName = resolvedName || p.userName || p.name || (existingRow && existingRow[1] ? existingRow[1] : 'Employee');
+        var role = p.role || (existingRow && existingRow[2] ? existingRow[2] : 'agent');
+        var designation = p.designation || (existingRow && existingRow[3] ? existingRow[3] : 'Agent');
+
+        var newRowData = [
+          empCode,
+          empName,
+          role,
+          designation,
+          platformMode,
+          statusLabel,
+          currentTask,
+          currentApp,
+          shiftHours,
+          firstCheckin,
+          timezone,
+          lastHbFormatted,
+          lastHbIso
+        ];
+
+        if (matchRow > 0) {
+          sheet.getRange(matchRow, 1, 1, 13).setValues([newRowData]);
+        } else {
+          sheet.appendRow(newRowData);
+        }
+
+        return newRowData;
+      }
+
+      // Helper function to update Live Presence while preserving all other active agents across clients
+      function updateLivePresenceMerged(targetSheet, incomingPresenceList) {
+        if (!targetSheet || !incomingPresenceList || incomingPresenceList.length === 0) return [];
+        var updatedRows = [];
+        for (var pi = 0; pi < incomingPresenceList.length; pi++) {
+          var item = incomingPresenceList[pi];
+          if (item && (item.employeeCode || item.userId || item.userName || item.name)) {
+            var res = upsertSinglePresenceRow(targetSheet, item);
+            if (res) updatedRows.push(res);
+          }
+        }
+        return updatedRows;
       }
 
       var presenceSheet = ss.getSheetByName('Live_Presence');
       var presenceAliasSheet = ss.getSheetByName('Live_Sessions');
       var finalPresenceRows = [];
-      if (presenceSheet) finalPresenceRows = updateLivePresenceMerged(presenceSheet);
-      if (presenceAliasSheet) updateLivePresenceMerged(presenceAliasSheet);
+      if (presenceSheet && rawPresenceList.length > 0) finalPresenceRows = updateLivePresenceMerged(presenceSheet, rawPresenceList);
+      if (presenceAliasSheet && rawPresenceList.length > 0) updateLivePresenceMerged(presenceAliasSheet, rawPresenceList);
 
       // ==========================================
       // 1. POPULATE LOGIN LOGS (Support both 'Login_Logs' and 'Login_Session_Logs')
@@ -1976,24 +1898,27 @@ function doGet(e) {
     var empSheet = ss.getSheetByName('Employee_Directory');
     var employees = [];
     if (empSheet && empSheet.getLastRow() > 1) {
-      var data = empSheet.getRange(2, 1, empSheet.getLastRow() - 1, 13).getValues();
+      var data = empSheet.getRange(2, 1, empSheet.getLastRow() - 1, 14).getValues();
       data.forEach(function(row) {
         var code = String(row[0] || '').trim();
-        var name = String(row[1] || '').trim();
-        if (!code && !name) return;
+        var username = String(row[1] || '').trim();
+        var name = String(row[2] || '').trim();
+        if (!code && !name && !username) return;
         employees.push({
           employeeCode: code || 'LLC-' + Math.floor(1000 + Math.random() * 9000),
+          username: username || (name ? name.toLowerCase().replace(/\s+/g, '') : 'agent'),
           name: name || 'Employee',
-          email: String(row[2] || '').trim(),
-          role: String(row[3] || 'employee').toLowerCase().trim(),
-          designation: String(row[4] || 'Agent').trim(),
-          joinDate: String(row[5] || '').trim() || '2020-01-01',
-          monthlyRate: row[6] !== '' && !isNaN(Number(String(row[6]).replace(/[^0-9.]/g, ''))) ? Number(String(row[6]).replace(/[^0-9.]/g, '')) : 0,
-          hourlyRate: row[7] !== '' && !isNaN(Number(String(row[7]).replace(/[^0-9.]/g, ''))) ? Number(String(row[7]).replace(/[^0-9.]/g, '')) : 0,
-          teamLeaderId: String(row[8] || '').trim(),
-          screenshotMonitored: String(row[9]).toUpperCase() === 'YES' || row[9] === true,
-          activityMonitored: String(row[10]).toUpperCase() === 'YES' || row[10] === true,
-          status: String(row[11] || 'active').toLowerCase().trim()
+          email: String(row[3] || '').trim(),
+          role: String(row[4] || 'employee').toLowerCase().trim(),
+          designation: String(row[5] || 'Agent').trim(),
+          joinDate: String(row[6] || '').trim() || '2020-01-01',
+          monthlyRate: row[7] !== '' && !isNaN(Number(String(row[7]).replace(/[^0-9.]/g, ''))) ? Number(String(row[7]).replace(/[^0-9.]/g, '')) : 0,
+          hourlyRate: row[8] !== '' && !isNaN(Number(String(row[8]).replace(/[^0-9.]/g, ''))) ? Number(String(row[8]).replace(/[^0-9.]/g, '')) : 0,
+          teamLeaderId: String(row[9] || '').trim(),
+          screenshotMonitored: String(row[10]).toUpperCase() === 'YES' || row[10] === true,
+          activityMonitored: String(row[11]).toUpperCase() === 'YES' || row[11] === true,
+          status: String(row[12] || 'active').toLowerCase().trim(),
+          password: String(row[13] || '').trim()
         });
       });
     }
@@ -2483,10 +2408,10 @@ export const syncDataToGoogleSheetsWebhook = async (
       // Dev server proxy unavailable, continue to direct browser fetch
     }
 
-    // Strategy 2: Direct browser fetch with mode 'no-cors'
+    // Strategy 2: Direct browser fetch with mode 'cors' and Content-Type 'text/plain;charset=utf-8'
     await fetch(cleanUrl, {
       method: 'POST',
-      mode: 'no-cors',
+      mode: 'cors',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
       },
@@ -2503,6 +2428,89 @@ export const syncDataToGoogleSheetsWebhook = async (
     return {
       success: false,
       message: `Failed to connect to Google Sheets webhook: ${err?.message || 'Network unreachable'}. Please verify Apps Script deployment is set to "Anyone".`,
+    };
+  }
+};
+
+export interface AgentHeartbeatPayload {
+  userId: string;
+  employeeCode?: string;
+  userName: string;
+  role?: string;
+  designation?: string;
+  platformMode?: string;
+  status?: 'online' | 'idle' | 'offline';
+  statusLabel?: string;
+  isOnline?: boolean;
+  isTracking?: boolean;
+  isPaused?: boolean;
+  elapsedSeconds?: number;
+  currentTask?: string;
+  currentApp?: string;
+  loginPlatform?: 'software' | 'webapp';
+  firstCheckin?: string;
+  timezone?: string;
+  lastHeartbeat?: string;
+  mouseActivity?: number;
+  keyboardActivity?: number;
+}
+
+/**
+ * Transmits a targeted individual tracking pulse under a dedicated action: 'HEARTBEAT_UPDATE'.
+ * Runs periodically (every 60s) from active agent machines to update only their own row in Live_Presence.
+ */
+export const syncAgentHeartbeatToSheets = async (
+  webhookUrl: string,
+  heartbeat: AgentHeartbeatPayload
+): Promise<{ success: boolean; message: string }> => {
+  if (!webhookUrl || !webhookUrl.trim() || !isValidWebhookUrl(webhookUrl)) {
+    return { success: false, message: 'Invalid or missing Google Sheets Webhook URL.' };
+  }
+
+  const cleanUrl = webhookUrl.trim();
+  const payload = {
+    action: 'HEARTBEAT_UPDATE',
+    presence: {
+      ...heartbeat,
+      lastHeartbeat: heartbeat.lastHeartbeat || new Date().toISOString(),
+    },
+    syncedAt: new Date().toISOString(),
+  };
+
+  try {
+    // Strategy 1: Dev / Node Server proxy
+    try {
+      const proxyRes = await fetch('/api/sync-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webhookUrl: cleanUrl, payload }),
+      });
+      if (proxyRes.ok) {
+        return { success: true, message: 'Heartbeat synced via server proxy' };
+      }
+    } catch (e) {
+      // Server proxy unavailable, proceed to Strategy 2
+    }
+
+    // Strategy 2: Direct browser fetch with mode 'cors' and Content-Type 'text/plain;charset=utf-8'
+    await fetch(cleanUrl, {
+      method: 'POST',
+      mode: 'cors',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    return {
+      success: true,
+      message: 'Heartbeat pulse transmitted to Google Sheets successfully!',
+    };
+  } catch (err: any) {
+    console.warn('Direct heartbeat sync warning:', err?.message || err);
+    return {
+      success: false,
+      message: `Heartbeat sync failed: ${err?.message || 'Network error'}`,
     };
   }
 };
