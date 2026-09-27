@@ -564,6 +564,10 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
   var prevLastRow = sheet.getLastRow();
   var prevLastCol = sheet.getLastColumn();
 
+  if (sheet.getMaxRows() < numRows) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), numRows - sheet.getMaxRows() + 10);
+  }
+
   // Set values in-place smoothly without clearing formatting
   sheet.getRange(1, 1, numRows, numCols).setValues(allData);
 
@@ -597,6 +601,10 @@ function populateCleanSheet(sheet, headers, rows, headerColor) {
   var numCols = headers.length;
   var prevLastRow = sheet.getLastRow();
   var prevLastCol = sheet.getLastColumn();
+
+  if (sheet.getMaxRows() < numRows) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), numRows - sheet.getMaxRows() + 10);
+  }
 
   var targetRange = sheet.getRange(1, 1, numRows, numCols);
   targetRange.setValues(allData);
@@ -2418,21 +2426,22 @@ export const syncDataToGoogleSheetsWebhook = async (
       // Dev server proxy unavailable, continue to direct browser fetch
     }
 
-    // Strategy 2: Direct browser fetch with automatic CORS-to-no-cors fallback
+    // Strategy 2: Direct browser fetch to Google Apps Script.
+    // Google Apps Script Web App endpoints respond with a 302 redirect.
+    // In browser environments without a proxy, mode: 'no-cors' with 'text/plain;charset=utf-8'
+    // transmits the full POST body directly without failing on the cross-domain redirect.
     try {
       await fetch(cleanUrl, {
         method: 'POST',
+        mode: 'no-cors',
         headers: {
           'Content-Type': 'text/plain;charset=utf-8',
         },
         body: JSON.stringify(payload),
       });
-    } catch (corsErr) {
-      // Browsers block Google Apps Script 302 redirects in strict CORS mode.
-      // Fallback to mode: 'no-cors' ensures the payload reaches Google Sheets without browser blocking.
+    } catch (directErr) {
       await fetch(cleanUrl, {
         method: 'POST',
-        mode: 'no-cors',
         headers: {
           'Content-Type': 'text/plain;charset=utf-8',
         },
@@ -2514,10 +2523,11 @@ export const syncAgentHeartbeatToSheets = async (
       // Server proxy unavailable, proceed to Strategy 2
     }
 
-    // Strategy 2: Direct browser fetch with automatic CORS-to-no-cors fallback
+    // Strategy 2: Direct browser fetch with mode: 'no-cors'
     try {
       await fetch(cleanUrl, {
         method: 'POST',
+        mode: 'no-cors',
         headers: {
           'Content-Type': 'text/plain;charset=utf-8',
         },
@@ -2526,7 +2536,6 @@ export const syncAgentHeartbeatToSheets = async (
     } catch (corsErr) {
       await fetch(cleanUrl, {
         method: 'POST',
-        mode: 'no-cors',
         headers: {
           'Content-Type': 'text/plain;charset=utf-8',
         },
