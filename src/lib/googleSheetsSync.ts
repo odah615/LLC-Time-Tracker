@@ -2418,15 +2418,27 @@ export const syncDataToGoogleSheetsWebhook = async (
       // Dev server proxy unavailable, continue to direct browser fetch
     }
 
-    // Strategy 2: Direct browser fetch with mode 'cors' and Content-Type 'text/plain;charset=utf-8'
-    await fetch(cleanUrl, {
-      method: 'POST',
-      mode: 'cors',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: JSON.stringify(payload),
-    });
+    // Strategy 2: Direct browser fetch with automatic CORS-to-no-cors fallback
+    try {
+      await fetch(cleanUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (corsErr) {
+      // Browsers block Google Apps Script 302 redirects in strict CORS mode.
+      // Fallback to mode: 'no-cors' ensures the payload reaches Google Sheets without browser blocking.
+      await fetch(cleanUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify(payload),
+      });
+    }
 
     return {
       success: true,
@@ -2502,15 +2514,25 @@ export const syncAgentHeartbeatToSheets = async (
       // Server proxy unavailable, proceed to Strategy 2
     }
 
-    // Strategy 2: Direct browser fetch with mode 'cors' and Content-Type 'text/plain;charset=utf-8'
-    await fetch(cleanUrl, {
-      method: 'POST',
-      mode: 'cors',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: JSON.stringify(payload),
-    });
+    // Strategy 2: Direct browser fetch with automatic CORS-to-no-cors fallback
+    try {
+      await fetch(cleanUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (corsErr) {
+      await fetch(cleanUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify(payload),
+      });
+    }
 
     return {
       success: true,
