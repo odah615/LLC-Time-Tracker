@@ -69,37 +69,41 @@ const CANONICAL_STAFF: Record<string, string> = {
 };
 
 const resolveStaffName = (code?: string, username?: string, name?: string, id?: string): string => {
+  const n = (name || '').trim();
+  if (n && n !== 'Unknown' && n !== 'Employee' && n !== 'Staff' && n !== 'Agent') {
+    return n;
+  }
   const c = (code || '').toUpperCase().trim();
   const num = c.replace(/^[A-Z\-_]+/, '');
   for (const [k, v] of Object.entries(CANONICAL_STAFF)) {
     const kNum = k.replace(/^[A-Z\-_]+/, '');
-    if (c === k || (num && num === kNum)) return v;
+    if (c === k || (num && kNum && num === kNum)) return v;
   }
   const u = (username || '').toLowerCase().trim();
-  const n = (name || '').toLowerCase().trim();
+  const nLower = n.toLowerCase();
   const rawId = (id || '').toLowerCase().trim();
-  if (u === 'agabr' || n === 'agabr' || rawId.includes('0004')) return 'Alexa Gabrielle Bardaje';
-  if (u === 'asamd' || n === 'asamd' || rawId.includes('0005')) return 'April Sam Dimaano';
-  if (u === 'bandr' || n === 'bandr' || rawId.includes('0006')) return 'Boris Andrew Villanueva';
-  if (u === 'cdiol' || n === 'cdiol' || rawId.includes('0007')) return 'Cyril Diola Garcia';
-  if (u === 'dyane' || n === 'dyane' || rawId.includes('0008')) return 'Daina Yanez';
-  if (u === 'fdenc' || n === 'fdenc' || rawId.includes('0009')) return 'Fatima Dence David';
-  if (u === 'gasal' || n === 'gasal' || rawId.includes('0010')) return 'Gerald A. Salvador';
-  if (u === 'jcari' || n === 'jcari' || rawId.includes('0011')) return 'Jayson Cariaga';
-  if (u === 'jnuev' || n === 'jnuev' || rawId.includes('0012')) return 'Jenalyn Nueva';
-  if (u === 'kannl' || n === 'kannl' || rawId.includes('0013')) return 'Kathleen Ann L. Totaan';
-  if (u === 'lmary' || n === 'lmary' || rawId.includes('0014')) return 'Lourdes Mary Cenina';
-  if (u === 'ldavi' || n === 'ldavi' || rawId.includes('0015')) return 'Luis David Ramirez';
-  if (u === 'mracq' || n === 'mracq' || rawId.includes('0016')) return 'Maria Racquel Gracia M. Libarios';
-  if (u === 'mjesu' || n === 'mjesu' || rawId.includes('0017')) return 'Mark Jesus A. Egoy';
-  if (u === 'rguia' || n === 'rguia' || rawId.includes('0018')) return 'Raquel Guiapal';
-  if (u === 'rloui' || n === 'rloui' || rawId.includes('0019')) return 'Ron Louie Logan';
-  if (u === 'rbarr' || n === 'rbarr' || rawId.includes('0020')) return 'Rubilyne Barrameda';
-  if (u === 'srome' || n === 'srome' || rawId.includes('0021')) return 'Shiela Romey';
-  if (u === 'tashl' || n === 'tashl' || rawId.includes('0022')) return 'Trixy Ashley Decena Mabutol';
-  if (u === 'trainer' || n === 'pia' || c === 'LLC-0003') return 'Pia';
+  if (u === 'agabr' || nLower === 'agabr' || rawId.includes('0004')) return 'Alexa Gabrielle Bardaje';
+  if (u === 'asamd' || nLower === 'asamd' || rawId.includes('0005')) return 'April Sam Dimaano';
+  if (u === 'bandr' || nLower === 'bandr' || rawId.includes('0006')) return 'Boris Andrew Villanueva';
+  if (u === 'cdiol' || nLower === 'cdiol' || rawId.includes('0007')) return 'Cyril Diola Garcia';
+  if (u === 'dyane' || nLower === 'dyane' || rawId.includes('0008')) return 'Daina Yanez';
+  if (u === 'fdenc' || nLower === 'fdenc' || rawId.includes('0009')) return 'Fatima Dence David';
+  if (u === 'gasal' || nLower === 'gasal' || rawId.includes('0010')) return 'Gerald A. Salvador';
+  if (u === 'jcari' || nLower === 'jcari' || rawId.includes('0011')) return 'Jayson Cariaga';
+  if (u === 'jnuev' || nLower === 'jnuev' || rawId.includes('0012')) return 'Jenalyn Nueva';
+  if (u === 'kannl' || nLower === 'kannl' || rawId.includes('0013')) return 'Kathleen Ann L. Totaan';
+  if (u === 'lmary' || nLower === 'lmary' || rawId.includes('0014')) return 'Lourdes Mary Cenina';
+  if (u === 'ldavi' || nLower === 'ldavi' || rawId.includes('0015')) return 'Luis David Ramirez';
+  if (u === 'mracq' || nLower === 'mracq' || rawId.includes('0016')) return 'Maria Racquel Gracia M. Libarios';
+  if (u === 'mjesu' || nLower === 'mjesu' || rawId.includes('0017')) return 'Mark Jesus A. Egoy';
+  if (u === 'rguia' || nLower === 'rguia' || rawId.includes('0018')) return 'Raquel Guiapal';
+  if (u === 'rloui' || nLower === 'rloui' || rawId.includes('0019')) return 'Ron Louie Logan';
+  if (u === 'rbarr' || nLower === 'rbarr' || rawId.includes('0020')) return 'Rubilyne Barrameda';
+  if (u === 'srome' || nLower === 'srome' || rawId.includes('0021')) return 'Shiela Romey';
+  if (u === 'tashl' || nLower === 'tashl' || rawId.includes('0022')) return 'Trixy Ashley Decena Mabutol';
+  if (u === 'trainer' || nLower === 'pia' || c === 'LLC-0003') return 'Pia';
   if (u === 'admin' || c === 'SUPERADMIN') return 'Admin';
-  return name || username || 'Employee';
+  return n || username || 'Employee';
 };
 
 // Load initial bridge state if exists

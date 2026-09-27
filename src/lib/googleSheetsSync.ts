@@ -830,6 +830,14 @@ function doPost(e) {
       var leaveRequests = data.leaveRequests || [];
       var payrollRecords = data.payrollRecords || [];
       var rawPresenceList = data.userPresenceList || data.livePresence || data.presence || [];
+      var presenceMap = {};
+      rawPresenceList.forEach(function(p) {
+        if (!p) return;
+        if (p.userId) presenceMap[p.userId] = p;
+        if (p.employeeCode) presenceMap[String(p.employeeCode).toUpperCase()] = p;
+        if (p.userName) presenceMap[String(p.userName).toLowerCase()] = p;
+        if (p.name) presenceMap[String(p.name).toLowerCase()] = p;
+      });
 
       var CANONICAL_STAFF = {
         'SUPERADMIN': 'Admin',
@@ -856,37 +864,41 @@ function doPost(e) {
       };
 
       function resolveStaffFullName(code, username, name, id) {
+        var n = (name || '').trim();
+        if (n && n !== 'Unknown' && n !== 'Employee' && n !== 'Staff' && n !== 'Agent') {
+          return n;
+        }
         var c = (code || '').toUpperCase().trim();
         var num = c.replace(/^[A-Z\-_]+/, '');
         for (var k in CANONICAL_STAFF) {
           var kNum = k.replace(/^[A-Z\-_]+/, '');
-          if (c === k || (num && num === kNum)) return CANONICAL_STAFF[k];
+          if (c === k || (num && kNum && num === kNum)) return CANONICAL_STAFF[k];
         }
         var u = (username || '').toLowerCase().trim();
-        var n = (name || '').toLowerCase().trim();
+        var nLower = n.toLowerCase();
         var rawId = (id || '').toLowerCase().trim();
-        if (u === 'agabr' || n === 'agabr' || rawId.indexOf('0004') !== -1) return 'Alexa Gabrielle Bardaje';
-        if (u === 'asamd' || n === 'asamd' || rawId.indexOf('0005') !== -1) return 'April Sam Dimaano';
-        if (u === 'bandr' || n === 'bandr' || rawId.indexOf('0006') !== -1) return 'Boris Andrew Villanueva';
-        if (u === 'cdiol' || n === 'cdiol' || rawId.indexOf('0007') !== -1) return 'Cyril Diola Garcia';
-        if (u === 'dyane' || n === 'dyane' || rawId.indexOf('0008') !== -1) return 'Daina Yanez';
-        if (u === 'fdenc' || n === 'fdenc' || rawId.indexOf('0009') !== -1) return 'Fatima Dence David';
-        if (u === 'gasal' || n === 'gasal' || rawId.indexOf('0010') !== -1) return 'Gerald A. Salvador';
-        if (u === 'jcari' || n === 'jcari' || rawId.indexOf('0011') !== -1) return 'Jayson Cariaga';
-        if (u === 'jnuev' || n === 'jnuev' || rawId.indexOf('0012') !== -1) return 'Jenalyn Nueva';
-        if (u === 'kannl' || n === 'kannl' || rawId.indexOf('0013') !== -1) return 'Kathleen Ann L. Totaan';
-        if (u === 'lmary' || n === 'lmary' || rawId.indexOf('0014') !== -1) return 'Lourdes Mary Cenina';
-        if (u === 'ldavi' || n === 'ldavi' || rawId.indexOf('0015') !== -1) return 'Luis David Ramirez';
-        if (u === 'mracq' || n === 'mracq' || rawId.indexOf('0016') !== -1) return 'Maria Racquel Gracia M. Libarios';
-        if (u === 'mjesu' || n === 'mjesu' || rawId.indexOf('0017') !== -1) return 'Mark Jesus A. Egoy';
-        if (u === 'rguia' || n === 'rguia' || rawId.indexOf('0018') !== -1) return 'Raquel Guiapal';
-        if (u === 'rloui' || n === 'rloui' || rawId.indexOf('0019') !== -1) return 'Ron Louie Logan';
-        if (u === 'rbarr' || n === 'rbarr' || rawId.indexOf('0020') !== -1) return 'Rubilyne Barrameda';
-        if (u === 'srome' || n === 'srome' || rawId.indexOf('0021') !== -1) return 'Shiela Romey';
-        if (u === 'tashl' || n === 'tashl' || rawId.indexOf('0022') !== -1) return 'Trixy Ashley Decena Mabutol';
-        if (u === 'trainer' || n === 'pia' || c === 'LLC-0003') return 'Pia';
+        if (u === 'agabr' || nLower === 'agabr' || rawId.indexOf('0004') !== -1) return 'Alexa Gabrielle Bardaje';
+        if (u === 'asamd' || nLower === 'asamd' || rawId.indexOf('0005') !== -1) return 'April Sam Dimaano';
+        if (u === 'bandr' || nLower === 'bandr' || rawId.indexOf('0006') !== -1) return 'Boris Andrew Villanueva';
+        if (u === 'cdiol' || nLower === 'cdiol' || rawId.indexOf('0007') !== -1) return 'Cyril Diola Garcia';
+        if (u === 'dyane' || nLower === 'dyane' || rawId.indexOf('0008') !== -1) return 'Daina Yanez';
+        if (u === 'fdenc' || nLower === 'fdenc' || rawId.indexOf('0009') !== -1) return 'Fatima Dence David';
+        if (u === 'gasal' || nLower === 'gasal' || rawId.indexOf('0010') !== -1) return 'Gerald A. Salvador';
+        if (u === 'jcari' || nLower === 'jcari' || rawId.indexOf('0011') !== -1) return 'Jayson Cariaga';
+        if (u === 'jnuev' || nLower === 'jnuev' || rawId.indexOf('0012') !== -1) return 'Jenalyn Nueva';
+        if (u === 'kannl' || nLower === 'kannl' || rawId.indexOf('0013') !== -1) return 'Kathleen Ann L. Totaan';
+        if (u === 'lmary' || nLower === 'lmary' || rawId.indexOf('0014') !== -1) return 'Lourdes Mary Cenina';
+        if (u === 'ldavi' || nLower === 'ldavi' || rawId.indexOf('0015') !== -1) return 'Luis David Ramirez';
+        if (u === 'mracq' || nLower === 'mracq' || rawId.indexOf('0016') !== -1) return 'Maria Racquel Gracia M. Libarios';
+        if (u === 'mjesu' || nLower === 'mjesu' || rawId.indexOf('0017') !== -1) return 'Mark Jesus A. Egoy';
+        if (u === 'rguia' || nLower === 'rguia' || rawId.indexOf('0018') !== -1) return 'Raquel Guiapal';
+        if (u === 'rloui' || nLower === 'rloui' || rawId.indexOf('0019') !== -1) return 'Ron Louie Logan';
+        if (u === 'rbarr' || nLower === 'rbarr' || rawId.indexOf('0020') !== -1) return 'Rubilyne Barrameda';
+        if (u === 'srome' || nLower === 'srome' || rawId.indexOf('0021') !== -1) return 'Shiela Romey';
+        if (u === 'tashl' || nLower === 'tashl' || rawId.indexOf('0022') !== -1) return 'Trixy Ashley Decena Mabutol';
+        if (u === 'trainer' || nLower === 'pia' || c === 'LLC-0003') return 'Pia';
         if (u === 'admin' || c === 'SUPERADMIN') return 'Admin';
-        return name || username || 'Employee';
+        return n || username || 'Employee';
       }
 
       // Deduplicate users and sanitize employee names
@@ -1364,12 +1376,14 @@ function doPost(e) {
           }
 
           if (!dailyMap[dKey]) {
+            var initialTasks = {};
+            if (eTask) initialTasks[eTask] = true;
             dailyMap[dKey] = {
               date: todayStr,
               code: eCode,
               name: eName,
               designation: eDesig,
-              tasks: { [eTask]: true },
+              tasks: initialTasks,
               firstClockIn: eCheckin,
               lastClockOut: 'Running Live',
               grossSecs: Math.max(mSecs, 60),
@@ -1717,10 +1731,8 @@ function doPost(e) {
           var sv = userMap[u.teamLeaderId];
           supervisorName = sv ? sv.name + ' (' + (sv.designation || sv.role) + ')' : u.teamLeaderId;
         }
-        var mRate = (u.monthlyRate !== undefined && u.monthlyRate !== null) ? Number(u.monthlyRate) : 0;
-        if (mRate === 23000 || mRate === 60000 || mRate === 40000 || mRate === 35000 || mRate === 30000 || isNaN(mRate)) mRate = 0;
-        var hRate = (u.hourlyRate !== undefined && u.hourlyRate !== null) ? Number(u.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
-        if (hRate === 143.75 || hRate === 375 || hRate === 250 || hRate === 218.75 || hRate === 187.5 || isNaN(hRate)) hRate = 0;
+        var mRate = (u.monthlyRate !== undefined && u.monthlyRate !== null && !isNaN(Number(u.monthlyRate))) ? Number(u.monthlyRate) : 0;
+        var hRate = (u.hourlyRate !== undefined && u.hourlyRate !== null && !isNaN(Number(u.hourlyRate))) ? Number(u.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
         empRows.push([
           u.employeeCode || 'N/A',
           u.username || 'agent',
@@ -1775,10 +1787,8 @@ function doPost(e) {
         var dedupeKey = p.id || (p.employeeCode + '_' + p.payPeriod);
         if (paySeen[dedupeKey]) return;
         paySeen[dedupeKey] = true;
-        var pMRate = p.monthlyRate !== undefined && p.monthlyRate !== null ? Number(p.monthlyRate) : 0;
-        if (pMRate === 23000 || pMRate === 60000 || pMRate === 40000 || pMRate === 35000 || pMRate === 30000 || isNaN(pMRate)) pMRate = 0;
-        var pHRate = p.hourlyRate !== undefined && p.hourlyRate !== null ? Number(p.hourlyRate) : 0;
-        if (pHRate === 143.75 || pHRate === 375 || pHRate === 250 || pHRate === 218.75 || pHRate === 187.5 || isNaN(pHRate)) pHRate = 0;
+        var pMRate = (p.monthlyRate !== undefined && p.monthlyRate !== null && !isNaN(Number(p.monthlyRate))) ? Number(p.monthlyRate) : 0;
+        var pHRate = (p.hourlyRate !== undefined && p.hourlyRate !== null && !isNaN(Number(p.hourlyRate))) ? Number(p.hourlyRate) : 0;
         payRows.push([
           p.payPeriod || 'August 1-15, 2026',
           p.employeeCode || 'LLC-0001',

@@ -863,8 +863,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 
   const triggerGoogleSheetsSync = async (overrideUrl?: string): Promise<{ success: boolean; message: string }> => {
-    const targetUrl = overrideUrl || googleSheetsWebhookUrl;
-    if (!targetUrl) {
+    let targetUrl = overrideUrl || googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
+    if (!targetUrl || !targetUrl.trim()) {
+      try {
+        const apiRes = await fetch('/api/config');
+        if (apiRes.ok) {
+          const apiCfg = await apiRes.json();
+          if (apiCfg?.webhookUrl && isValidWebhookUrl(apiCfg.webhookUrl)) {
+            targetUrl = apiCfg.webhookUrl.trim();
+            setGoogleSheetsWebhookUrlState(targetUrl);
+            localStorage.setItem('trackpulse_sheets_webhook', targetUrl);
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (!targetUrl || !targetUrl.trim()) {
       setSaveToast(`✓ Saved to Central Database! (Tip: Paste Google Apps Script Webhook URL in Header to auto-sync directly to Google Sheets)`);
       setTimeout(() => setSaveToast(null), 8000);
       return { success: false, message: 'No webhook URL provided' };
@@ -3954,7 +3968,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       idleLogs,
       leaveRequests,
       designationTasks,
-      rolePermissions
+      rolePermissions,
+      true
     );
   };
 
@@ -4031,7 +4046,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       idleLogs,
       leaveRequests,
       designationTasks,
-      rolePermissions
+      rolePermissions,
+      true
     );
   };
 
@@ -4078,7 +4094,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       idleLogs,
       leaveRequests,
       designationTasks,
-      rolePermissions
+      rolePermissions,
+      true
     );
   };
 
