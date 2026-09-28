@@ -4,6 +4,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
+const GOOGLE_APPS_SCRIPT_WEBHOOK_URL =
+  "https://script.google.com/macros/s/AKfycbyKGMOWV0u5xcv_lOKBk6LXpbjrlgZiuqtCs3_HbqjekoJZdXpdfA_1kDjP7H0ulLsw3Q/exec";
+
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -29,8 +32,7 @@ export async function onRequestPost(context: any) {
 
     const body = await request.json();
 
-   const webhookUrl =
-  context.env?.GOOGLE_APPS_SCRIPT_WEBHOOK_URL || body?.webhookUrl;
+    const webhookUrl = GOOGLE_APPS_SCRIPT_WEBHOOK_URL;
     const payload = body?.payload || body;
 
     if (
@@ -97,25 +99,7 @@ export async function onRequestPost(context: any) {
 // GET /api/sync-sheets?url=GOOGLE_APPS_SCRIPT_URL
 export async function onRequestGet(context: any) {
   try {
-    const request = context.request;
-    const requestUrl = new URL(request.url);
-
-    const webhookUrl =
-  context.env?.GOOGLE_APPS_SCRIPT_WEBHOOK_URL ||
-  requestUrl.searchParams.get("url");
-
-    if (
-      !webhookUrl ||
-      !webhookUrl.startsWith("https://")
-    ) {
-      return jsonResponse(
-        {
-          success: false,
-          error: "Invalid or missing Google Apps Script webhook URL",
-        },
-        400
-      );
-    }
+    const webhookUrl = GOOGLE_APPS_SCRIPT_WEBHOOK_URL;
 
     const googleResponse = await fetch(webhookUrl, {
       method: "GET",
