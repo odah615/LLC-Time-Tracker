@@ -29,7 +29,8 @@ export async function onRequestPost(context: any) {
 
     const body = await request.json();
 
-    const webhookUrl = body?.webhookUrl;
+   const webhookUrl =
+  context.env?.GOOGLE_APPS_SCRIPT_WEBHOOK_URL || body?.webhookUrl;
     const payload = body?.payload || body;
 
     if (
@@ -99,7 +100,9 @@ export async function onRequestGet(context: any) {
     const request = context.request;
     const requestUrl = new URL(request.url);
 
-    const webhookUrl = requestUrl.searchParams.get("url");
+    const webhookUrl =
+  context.env?.GOOGLE_APPS_SCRIPT_WEBHOOK_URL ||
+  requestUrl.searchParams.get("url");
 
     if (
       !webhookUrl ||
