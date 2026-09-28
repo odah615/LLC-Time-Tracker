@@ -451,6 +451,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const isAuth = localStorage.getItem('trackpulse_auth') === 'true';
     const hasUser = !!localStorage.getItem('trackpulse_current_user');
+    const savedMode = (localStorage.getItem('trackpulse_login_mode') as 'webapp' | 'software') || 'webapp';
+    const isTracking = localStorage.getItem('trackpulse_active_tracking') === 'true';
+
+    // 10-Minute Web Session Inactivity Auto-Logout:
+    // If user is authenticated in webapp mode and not currently tracking, check if >10 mins elapsed since last interaction
+    if (isAuth && savedMode === 'webapp' && !isTracking) {
+      const lastActiveStr = localStorage.getItem('trackpulse_last_active_timestamp');
+      if (lastActiveStr) {
+        const lastActive = parseInt(lastActiveStr, 10);
+        if (!isNaN(lastActive) && lastActive > 0 && Date.now() - lastActive >= 600 * 1000) {
+          localStorage.removeItem('trackpulse_auth');
+          localStorage.setItem('trackpulse_session_expired_reason', 'inactivity_10min');
+          return false;
+        }
+      }
+    }
+
     return isAuth && hasUser;
   });
   const [loginMode, setLoginMode] = useState<'webapp' | 'software'>(() => {
@@ -2012,13 +2029,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem('trackpulse_session_expired_reason');
   }, []);
 
-  const lastWebActivityTimestampRef = useRef<number>(Date.now());
+  const lastWebActivityTimestampRef = useRef<number>(
+    typeof window !== 'undefined' && localStorage.getItem('trackpulse_last_active_timestamp')
+      ? parseInt(localStorage.getItem('trackpulse_last_active_timestamp')!, 10) || Date.now()
+      : Date.now()
+  );
 
   const refreshWebSession = useCallback(() => {
     const nowMs = Date.now();
     lastWebActivityTimestampRef.current = nowMs;
     lastMouseActiveTimestampRef.current = nowMs;
     lastKeyboardActiveTimestampRef.current = nowMs;
+    localStorage.setItem('trackpulse_last_active_timestamp', nowMs.toString());
     setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
     setIsSessionWarningActive(false);
     setWebSessionWarningCountdown(300);
@@ -2032,6 +2054,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('trackpulse_auth', 'true');
     localStorage.setItem('trackpulse_login_mode', mode);
     localStorage.setItem('trackpulse_current_user', JSON.stringify(user));
+    localStorage.setItem('trackpulse_last_active_timestamp', Date.now().toString());
     localStorage.removeItem('trackpulse_session_expired_reason');
     setSessionExpiredReason(null);
     lastWebActivityTimestampRef.current = Date.now();
@@ -2219,19 +2242,87 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // - 0 to 5 minutes inactive: Normal working state
   // - 5 to 10 minutes inactive: Triggers countdown warning (5:00 down to 0:00)
   // - At 10 minutes inactive: Automatic logout on webapp (Desktop Software is exempt)
+  // - Persistent across tabs, background throttling, and closed browser intervals
   useEffect(() => {
     if (!isAuthenticated || loginMode !== 'webapp' || isTracking) return;
 
-    lastWebActivityTimestampRef.current = Date.now();
+    const performWebInactivityLogout = () => {
+      setIsSessionWarningActive(false);
+      const now = new Date();
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const dateFormatted = `${monthNames[now.getMonth()]} ${now.getDate().toString().padStart(2, '0')}, ${now.getFullYear()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+
+      const timeoutLog: AuditLog = {
+        id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        timestamp: now.toISOString(),
+        dateFormatted,
+        actorId: currentUser?.id || 'agent',
+        actorName: currentUser?.name || 'Agent',
+        actorRole: currentUser?.role || 'agent',
+        category: 'Logout',
+        details: `Session expired: 10-minute web inactivity timeout. ${currentUser?.name || 'Agent'} automatically signed out of LLC Web Portal.`,
+      };
+
+      setAuditLogs((prev) => {
+        const updated = [timeoutLog, ...prev];
+        triggerAutoSync(users, timeLogs, updated, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
+        return updated;
+      });
+
+      // Set offline in database and memory
+      if (currentUser) {
+        const offlineDoc = {
+          isOnline: false,
+          status: 'offline' as const,
+          isTracking: false,
+          isPaused: false,
+          currentTask: 'Shift Concluded',
+          lastHeartbeat: now.toISOString(),
+        };
+        safeSetDoc(doc(db, 'user_presence', currentUser.id), offlineDoc, { merge: true }).catch(() => {});
+        fetch('/api/presence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUser.id, ...offlineDoc }),
+        }).catch(() => {});
+        setUserPresenceList((prev) => prev.map((p) => (p.userId === currentUser.id ? { ...p, ...offlineDoc } : p)));
+      }
+
+      localStorage.setItem('trackpulse_session_expired_reason', 'inactivity_10min');
+      setSessionExpiredReason('inactivity_10min');
+      setIsAuthenticated(false);
+      localStorage.removeItem('trackpulse_auth');
+    };
+
+    // Check if user was already inactive for 10+ minutes before opening/restoring the site
+    const initialSavedStr = localStorage.getItem('trackpulse_last_active_timestamp');
+    const initialSavedTime = initialSavedStr ? parseInt(initialSavedStr, 10) : 0;
+    if (initialSavedTime > 0 && Date.now() - initialSavedTime >= WEB_SESSION_TOTAL_TIMEOUT_SECONDS * 1000) {
+      performWebInactivityLogout();
+      return;
+    }
+
+    const nowTimestamp = Date.now();
+    lastWebActivityTimestampRef.current = initialSavedTime > 0 ? initialSavedTime : nowTimestamp;
     setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
     setIsSessionWarningActive(false);
     setWebSessionWarningCountdown(300);
 
     const handleWebUserActivity = () => {
-      lastWebActivityTimestampRef.current = Date.now();
+      const activeNow = Date.now();
+      lastWebActivityTimestampRef.current = activeNow;
+      localStorage.setItem('trackpulse_last_active_timestamp', activeNow.toString());
       setIsSessionWarningActive(false);
       setWebSessionWarningCountdown(300);
       setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
+    };
+
+    const handleVisibilityOrFocus = () => {
+      const savedStr = localStorage.getItem('trackpulse_last_active_timestamp');
+      const savedTime = savedStr ? parseInt(savedStr, 10) : 0;
+      if (savedTime > 0 && Date.now() - savedTime >= WEB_SESSION_TOTAL_TIMEOUT_SECONDS * 1000) {
+        performWebInactivityLogout();
+      }
     };
 
     // Attach interaction listeners to reset the timer on any user action
@@ -2242,17 +2333,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     window.addEventListener('scroll', handleWebUserActivity, { passive: true });
     window.addEventListener('click', handleWebUserActivity, { passive: true });
     window.addEventListener('wheel', handleWebUserActivity, { passive: true });
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
 
     const intervalId = setInterval(() => {
       if (isTracking) {
         lastWebActivityTimestampRef.current = Date.now();
+        localStorage.setItem('trackpulse_last_active_timestamp', Date.now().toString());
         setIsSessionWarningActive(false);
         setWebSessionWarningCountdown(300);
         setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
         return;
       }
 
-      const elapsedInactiveSeconds = Math.floor((Date.now() - lastWebActivityTimestampRef.current) / 1000);
+      const lastActiveTime = lastWebActivityTimestampRef.current || Date.now();
+      const elapsedInactiveSeconds = Math.floor((Date.now() - lastActiveTime) / 1000);
       const remainingTotal = Math.max(0, WEB_SESSION_TOTAL_TIMEOUT_SECONDS - elapsedInactiveSeconds);
       setWebSessionRemainingSeconds(remainingTotal);
 
@@ -2266,52 +2361,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (remainingTotal <= 0) {
-        // Auto-logout user on Web Portal after 10 full minutes of inactivity
-        setIsSessionWarningActive(false);
-        const now = new Date();
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const dateFormatted = `${monthNames[now.getMonth()]} ${now.getDate().toString().padStart(2, '0')}, ${now.getFullYear()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-        
-        const timeoutLog: AuditLog = {
-          id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          timestamp: now.toISOString(),
-          dateFormatted,
-          actorId: currentUser?.id || 'agent',
-          actorName: currentUser?.name || 'Agent',
-          actorRole: currentUser?.role || 'agent',
-          category: 'Logout',
-          details: `Session expired: 10-minute web inactivity timeout. ${currentUser?.name || 'Agent'} automatically signed out of LLC Web Portal.`,
-        };
-
-        setAuditLogs((prev) => {
-          const updated = [timeoutLog, ...prev];
-          triggerAutoSync(users, timeLogs, updated, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
-          return updated;
-        });
-
-        // Set offline in database and memory
-        if (currentUser) {
-          const offlineDoc = {
-            isOnline: false,
-            status: 'offline' as const,
-            isTracking: false,
-            isPaused: false,
-            currentTask: 'Shift Concluded',
-            lastHeartbeat: now.toISOString(),
-          };
-          safeSetDoc(doc(db, 'user_presence', currentUser.id), offlineDoc, { merge: true }).catch(() => {});
-          fetch('/api/presence', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: currentUser.id, ...offlineDoc }),
-          }).catch(() => {});
-          setUserPresenceList((prev) => prev.map((p) => (p.userId === currentUser.id ? { ...p, ...offlineDoc } : p)));
-        }
-
-        localStorage.setItem('trackpulse_session_expired_reason', 'inactivity_10min');
-        setSessionExpiredReason('inactivity_10min');
-        setIsAuthenticated(false);
-        localStorage.removeItem('trackpulse_auth');
+        performWebInactivityLogout();
       }
     }, 1000);
 
@@ -2324,8 +2374,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       window.removeEventListener('scroll', handleWebUserActivity);
       window.removeEventListener('click', handleWebUserActivity);
       window.removeEventListener('wheel', handleWebUserActivity);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
     };
-  }, [isAuthenticated, loginMode, currentUser, users, timeLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, triggerAutoSync]);
+  }, [isAuthenticated, loginMode, isTracking, currentUser, users, timeLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, triggerAutoSync]);
 
   // Live Activity Hardware & Window Focus Detection
   const [currentMouseActivity, setCurrentMouseActivity] = useState(0);

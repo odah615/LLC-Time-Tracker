@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
   Users,
@@ -34,6 +34,7 @@ import {
   Check,
   X,
   AlertCircle,
+  Link2,
 } from 'lucide-react';
 import { User, UserRole, PasswordResetRequest } from '../../types';
 import { UserAvatar } from '../UserAvatar';
@@ -61,6 +62,8 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
     addAuditLog,
     triggerGoogleSheetsSync,
     importEmployeesFromGoogleSheets,
+    googleSheetsWebhookUrl,
+    setGoogleSheetsWebhookUrl,
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -70,6 +73,12 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
   const [isPullingSheets, setIsPullingSheets] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
+  const [showWebhookBanner, setShowWebhookBanner] = useState(false);
+  const [webhookInputVal, setWebhookInputVal] = useState(googleSheetsWebhookUrl || '');
+
+  useEffect(() => {
+    setWebhookInputVal(googleSheetsWebhookUrl || '');
+  }, [googleSheetsWebhookUrl]);
   
   // Modals & Admin Key
   const [resetModalUser, setResetModalUser] = useState<User | null>(null);
@@ -98,29 +107,43 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
   };
 
   const handleSyncToSheets = async () => {
+    const activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || webhookInputVal.trim();
+    if (!activeUrl || !activeUrl.trim().startsWith('https://')) {
+      setShowWebhookBanner(true);
+      setSyncStatusMsg({ type: 'error', text: '⚠️ Please paste your Google Apps Script Web App URL below first to connect your Google Sheet.' });
+      setTimeout(() => setSyncStatusMsg(null), 8000);
+      return;
+    }
     setIsSyncingSheets(true);
     setSyncStatusMsg({ type: 'info', text: 'Pushing full employee roster to Google Sheets...' });
-    const res = await triggerGoogleSheetsSync();
+    const res = await triggerGoogleSheetsSync(activeUrl);
     setIsSyncingSheets(false);
     if (res && res.success) {
       setSyncStatusMsg({ type: 'success', text: '✓ Successfully pushed and synchronized Employee Directory to Google Sheets!' });
     } else {
-      setSyncStatusMsg({ type: 'info', text: 'Sync payload dispatched to Google Sheets Webhook.' });
+      setSyncStatusMsg({ type: 'error', text: `⚠️ ${res?.message || 'Sync failed. Verify Apps Script deployment is set to Anyone.'}` });
     }
-    setTimeout(() => setSyncStatusMsg(null), 6000);
+    setTimeout(() => setSyncStatusMsg(null), 8000);
   };
 
   const handlePullFromSheets = async () => {
+    const activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || webhookInputVal.trim();
+    if (!activeUrl || !activeUrl.trim().startsWith('https://')) {
+      setShowWebhookBanner(true);
+      setSyncStatusMsg({ type: 'error', text: '⚠️ Please paste your Google Apps Script Web App URL below first.' });
+      setTimeout(() => setSyncStatusMsg(null), 8000);
+      return;
+    }
     setIsPullingSheets(true);
     setSyncStatusMsg({ type: 'info', text: 'Pulling and importing staff records from Google Sheets Employee_Directory...' });
-    const res = await importEmployeesFromGoogleSheets();
+    const res = await importEmployeesFromGoogleSheets(activeUrl);
     setIsPullingSheets(false);
     if (res && res.success) {
       setSyncStatusMsg({ type: 'success', text: `✓ ${res.message}` });
     } else {
       setSyncStatusMsg({ type: 'error', text: `⚠️ ${res.message}` });
     }
-    setTimeout(() => setSyncStatusMsg(null), 7000);
+    setTimeout(() => setSyncStatusMsg(null), 8000);
   };
 
   // Pagination state
@@ -228,6 +251,19 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
           )}
 
           <button
+            onClick={() => setShowWebhookBanner(!showWebhookBanner)}
+            className={`px-3 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md transition-all shrink-0 cursor-pointer border ${
+              googleSheetsWebhookUrl
+                ? 'bg-slate-800 hover:bg-slate-700 text-emerald-400 border-emerald-500/40'
+                : 'bg-amber-950/70 hover:bg-amber-900/70 text-amber-300 border-amber-500/70 animate-pulse'
+            }`}
+            title="Configure Google Apps Script Webhook URL for Employee Directory Sync"
+          >
+            <Link2 className="w-3.5 h-3.5" />
+            <span>{googleSheetsWebhookUrl ? 'Sheets Webhook: Connected' : 'Connect Sheets Webhook'}</span>
+          </button>
+
+          <button
             disabled={isPullingSheets}
             onClick={handlePullFromSheets}
             className="px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md transition-all shrink-0 disabled:opacity-50 cursor-pointer"
@@ -255,6 +291,60 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Webhook Configuration Dropdown Banner */}
+      {showWebhookBanner && (
+        <div className="bg-slate-900 border-2 border-emerald-500/40 rounded-2xl p-4 shadow-xl space-y-3 animate-in fade-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-white font-bold text-sm">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              <span>Google Sheets Webhook URL (Employee Directory Sync)</span>
+            </div>
+            <button
+              onClick={() => setShowWebhookBanner(false)}
+              className="text-slate-400 hover:text-white text-xs px-2.5 py-1 rounded-lg bg-slate-800 cursor-pointer"
+            >
+              ✕ Close
+            </button>
+          </div>
+          <p className="text-xs text-slate-300">
+            Paste your deployed Google Apps Script Web App URL below (ends in <code className="text-emerald-400 bg-slate-950 px-1.5 py-0.5 rounded font-mono">/exec</code>).
+            When configured, all newly created and updated employees will sync directly into your spreadsheet's <code className="text-emerald-400 bg-slate-950 px-1.5 py-0.5 rounded font-mono">Employee_Directory</code> tab.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="url"
+              value={webhookInputVal}
+              onChange={(e) => setWebhookInputVal(e.target.value)}
+              placeholder="https://script.google.com/macros/s/.../exec"
+              className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-emerald-300 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+            />
+            <button
+              onClick={async () => {
+                const val = webhookInputVal.trim();
+                if (!val.startsWith('https://') || val.includes('...')) {
+                  setSyncStatusMsg({ type: 'error', text: 'Please enter a valid deployed Google Apps Script Web App URL ending in /exec.' });
+                  setTimeout(() => setSyncStatusMsg(null), 6000);
+                  return;
+                }
+                setGoogleSheetsWebhookUrl(val);
+                setSyncStatusMsg({ type: 'success', text: '✓ Google Sheets Webhook URL saved! Pushing Employee Directory now...' });
+                const res = await triggerGoogleSheetsSync(val);
+                if (res && res.success) {
+                  setSyncStatusMsg({ type: 'success', text: '✓ Successfully connected & pushed all employees to Google Sheets!' });
+                } else {
+                  setSyncStatusMsg({ type: 'error', text: `⚠️ ${res?.message || 'Sync failed.'}` });
+                }
+                setTimeout(() => setSyncStatusMsg(null), 8000);
+              }}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5"
+            >
+              <UploadCloud className="w-3.5 h-3.5" />
+              <span>Save & Push to Sheets</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Admin Password Reset Requests Queue Banner */}
       {isAdmin && pendingRequests.length > 0 && (

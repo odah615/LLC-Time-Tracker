@@ -623,6 +623,198 @@ function populateCleanSheet(sheet, headers, rows, headerColor) {
   sheet.setFrozenRows(1);
 }
 
+var CANONICAL_STAFF = {
+  'SUPERADMIN': 'Admin',
+  'LLC-0003': 'Pia',
+  'LLC-0004': 'Alexa Gabrielle Bardaje',
+  'LLC-0005': 'April Sam Dimaano',
+  'LLC-0006': 'Boris Andrew Villanueva',
+  'LLC-0007': 'Cyril Diola Garcia',
+  'LLC-0008': 'Daina Yanez',
+  'LLC-0009': 'Fatima Dence David',
+  'LLC-0010': 'Gerald A. Salvador',
+  'LLC-0011': 'Jayson Cariaga',
+  'LLC-0012': 'Jenalyn Nueva',
+  'LLC-0013': 'Kathleen Ann L. Totaan',
+  'LLC-0014': 'Lourdes Mary Cenina',
+  'LLC-0015': 'Luis David Ramirez',
+  'LLC-0016': 'Maria Racquel Gracia M. Libarios',
+  'LLC-0017': 'Mark Jesus A. Egoy',
+  'LLC-0018': 'Raquel Guiapal',
+  'LLC-0019': 'Ron Louie Logan',
+  'LLC-0020': 'Rubilyne Barrameda',
+  'LLC-0021': 'Shiela Romey',
+  'LLC-0022': 'Trixy Ashley Decena Mabutol'
+};
+
+function resolveStaffFullName(code, username, name, id) {
+  var n = (name || '').trim();
+  if (n && n !== 'Unknown' && n !== 'Employee' && n !== 'Staff' && n !== 'Agent') {
+    return n;
+  }
+  var c = (code || '').toUpperCase().trim();
+  var num = c.replace(/^[A-Z\-_]+/, '');
+  for (var k in CANONICAL_STAFF) {
+    var kNum = k.replace(/^[A-Z\-_]+/, '');
+    if (c === k || (num && kNum && num === kNum)) return CANONICAL_STAFF[k];
+  }
+  var u = (username || '').toLowerCase().trim();
+  var nLower = n.toLowerCase();
+  var rawId = (id || '').toLowerCase().trim();
+  if (u === 'agabr' || nLower === 'agabr' || rawId.indexOf('0004') !== -1) return 'Alexa Gabrielle Bardaje';
+  if (u === 'asamd' || nLower === 'asamd' || rawId.indexOf('0005') !== -1) return 'April Sam Dimaano';
+  if (u === 'bandr' || nLower === 'bandr' || rawId.indexOf('0006') !== -1) return 'Boris Andrew Villanueva';
+  if (u === 'cdiol' || nLower === 'cdiol' || rawId.indexOf('0007') !== -1) return 'Cyril Diola Garcia';
+  if (u === 'dyane' || nLower === 'dyane' || rawId.indexOf('0008') !== -1) return 'Daina Yanez';
+  if (u === 'fdenc' || nLower === 'fdenc' || rawId.indexOf('0009') !== -1) return 'Fatima Dence David';
+  if (u === 'gasal' || nLower === 'gasal' || rawId.indexOf('0010') !== -1) return 'Gerald A. Salvador';
+  if (u === 'jcari' || nLower === 'jcari' || rawId.indexOf('0011') !== -1) return 'Jayson Cariaga';
+  if (u === 'jnuev' || nLower === 'jnuev' || rawId.indexOf('0012') !== -1) return 'Jenalyn Nueva';
+  if (u === 'kannl' || nLower === 'kannl' || rawId.indexOf('0013') !== -1) return 'Kathleen Ann L. Totaan';
+  if (u === 'lmary' || nLower === 'lmary' || rawId.indexOf('0014') !== -1) return 'Lourdes Mary Cenina';
+  if (u === 'ldavi' || nLower === 'ldavi' || rawId.indexOf('0015') !== -1) return 'Luis David Ramirez';
+  if (u === 'mracq' || nLower === 'mracq' || rawId.indexOf('0016') !== -1) return 'Maria Racquel Gracia M. Libarios';
+  if (u === 'mjesu' || nLower === 'mjesu' || rawId.indexOf('0017') !== -1) return 'Mark Jesus A. Egoy';
+  if (u === 'rguia' || nLower === 'rguia' || rawId.indexOf('0018') !== -1) return 'Raquel Guiapal';
+  if (u === 'rloui' || nLower === 'rloui' || rawId.indexOf('0019') !== -1) return 'Ron Louie Logan';
+  if (u === 'rbarr' || nLower === 'rbarr' || rawId.indexOf('0020') !== -1) return 'Rubilyne Barrameda';
+  if (u === 'srome' || nLower === 'srome' || rawId.indexOf('0021') !== -1) return 'Shiela Romey';
+  if (u === 'tashl' || nLower === 'tashl' || rawId.indexOf('0022') !== -1) return 'Trixy Ashley Decena Mabutol';
+  if (u === 'trainer' || nLower === 'pia' || c === 'LLC-0003') return 'Pia';
+  if (u === 'admin' || c === 'SUPERADMIN') return 'Admin';
+  return n || username || 'Employee';
+}
+
+var presenceHeaders = [
+  'Employee Code',
+  'Employee Name',
+  'System Role',
+  'Designation',
+  'Platform Mode',
+  'Live Presence Status',
+  'Current Active Task',
+  'Current Application',
+  'Shift Hours Today',
+  'First Check-In (Manila)',
+  'Device Timezone',
+  'Last Active Heartbeat (Manila)',
+  'Last Heartbeat (ISO)'
+];
+
+function upsertSinglePresenceRow(sheet, p) {
+  if (!sheet || !p) return null;
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(presenceHeaders);
+    sheet.getRange(1, 1, 1, presenceHeaders.length)
+      .setFontWeight('bold')
+      .setBackground('#065f46')
+      .setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+  }
+
+  var targetCode = String(p.employeeCode || '').trim().toUpperCase();
+  var targetName = String(p.userName || p.name || '').trim().toLowerCase();
+  var resolvedName = resolveStaffFullName(targetCode, targetName, p.userName || p.name, p.userId);
+
+  var lastRow = sheet.getLastRow();
+  var matchRow = -1;
+  var existingRow = null;
+
+  if (lastRow > 1) {
+    try {
+      var maxCols = Math.max(sheet.getLastColumn(), 13);
+      var sheetData = sheet.getRange(2, 1, lastRow - 1, maxCols).getValues();
+      for (var r = 0; r < sheetData.length; r++) {
+        var row = sheetData[r];
+        var rowCode = String(row[0] || '').trim().toUpperCase();
+        var rowName = String(row[1] || '').trim().toLowerCase();
+        if ((targetCode && targetCode !== 'N/A' && rowCode === targetCode) ||
+            (targetName && rowName === targetName) ||
+            (resolvedName && rowName === resolvedName.toLowerCase())) {
+          matchRow = r + 2;
+          existingRow = row;
+          break;
+        }
+      }
+    } catch (e) {}
+  }
+
+  var isTracking = p.isTracking === true || (p.status === 'online' && p.isTracking) || (p.statusLabel && p.statusLabel.indexOf('Live Tracking') !== -1);
+  var isIdle = p.status === 'idle' || p.isPaused === true || (p.statusLabel && p.statusLabel.indexOf('Idle') !== -1);
+  var isOffline = p.status === 'offline' || (p.isOnline === false && !isTracking && !isIdle);
+
+  var platformMode = p.platformMode || (p.loginPlatform === 'software' || isTracking || (existingRow && String(existingRow[4]).indexOf('Desktop') !== -1) ? 'Desktop Tracker' : 'Website');
+  if (isOffline && !p.platformMode) platformMode = 'None / Offline';
+
+  var statusLabel = p.statusLabel || (isTracking ? '🟢 Live Tracking' : (isIdle ? '🟡 Idle / Break' : (isOffline ? '⚪ Offline' : '🔵 Desktop Online')));
+  var currentTask = p.currentTask || (existingRow && existingRow[6] && existingRow[6] !== 'Shift Concluded' ? existingRow[6] : (isOffline ? 'Shift Concluded' : 'Active Work in Progress'));
+  var currentApp = p.currentApp || (existingRow && existingRow[7] && existingRow[7] !== 'None' ? existingRow[7] : (platformMode.indexOf('Desktop') !== -1 ? 'LLC Time Tracker Desktop App' : 'Web Browser'));
+
+  var userElapsed = typeof p.elapsedSeconds === 'number' ? p.elapsedSeconds : 0;
+  if (!userElapsed && existingRow && existingRow[8]) {
+    var mDur = String(existingRow[8]).match(/(\d+)h\s*(\d+)m/);
+    if (mDur) {
+      userElapsed = parseInt(mDur[1], 10) * 3600 + parseInt(mDur[2], 10) * 60;
+    }
+  }
+  var shiftHours = p.shiftHoursToday || formatTotalTime(userElapsed);
+
+  var firstCheckin = p.firstCheckin || (existingRow && existingRow[9] && existingRow[9] !== '--:--' ? existingRow[9] : '--:--');
+  if (firstCheckin === '--:--' && (isTracking || p.loginTime)) {
+    try {
+      firstCheckin = Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm a');
+    } catch(e) {}
+  }
+
+  var timezone = p.timezone || (existingRow && existingRow[10] ? existingRow[10] : 'Asia/Manila (GMT+8)');
+  var now = new Date();
+  var lastHbFormatted = Utilities.formatDate(now, 'Asia/Manila', 'yyyy-MM-dd hh:mm:ss a');
+  var lastHbIso = p.lastHeartbeat || now.toISOString();
+
+  var empCode = targetCode && targetCode !== 'N/A' ? targetCode : (existingRow && existingRow[0] ? existingRow[0] : 'N/A');
+  var empName = resolvedName || p.userName || p.name || (existingRow && existingRow[1] ? existingRow[1] : 'Employee');
+  var role = p.role || (existingRow && existingRow[2] ? existingRow[2] : 'agent');
+  var designation = p.designation || (existingRow && existingRow[3] ? existingRow[3] : 'Agent');
+
+  var newRowData = [
+    empCode,
+    empName,
+    role,
+    designation,
+    platformMode,
+    statusLabel,
+    currentTask,
+    currentApp,
+    shiftHours,
+    firstCheckin,
+    timezone,
+    lastHbFormatted,
+    lastHbIso
+  ];
+
+  if (matchRow > 0) {
+    sheet.getRange(matchRow, 1, 1, 13).setValues([newRowData]);
+  } else {
+    sheet.appendRow(newRowData);
+  }
+
+  return newRowData;
+}
+
+function updateLivePresenceMerged(targetSheet, incomingPresenceList) {
+  if (!targetSheet || !incomingPresenceList || incomingPresenceList.length === 0) return [];
+  var updatedRows = [];
+  for (var pi = 0; pi < incomingPresenceList.length; pi++) {
+    var item = incomingPresenceList[pi];
+    if (item && (item.employeeCode || item.userId || item.userName || item.name)) {
+      var res = upsertSinglePresenceRow(targetSheet, item);
+      if (res) updatedRows.push(res);
+    }
+  }
+  return updatedRows;
+}
+
 function setupSheetsSchema() {
   var ss = getSpreadsheet();
   var schema = [
@@ -847,68 +1039,6 @@ function doPost(e) {
         if (p.name) presenceMap[String(p.name).toLowerCase()] = p;
       });
 
-      var CANONICAL_STAFF = {
-        'SUPERADMIN': 'Admin',
-        'LLC-0003': 'Pia',
-        'LLC-0004': 'Alexa Gabrielle Bardaje',
-        'LLC-0005': 'April Sam Dimaano',
-        'LLC-0006': 'Boris Andrew Villanueva',
-        'LLC-0007': 'Cyril Diola Garcia',
-        'LLC-0008': 'Daina Yanez',
-        'LLC-0009': 'Fatima Dence David',
-        'LLC-0010': 'Gerald A. Salvador',
-        'LLC-0011': 'Jayson Cariaga',
-        'LLC-0012': 'Jenalyn Nueva',
-        'LLC-0013': 'Kathleen Ann L. Totaan',
-        'LLC-0014': 'Lourdes Mary Cenina',
-        'LLC-0015': 'Luis David Ramirez',
-        'LLC-0016': 'Maria Racquel Gracia M. Libarios',
-        'LLC-0017': 'Mark Jesus A. Egoy',
-        'LLC-0018': 'Raquel Guiapal',
-        'LLC-0019': 'Ron Louie Logan',
-        'LLC-0020': 'Rubilyne Barrameda',
-        'LLC-0021': 'Shiela Romey',
-        'LLC-0022': 'Trixy Ashley Decena Mabutol'
-      };
-
-      function resolveStaffFullName(code, username, name, id) {
-        var n = (name || '').trim();
-        if (n && n !== 'Unknown' && n !== 'Employee' && n !== 'Staff' && n !== 'Agent') {
-          return n;
-        }
-        var c = (code || '').toUpperCase().trim();
-        var num = c.replace(/^[A-Z\-_]+/, '');
-        for (var k in CANONICAL_STAFF) {
-          var kNum = k.replace(/^[A-Z\-_]+/, '');
-          if (c === k || (num && kNum && num === kNum)) return CANONICAL_STAFF[k];
-        }
-        var u = (username || '').toLowerCase().trim();
-        var nLower = n.toLowerCase();
-        var rawId = (id || '').toLowerCase().trim();
-        if (u === 'agabr' || nLower === 'agabr' || rawId.indexOf('0004') !== -1) return 'Alexa Gabrielle Bardaje';
-        if (u === 'asamd' || nLower === 'asamd' || rawId.indexOf('0005') !== -1) return 'April Sam Dimaano';
-        if (u === 'bandr' || nLower === 'bandr' || rawId.indexOf('0006') !== -1) return 'Boris Andrew Villanueva';
-        if (u === 'cdiol' || nLower === 'cdiol' || rawId.indexOf('0007') !== -1) return 'Cyril Diola Garcia';
-        if (u === 'dyane' || nLower === 'dyane' || rawId.indexOf('0008') !== -1) return 'Daina Yanez';
-        if (u === 'fdenc' || nLower === 'fdenc' || rawId.indexOf('0009') !== -1) return 'Fatima Dence David';
-        if (u === 'gasal' || nLower === 'gasal' || rawId.indexOf('0010') !== -1) return 'Gerald A. Salvador';
-        if (u === 'jcari' || nLower === 'jcari' || rawId.indexOf('0011') !== -1) return 'Jayson Cariaga';
-        if (u === 'jnuev' || nLower === 'jnuev' || rawId.indexOf('0012') !== -1) return 'Jenalyn Nueva';
-        if (u === 'kannl' || nLower === 'kannl' || rawId.indexOf('0013') !== -1) return 'Kathleen Ann L. Totaan';
-        if (u === 'lmary' || nLower === 'lmary' || rawId.indexOf('0014') !== -1) return 'Lourdes Mary Cenina';
-        if (u === 'ldavi' || nLower === 'ldavi' || rawId.indexOf('0015') !== -1) return 'Luis David Ramirez';
-        if (u === 'mracq' || nLower === 'mracq' || rawId.indexOf('0016') !== -1) return 'Maria Racquel Gracia M. Libarios';
-        if (u === 'mjesu' || nLower === 'mjesu' || rawId.indexOf('0017') !== -1) return 'Mark Jesus A. Egoy';
-        if (u === 'rguia' || nLower === 'rguia' || rawId.indexOf('0018') !== -1) return 'Raquel Guiapal';
-        if (u === 'rloui' || nLower === 'rloui' || rawId.indexOf('0019') !== -1) return 'Ron Louie Logan';
-        if (u === 'rbarr' || nLower === 'rbarr' || rawId.indexOf('0020') !== -1) return 'Rubilyne Barrameda';
-        if (u === 'srome' || nLower === 'srome' || rawId.indexOf('0021') !== -1) return 'Shiela Romey';
-        if (u === 'tashl' || nLower === 'tashl' || rawId.indexOf('0022') !== -1) return 'Trixy Ashley Decena Mabutol';
-        if (u === 'trainer' || nLower === 'pia' || c === 'LLC-0003') return 'Pia';
-        if (u === 'admin' || c === 'SUPERADMIN') return 'Admin';
-        return n || username || 'Employee';
-      }
-
       // Deduplicate users and sanitize employee names
       var userMap = {};
       var users = [];
@@ -928,137 +1058,10 @@ function doPost(e) {
       // ==========================================
       // 0. POPULATE LIVE PRESENCE & SESSIONS (Targeted Single-Row Upsert)
       // ==========================================
-      var presenceHeaders = ['Employee Code', 'Employee Name', 'System Role', 'Designation', 'Platform Mode', 'Live Presence Status', 'Current Active Task', 'Current Application', 'Shift Hours Today', 'First Check-In (Manila)', 'Device Timezone', 'Last Active Heartbeat (Manila)', 'Last Heartbeat (ISO)'];
       var nowMs = new Date().getTime();
       var todayStr = Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
 
-      /**
-       * Targeted Single-Row Lookup Upsert pattern:
-       * - Isolates the specific agent's Employee Code.
-       * - Scans column 1 (Employee Code) to locate that single user's unique row index.
-       * - If found, rewrites ONLY that targeted row's specific column cells.
-       * - If not found, appends a single row at the bottom.
-       * - Leaves all other agent rows completely untouched!
-       */
-      function upsertSinglePresenceRow(sheet, p) {
-        if (!sheet || !p) return null;
-
-        if (sheet.getLastRow() === 0) {
-          sheet.appendRow(presenceHeaders);
-          sheet.getRange(1, 1, 1, presenceHeaders.length)
-            .setFontWeight('bold')
-            .setBackground('#065f46')
-            .setFontColor('#ffffff');
-          sheet.setFrozenRows(1);
-        }
-
-        var targetCode = String(p.employeeCode || '').trim().toUpperCase();
-        var targetName = String(p.userName || p.name || '').trim().toLowerCase();
-        var targetUserId = String(p.userId || '').trim().toLowerCase();
-
-        // Resolve staff name from directory mapping
-        var resolvedName = resolveStaffFullName(targetCode, targetName, p.userName || p.name, p.userId);
-
-        var lastRow = sheet.getLastRow();
-        var matchRow = -1;
-        var existingRow = null;
-
-        if (lastRow > 1) {
-          try {
-            var maxCols = Math.max(sheet.getLastColumn(), 13);
-            var sheetData = sheet.getRange(2, 1, lastRow - 1, maxCols).getValues();
-            for (var r = 0; r < sheetData.length; r++) {
-              var row = sheetData[r];
-              var rowCode = String(row[0] || '').trim().toUpperCase();
-              var rowName = String(row[1] || '').trim().toLowerCase();
-              if ((targetCode && targetCode !== 'N/A' && rowCode === targetCode) ||
-                  (targetName && rowName === targetName) ||
-                  (resolvedName && rowName === resolvedName.toLowerCase())) {
-                matchRow = r + 2;
-                existingRow = row;
-                break;
-              }
-            }
-          } catch (e) {}
-        }
-
-        var isTracking = p.isTracking === true || (p.status === 'online' && p.isTracking) || (p.statusLabel && p.statusLabel.indexOf('Live Tracking') !== -1);
-        var isIdle = p.status === 'idle' || p.isPaused === true || (p.statusLabel && p.statusLabel.indexOf('Idle') !== -1);
-        var isOffline = p.status === 'offline' || (p.isOnline === false && !isTracking && !isIdle);
-
-        var platformMode = p.platformMode || (p.loginPlatform === 'software' || isTracking || (existingRow && String(existingRow[4]).indexOf('Desktop') !== -1) ? 'Desktop Tracker' : 'Website');
-        if (isOffline && !p.platformMode) platformMode = 'None / Offline';
-
-        var statusLabel = p.statusLabel || (isTracking ? '🟢 Live Tracking' : (isIdle ? '🟡 Idle / Break' : (isOffline ? '⚪ Offline' : '🔵 Desktop Online')));
-        var currentTask = p.currentTask || (existingRow && existingRow[6] && existingRow[6] !== 'Shift Concluded' ? existingRow[6] : (isOffline ? 'Shift Concluded' : 'Active Work in Progress'));
-        var currentApp = p.currentApp || (existingRow && existingRow[7] && existingRow[7] !== 'None' ? existingRow[7] : (platformMode.indexOf('Desktop') !== -1 ? 'LLC Time Tracker Desktop App' : 'Web Browser'));
-
-        var userElapsed = typeof p.elapsedSeconds === 'number' ? p.elapsedSeconds : 0;
-        if (!userElapsed && existingRow && existingRow[8]) {
-          var mDur = String(existingRow[8]).match(/(\d+)h\s*(\d+)m/);
-          if (mDur) {
-            userElapsed = parseInt(mDur[1], 10) * 3600 + parseInt(mDur[2], 10) * 60;
-          }
-        }
-        var shiftHours = p.shiftHoursToday || formatTotalTime(userElapsed);
-
-        var firstCheckin = p.firstCheckin || (existingRow && existingRow[9] && existingRow[9] !== '--:--' ? existingRow[9] : '--:--');
-        if (firstCheckin === '--:--' && (isTracking || p.loginTime)) {
-          try {
-            firstCheckin = Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm a');
-          } catch(e) {}
-        }
-
-        var timezone = p.timezone || (existingRow && existingRow[10] ? existingRow[10] : 'Asia/Manila (GMT+8)');
-        var now = new Date();
-        var lastHbFormatted = Utilities.formatDate(now, 'Asia/Manila', 'yyyy-MM-dd hh:mm:ss a');
-        var lastHbIso = p.lastHeartbeat || now.toISOString();
-
-        var empCode = targetCode && targetCode !== 'N/A' ? targetCode : (existingRow && existingRow[0] ? existingRow[0] : 'N/A');
-        var empName = resolvedName || p.userName || p.name || (existingRow && existingRow[1] ? existingRow[1] : 'Employee');
-        var role = p.role || (existingRow && existingRow[2] ? existingRow[2] : 'agent');
-        var designation = p.designation || (existingRow && existingRow[3] ? existingRow[3] : 'Agent');
-
-        var newRowData = [
-          empCode,
-          empName,
-          role,
-          designation,
-          platformMode,
-          statusLabel,
-          currentTask,
-          currentApp,
-          shiftHours,
-          firstCheckin,
-          timezone,
-          lastHbFormatted,
-          lastHbIso
-        ];
-
-        if (matchRow > 0) {
-          sheet.getRange(matchRow, 1, 1, 13).setValues([newRowData]);
-        } else {
-          sheet.appendRow(newRowData);
-        }
-
-        return newRowData;
-      }
-
-      // Helper function to update Live Presence while preserving all other active agents across clients
-      function updateLivePresenceMerged(targetSheet, incomingPresenceList) {
-        if (!targetSheet || !incomingPresenceList || incomingPresenceList.length === 0) return [];
-        var updatedRows = [];
-        for (var pi = 0; pi < incomingPresenceList.length; pi++) {
-          var item = incomingPresenceList[pi];
-          if (item && (item.employeeCode || item.userId || item.userName || item.name)) {
-            var res = upsertSinglePresenceRow(targetSheet, item);
-            if (res) updatedRows.push(res);
-          }
-        }
-        return updatedRows;
-      }
-
-      var presenceSheet = ss.getSheetByName('Live_Presence');
+      var presenceSheet = ss.getSheetByName('Live_Presence') || ss.insertSheet('Live_Presence');
       var presenceAliasSheet = ss.getSheetByName('Live_Sessions');
       var finalPresenceRows = [];
       if (presenceSheet && rawPresenceList.length > 0) finalPresenceRows = updateLivePresenceMerged(presenceSheet, rawPresenceList);
@@ -1729,37 +1732,42 @@ function doPost(e) {
       // ==========================================
       // 8. POPULATE EMPLOYEE DIRECTORY
       // ==========================================
-      var empHeaders = ['Employee Code', 'Username', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Date Hired', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)'];
-      var empRows = [];
-      users.forEach(function(u) {
-        var maskedPass = maskPassword(u.password || 'Password123!');
-        var hireDate = u.joinDate || '2020-01-01';
-        var supervisorName = 'None / Direct Executive';
-        if (u.teamLeaderId) {
-          var sv = userMap[u.teamLeaderId];
-          supervisorName = sv ? sv.name + ' (' + (sv.designation || sv.role) + ')' : u.teamLeaderId;
-        }
-        var mRate = (u.monthlyRate !== undefined && u.monthlyRate !== null && !isNaN(Number(u.monthlyRate))) ? Number(u.monthlyRate) : 0;
-        var hRate = (u.hourlyRate !== undefined && u.hourlyRate !== null && !isNaN(Number(u.hourlyRate))) ? Number(u.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
-        empRows.push([
-          u.employeeCode || 'N/A',
-          u.username || 'agent',
-          u.name || 'Unknown',
-          u.email || '',
-          u.role || 'agent',
-          u.designation || 'Agent',
-          hireDate,
-          mRate,
-          hRate,
-          supervisorName,
-          u.screenshotMonitored ? 'YES' : 'NO',
-          u.activityMonitored ? 'YES' : 'NO',
-          u.status || 'active',
-          maskedPass
-        ]);
-      });
-      var empSheet = ss.getSheetByName('Employee_Directory');
-      if (empSheet) populateCleanSheet(empSheet, empHeaders, empRows, '#0369a1');
+      try {
+        var empHeaders = ['Employee Code', 'Username', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Date Hired', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)'];
+        var empRows = [];
+        var directoryUsers = (users && users.length > 0) ? users : rawUsers;
+        directoryUsers.forEach(function(u) {
+          var maskedPass = maskPassword(u.password || 'Password123!');
+          var hireDate = u.joinDate || '2020-01-01';
+          var supervisorName = 'None / Direct Executive';
+          if (u.teamLeaderId) {
+            var sv = userMap[u.teamLeaderId];
+            supervisorName = sv ? sv.name + ' (' + (sv.designation || sv.role) + ')' : u.teamLeaderId;
+          }
+          var mRate = (u.monthlyRate !== undefined && u.monthlyRate !== null && !isNaN(Number(u.monthlyRate))) ? Number(u.monthlyRate) : 0;
+          var hRate = (u.hourlyRate !== undefined && u.hourlyRate !== null && !isNaN(Number(u.hourlyRate))) ? Number(u.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
+          empRows.push([
+            u.employeeCode || 'N/A',
+            u.username || 'agent',
+            u.name || 'Unknown',
+            u.email || '',
+            u.role || 'agent',
+            u.designation || 'Agent',
+            hireDate,
+            mRate,
+            hRate,
+            supervisorName,
+            u.screenshotMonitored ? 'YES' : 'NO',
+            u.activityMonitored ? 'YES' : 'NO',
+            u.status || 'active',
+            maskedPass
+          ]);
+        });
+        var empSheet = ss.getSheetByName('Employee_Directory') || ss.insertSheet('Employee_Directory');
+        populateCleanSheet(empSheet, empHeaders, empRows, '#0369a1');
+      } catch (empErr) {
+        Logger.log('Error updating Employee_Directory: ' + empErr.toString());
+      }
 
       // ==========================================
       // 9. POPULATE LEAVE REQUESTS
@@ -2415,10 +2423,16 @@ export const syncDataToGoogleSheetsWebhook = async (
 
       if (proxyRes.ok) {
         const pData = await proxyRes.json();
-        if (pData && pData.success) {
+        if (pData && pData.success && pData.result?.status !== 'ERROR') {
           return {
             success: true,
             message: 'Successfully synchronized all logs and database tables to Google Sheets!',
+          };
+        } else if (pData && (pData.error || pData.result?.status === 'ERROR')) {
+          const errDetail = pData.error || pData.result?.message || 'Apps Script execution failed';
+          return {
+            success: false,
+            message: `Google Sheets Error: ${errDetail}. Verify Apps Script is deployed as Web App (Anyone).`,
           };
         }
       }

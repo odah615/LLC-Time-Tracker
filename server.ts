@@ -378,7 +378,7 @@ app.post('/api/sync-sheets', async (req, res) => {
   try {
     const webhookUrl = req.body?.webhookUrl || bridgeState.config.webhookUrl;
     if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('https://')) {
-      return res.status(400).json({ error: 'Invalid or missing Google Apps Script webhook URL' });
+      return res.status(400).json({ success: false, error: 'Invalid or missing Google Apps Script webhook URL' });
     }
 
     if (webhookUrl && webhookUrl !== bridgeState.config.webhookUrl) {
@@ -402,7 +402,37 @@ app.post('/api/sync-sheets', async (req, res) => {
       jsonResult = { response: text };
     }
 
+    if (jsonResult && jsonResult.status === 'ERROR') {
+      return res.status(200).json({ success: false, error: jsonResult.message || 'Google Apps Script execution error', result: jsonResult });
+    }
+
     res.json({ success: true, result: jsonResult });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err?.message || String(err) });
+  }
+});
+
+app.get('/api/sync-sheets', async (req, res) => {
+  try {
+    const webhookUrl = (req.query?.url as string) || bridgeState.config.webhookUrl;
+    if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('https://')) {
+      return res.status(400).json({ success: false, error: 'Invalid or missing Google Apps Script webhook URL' });
+    }
+
+    const fetchResponse = await fetch(webhookUrl, {
+      method: 'GET',
+      redirect: 'follow',
+    });
+
+    const text = await fetchResponse.text();
+    let jsonResult;
+    try {
+      jsonResult = JSON.parse(text);
+    } catch {
+      jsonResult = { response: text };
+    }
+
+    res.json(jsonResult);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err?.message || String(err) });
   }
