@@ -75,27 +75,30 @@ export function sanitizeForFirestore<T>(val: T): T {
 }
 
 let isQuotaExhaustedGlobal = (() => {
-  if (typeof window === 'undefined') return true;
+  if (typeof window === 'undefined') return false;
   try {
     const savedEngine = localStorage.getItem('trackpulse_storage_engine');
-    if (savedEngine === 'firestore') {
-      const savedQuotaDate = localStorage.getItem('trackpulse_quota_exhausted_date');
-      const today = new Date().toISOString().slice(0, 10);
-      if (savedQuotaDate && savedQuotaDate === today) {
-        return true;
-      }
-      return sessionStorage.getItem('trackpulse_quota_exhausted') === 'true';
+    if (savedEngine === 'unlimited_bridge') {
+      return false;
     }
-    // Default to unlimited_bridge mode for 100+ agents to completely avoid Firestore quotas
-    return true;
+    const savedQuotaDate = localStorage.getItem('trackpulse_quota_exhausted_date');
+    const today = new Date().toISOString().slice(0, 10);
+    if (savedQuotaDate && savedQuotaDate === today) {
+      return true;
+    }
+    return sessionStorage.getItem('trackpulse_quota_exhausted') === 'true';
   } catch {
-    return true;
+    return false;
   }
 })();
 
 if (isQuotaExhaustedGlobal) {
   try {
     disableNetwork(db).catch(() => {});
+  } catch {}
+} else {
+  try {
+    enableNetwork(db).catch(() => {});
   } catch {}
 }
 
@@ -2486,9 +2489,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Storage Engine Mode ('unlimited_bridge' | 'firestore')
   const [storageEngineMode, setStorageEngineModeState] = useState<'unlimited_bridge' | 'firestore'>(() => {
-    if (typeof window === 'undefined') return 'unlimited_bridge';
+    if (typeof window === 'undefined') return 'firestore';
     const saved = localStorage.getItem('trackpulse_storage_engine');
-    return (saved === 'firestore' ? 'firestore' : 'unlimited_bridge') as 'unlimited_bridge' | 'firestore';
+    return (saved === 'unlimited_bridge' ? 'unlimited_bridge' : 'firestore') as 'unlimited_bridge' | 'firestore';
   });
 
   const setStorageEngineMode = (mode: 'unlimited_bridge' | 'firestore') => {

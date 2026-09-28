@@ -658,7 +658,7 @@ function populateCleanSheet(sheet, headers, rows, headerColor) {
  * matching Employee_Directory, mployee_Directory, Employee Directory, or Employees.
  */
 function getEmployeeDirectorySheet(ss) {
-  var candidateNames = ['mployee_Directory', 'Employee_Directory', 'Employee Directory', 'Employee_directory', 'Employees', 'Staff_Directory', 'Staff'];
+  var candidateNames = ['Employee_Directory', 'Employee Directory', 'Employee_directory', 'Employees', 'Staff_Directory', 'Staff', 'mployee_Directory'];
   for (var i = 0; i < candidateNames.length; i++) {
     var sh = ss.getSheetByName(candidateNames[i]);
     if (sh) return sh;
@@ -666,11 +666,11 @@ function getEmployeeDirectorySheet(ss) {
   var allSheets = ss.getSheets();
   for (var j = 0; j < allSheets.length; j++) {
     var rawName = allSheets[j].getName().toLowerCase().replace(/[\s_\-]+/g, '');
-    if (rawName === 'mployeedirectory' || rawName === 'employeedirectory' || rawName === 'employees' || rawName === 'staffdirectory') {
+    if (rawName === 'employeedirectory' || rawName === 'employees' || rawName === 'staffdirectory' || rawName === 'mployeedirectory') {
       return allSheets[j];
     }
   }
-  var newSheet = ss.insertSheet('mployee_Directory');
+  var newSheet = ss.insertSheet('Employee_Directory');
   try {
     newSheet.setTabColor('#0284c7');
   } catch (e) {}
@@ -2201,7 +2201,7 @@ function doPost(e) {
 function doGet(e) {
   try {
     var ss = getSpreadsheet();
-    var empSheet = ss.getSheetByName('mployee_Directory') || ss.getSheetByName('Employee_Directory') || ss.getSheetByName('Employees');
+    var empSheet = ss.getSheetByName('Employee_Directory') || ss.getSheetByName('Employee Directory') || ss.getSheetByName('mployee_Directory') || ss.getSheetByName('Employees');
     var employees = [];
     if (empSheet && empSheet.getLastRow() > 1) {
       var data = empSheet.getRange(2, 1, empSheet.getLastRow() - 1, 14).getValues();
