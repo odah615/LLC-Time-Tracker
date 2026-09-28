@@ -23,6 +23,7 @@ import { getManilaDateString, getManilaTimeString, formatLogStartTime, formatLog
 import { generateUniqueUsername, deduplicateUsers, resolveCanonicalEmployee } from '../lib/userUtils';
 import {
   syncDataToGoogleSheetsWebhook,
+  syncEmployeesToGoogleSheetsWebhook,
   syncAgentHeartbeatToSheets,
   DEFAULT_SPREADSHEET_URL,
   DEFAULT_SPREADSHEET_ID,
@@ -441,29 +442,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return users[0] || INITIAL_USERS[0];
   });
 
-  // Authentication State: Only authenticated if explicit saved user or URL param exists
+  // Authentication State: Only authenticated if explicit saved user or valid session exists
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('user') || urlParams.get('userId')) {
-        return true;
-      }
-    }
-    const isAuth = localStorage.getItem('trackpulse_auth') === 'true';
-    const hasUser = !!localStorage.getItem('trackpulse_current_user');
-    const savedMode = (localStorage.getItem('trackpulse_login_mode') as 'webapp' | 'software') || 'webapp';
-    const isTracking = localStorage.getItem('trackpulse_active_tracking') === 'true';
+    const isAuth = typeof window !== 'undefined' && localStorage.getItem('trackpulse_auth') === 'true';
+    const hasUser = typeof window !== 'undefined' && !!localStorage.getItem('trackpulse_current_user');
+    const isTracking = typeof window !== 'undefined' && localStorage.getItem('trackpulse_active_tracking') === 'true';
+    const isElectron = typeof window !== 'undefined' && (
+      (window as any).isElectronApp === true ||
+      window.navigator.userAgent.includes('Electron')
+    );
 
     // 10-Minute Web Session Inactivity Auto-Logout:
-    // If user is authenticated in webapp mode and not currently tracking, check if >10 mins elapsed since last interaction
-    if (isAuth && savedMode === 'webapp' && !isTracking) {
+    // If authenticated on the website (not Electron desktop software) and not actively tracking a shift:
+    if (isAuth && !isElectron && !isTracking) {
       const lastActiveStr = localStorage.getItem('trackpulse_last_active_timestamp');
-      if (lastActiveStr) {
-        const lastActive = parseInt(lastActiveStr, 10);
-        if (!isNaN(lastActive) && lastActive > 0 && Date.now() - lastActive >= 600 * 1000) {
-          localStorage.removeItem('trackpulse_auth');
-          localStorage.setItem('trackpulse_session_expired_reason', 'inactivity_10min');
-          return false;
+      const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : 0;
+      // If user was away/closed the website for 10+ minutes (600s), session is EXPIRED
+      if (lastActive > 0 && Date.now() - lastActive >= 600 * 1000) {
+        localStorage.removeItem('trackpulse_auth');
+        localStorage.setItem('trackpulse_session_expired_reason', 'inactivity_10min');
+        return false;
+      }
+      if (!lastActiveStr) {
+        localStorage.setItem('trackpulse_last_active_timestamp', Date.now().toString());
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      const isExpired = localStorage.getItem('trackpulse_session_expired_reason') === 'inactivity_10min';
+      if (!isExpired) {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('user') || urlParams.get('userId')) {
+          return true;
         }
       }
     }
@@ -2185,7 +2195,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return updated;
     });
 
-    triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, currentAttendanceList, idleLogs, leaveRequests);
+    // Transmit instant login heartbeat to Google Sheets so agent immediately appears online & tracking
+    const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
+    if (activeHook && isValidWebhookUrl(activeHook)) {
+      syncAgentHeartbeatToSheets(activeHook.trim(), {
+        userId: user.id,
+        employeeCode: user.employeeCode || '',
+        userName: user.name,
+        role: user.role,
+        designation: userDesig,
+        platformMode: isDesktop ? 'Desktop Tracker' : 'Website',
+        status: 'online',
+        statusLabel: '🟢 Live Tracking',
+        isOnline: true,
+        isTracking: true,
+        isPaused: false,
+        elapsedSeconds: 0,
+        currentTask: initialTask,
+        currentApp: isDesktop ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal',
+        loginPlatform: isDesktop ? 'software' : 'webapp',
+        firstCheckin: getManilaTimeString(now),
+        timezone: user.geoTimezone || 'Asia/Manila (GMT+8)',
+        lastHeartbeat: nowIso,
+        mouseActivity: 100,
+        keyboardActivity: 100,
+      }).catch((err) => console.warn('Instant login heartbeat warning:', err));
+    }
+
+    triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, currentAttendanceList, idleLogs, leaveRequests, undefined, undefined, true);
   };
 
   const logout = (reason?: string) => {
@@ -2229,7 +2266,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         )
       );
 
-      triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
+      // Transmit instant logout heartbeat to Google Sheets so agent immediately appears offline
+      const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
+      if (activeHook && isValidWebhookUrl(activeHook)) {
+        syncAgentHeartbeatToSheets(activeHook.trim(), {
+          userId: currentUser.id,
+          employeeCode: currentUser.employeeCode || '',
+          userName: currentUser.name,
+          role: currentUser.role,
+          designation: currentUser.designation || 'Agent',
+          platformMode: 'None / Offline',
+          status: 'offline',
+          statusLabel: '⚪ Offline',
+          isOnline: false,
+          isTracking: false,
+          isPaused: false,
+          elapsedSeconds: 0,
+          currentTask: 'Shift Concluded',
+          currentApp: 'None / Offline',
+          loginPlatform: 'webapp',
+          lastHeartbeat: new Date().toISOString(),
+        }).catch((err) => console.warn('Instant logout heartbeat warning:', err));
+      }
+
+      triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, undefined, undefined, true);
     }
     setIsAuthenticated(false);
     setIsSessionWarningActive(false);
@@ -2244,7 +2304,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // - At 10 minutes inactive: Automatic logout on webapp (Desktop Software is exempt)
   // - Persistent across tabs, background throttling, and closed browser intervals
   useEffect(() => {
-    if (!isAuthenticated || loginMode !== 'webapp' || isTracking) return;
+    const isElectron = typeof window !== 'undefined' && (
+      (window as any).isElectronApp === true ||
+      window.navigator.userAgent.includes('Electron')
+    );
+    if (!isAuthenticated || isElectron || isTracking) return;
 
     const performWebInactivityLogout = () => {
       setIsSessionWarningActive(false);
@@ -4002,11 +4066,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newUser),
+      body: JSON.stringify(updatedUsers),
     }).catch(() => {});
     safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
       console.warn('Users save err:', err)
     );
+
+    // Fast-path immediate sync to Google Sheets Employee_Directory
+    const targetHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
+    if (targetHook && isValidWebhookUrl(targetHook)) {
+      syncEmployeesToGoogleSheetsWebhook(targetHook, updatedUsers).catch((err) => {
+        console.warn('Direct employee push notice:', err);
+      });
+    }
 
     setSaveToast(`✓ Saved new employee "${newUser.name}" to Database & Google Sheets!`);
     setTimeout(() => setSaveToast(null), 6000);
@@ -4035,8 +4107,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, ...data }),
+      body: JSON.stringify(updatedUsers),
     }).catch(() => {});
+
+    // Fast-path immediate sync to Google Sheets Employee_Directory
+    const targetHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
+    if (targetHook && isValidWebhookUrl(targetHook)) {
+      syncEmployeesToGoogleSheetsWebhook(targetHook, updatedUsers).catch((err) => {
+        console.warn('Direct employee push notice:', err);
+      });
+    }
 
     safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
       console.warn('Users save err:', err)

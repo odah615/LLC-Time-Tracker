@@ -1,6 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import {
+  syncEmployeesToGoogleSheetsWebhook,
+  generateAppsScriptCode,
+} from '../../lib/googleSheetsSync';
+import {
   Users,
   Search,
   Filter,
@@ -35,6 +39,8 @@ import {
   X,
   AlertCircle,
   Link2,
+  Code,
+  Copy,
 } from 'lucide-react';
 import { User, UserRole, PasswordResetRequest } from '../../types';
 import { UserAvatar } from '../UserAvatar';
@@ -75,6 +81,7 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
   const [syncStatusMsg, setSyncStatusMsg] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
   const [showWebhookBanner, setShowWebhookBanner] = useState(false);
   const [webhookInputVal, setWebhookInputVal] = useState(googleSheetsWebhookUrl || '');
+  const [copiedScript, setCopiedScript] = useState(false);
 
   useEffect(() => {
     setWebhookInputVal(googleSheetsWebhookUrl || '');
@@ -115,13 +122,19 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
       return;
     }
     setIsSyncingSheets(true);
-    setSyncStatusMsg({ type: 'info', text: 'Pushing full employee roster to Google Sheets...' });
-    const res = await triggerGoogleSheetsSync(activeUrl);
+    setSyncStatusMsg({ type: 'info', text: 'Pushing full employee roster directly to Google Sheets Employee_Directory & mployee_Directory...' });
+
+    // Step 1: Immediate targeted push to Employee_Directory
+    const empRes = await syncEmployeesToGoogleSheetsWebhook(activeUrl, users);
+
+    // Step 2: Also trigger background sync for all other tables
+    triggerGoogleSheetsSync(activeUrl).catch(() => {});
+
     setIsSyncingSheets(false);
-    if (res && res.success) {
-      setSyncStatusMsg({ type: 'success', text: '✓ Successfully pushed and synchronized Employee Directory to Google Sheets!' });
+    if (empRes && empRes.success) {
+      setSyncStatusMsg({ type: 'success', text: empRes.message || `✓ Successfully populated ${users.length} employees into Google Sheets Employee_Directory & mployee_Directory!` });
     } else {
-      setSyncStatusMsg({ type: 'error', text: `⚠️ ${res?.message || 'Sync failed. Verify Apps Script deployment is set to Anyone.'}` });
+      setSyncStatusMsg({ type: 'error', text: `⚠️ ${empRes?.message || 'Sync failed. Verify Apps Script deployment is set to Anyone.'}` });
     }
     setTimeout(() => setSyncStatusMsg(null), 8000);
   };
@@ -307,6 +320,32 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
               ✕ Close
             </button>
           </div>
+
+          <div className="p-3 bg-slate-950/90 rounded-xl border border-slate-800 space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                <Code className="w-3.5 h-3.5 text-blue-400" />
+                <span>Central Google Apps Script Code</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const code = generateAppsScriptCode();
+                  navigator.clipboard.writeText(code);
+                  setCopiedScript(true);
+                  setTimeout(() => setCopiedScript(false), 3000);
+                }}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow transition active:scale-95 cursor-pointer self-start sm:self-auto"
+              >
+                {copiedScript ? <Check className="w-3.5 h-3.5 text-emerald-300" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedScript ? '✓ Copied Script Code to Clipboard!' : 'Copy Central Apps Script Code'}</span>
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              <strong className="text-amber-300">Important:</strong> Use the script directly from this website. In your Google Sheet, open <strong>Extensions → Apps Script</strong>, paste this code, click <strong>Deploy → New deployment → Web app</strong> (Execute as: <em>Me</em>, Who has access: <em>Anyone</em>), then paste the resulting <code className="text-emerald-400 font-mono">/exec</code> URL below.
+            </p>
+          </div>
+
           <p className="text-xs text-slate-300">
             Paste your deployed Google Apps Script Web App URL below (ends in <code className="text-emerald-400 bg-slate-950 px-1.5 py-0.5 rounded font-mono">/exec</code>).
             When configured, all newly created and updated employees will sync directly into your spreadsheet's <code className="text-emerald-400 bg-slate-950 px-1.5 py-0.5 rounded font-mono">Employee_Directory</code> tab.
@@ -328,10 +367,11 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
                   return;
                 }
                 setGoogleSheetsWebhookUrl(val);
-                setSyncStatusMsg({ type: 'success', text: '✓ Google Sheets Webhook URL saved! Pushing Employee Directory now...' });
-                const res = await triggerGoogleSheetsSync(val);
+                setSyncStatusMsg({ type: 'info', text: 'Google Sheets Webhook URL saved! Pushing Employee Directory now...' });
+                const res = await syncEmployeesToGoogleSheetsWebhook(val, users);
+                triggerGoogleSheetsSync(val).catch(() => {});
                 if (res && res.success) {
-                  setSyncStatusMsg({ type: 'success', text: '✓ Successfully connected & pushed all employees to Google Sheets!' });
+                  setSyncStatusMsg({ type: 'success', text: res.message || '✓ Successfully populated all employees into Google Sheets!' });
                 } else {
                   setSyncStatusMsg({ type: 'error', text: `⚠️ ${res?.message || 'Sync failed.'}` });
                 }

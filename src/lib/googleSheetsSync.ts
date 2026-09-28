@@ -564,12 +564,27 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
   var prevLastRow = sheet.getLastRow();
   var prevLastCol = sheet.getLastColumn();
 
+  if (sheet.getMaxColumns() < numCols) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), numCols - sheet.getMaxColumns());
+  }
+
   if (sheet.getMaxRows() < numRows) {
     sheet.insertRowsAfter(sheet.getMaxRows(), numRows - sheet.getMaxRows() + 10);
   }
 
+  // Deep sanitize all cells to ensure zero undefined or null values
+  var sanitizedMergedData = [];
+  for (var mr = 0; mr < allData.length; mr++) {
+    var cleanMergedRow = [];
+    for (var mc = 0; mc < numCols; mc++) {
+      var cellMVal = allData[mr][mc];
+      cleanMergedRow.push(cellMVal === undefined || cellMVal === null ? '' : cellMVal);
+    }
+    sanitizedMergedData.push(cleanMergedRow);
+  }
+
   // Set values in-place smoothly without clearing formatting
-  sheet.getRange(1, 1, numRows, numCols).setValues(allData);
+  sheet.getRange(1, 1, numRows, numCols).setValues(sanitizedMergedData);
 
   if (prevLastRow > numRows) {
     try {
@@ -602,12 +617,27 @@ function populateCleanSheet(sheet, headers, rows, headerColor) {
   var prevLastRow = sheet.getLastRow();
   var prevLastCol = sheet.getLastColumn();
 
+  if (sheet.getMaxColumns() < numCols) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), numCols - sheet.getMaxColumns());
+  }
+
   if (sheet.getMaxRows() < numRows) {
     sheet.insertRowsAfter(sheet.getMaxRows(), numRows - sheet.getMaxRows() + 10);
   }
 
+  // Deep sanitize all rows to ensure zero undefined or null values
+  var sanitizedData = [];
+  for (var r = 0; r < allData.length; r++) {
+    var cleanRow = [];
+    for (var c = 0; c < numCols; c++) {
+      var cellVal = allData[r][c];
+      cleanRow.push(cellVal === undefined || cellVal === null ? '' : cellVal);
+    }
+    sanitizedData.push(cleanRow);
+  }
+
   var targetRange = sheet.getRange(1, 1, numRows, numCols);
-  targetRange.setValues(allData);
+  targetRange.setValues(sanitizedData);
 
   // Clear any excess old rows below current dataset smoothly without flickering the sheet view
   if (prevLastRow > numRows) {
@@ -621,6 +651,118 @@ function populateCleanSheet(sheet, headers, rows, headerColor) {
     .setBackground(headerColor || '#0f172a')
     .setFontColor('#ffffff');
   sheet.setFrozenRows(1);
+}
+
+/**
+ * Finds or creates the Employee Directory sheet flexibly,
+ * matching Employee_Directory, mployee_Directory, Employee Directory, or Employees.
+ */
+function getEmployeeDirectorySheet(ss) {
+  var candidateNames = ['mployee_Directory', 'Employee_Directory', 'Employee Directory', 'Employee_directory', 'Employees', 'Staff_Directory', 'Staff'];
+  for (var i = 0; i < candidateNames.length; i++) {
+    var sh = ss.getSheetByName(candidateNames[i]);
+    if (sh) return sh;
+  }
+  var allSheets = ss.getSheets();
+  for (var j = 0; j < allSheets.length; j++) {
+    var rawName = allSheets[j].getName().toLowerCase().replace(/[\s_\-]+/g, '');
+    if (rawName === 'mployeedirectory' || rawName === 'employeedirectory' || rawName === 'employees' || rawName === 'staffdirectory') {
+      return allSheets[j];
+    }
+  }
+  var newSheet = ss.insertSheet('mployee_Directory');
+  try {
+    newSheet.setTabColor('#0284c7');
+  } catch (e) {}
+  return newSheet;
+}
+
+/**
+ * Dedicated internal function to populate the Employee Directory tab
+ * with all 14 columns, canonical names, and masked passwords.
+ * Updates BOTH mployee_Directory AND Employee_Directory tabs if present!
+ */
+function syncEmployeeDirectoryInternal(ss, directoryUsers, userMap) {
+  var empHeaders = [
+    'Employee Code',
+    'Username',
+    'Full Name',
+    'Work Email',
+    'System Role',
+    'Designation',
+    'Date Hired',
+    'Monthly Rate (₱)',
+    'Hourly Rate (₱)',
+    'Assigned Supervisor',
+    'Screenshot Monitored',
+    'Activity Monitored',
+    'Status',
+    'Account Password (Masked)'
+  ];
+  var empRows = [];
+  var seenKeys = {};
+
+  var list = (directoryUsers && directoryUsers.length > 0) ? directoryUsers : [];
+  list.forEach(function(u) {
+    if (!u) return;
+    var code = String(u.employeeCode || '').trim().toUpperCase();
+    var uName = String(u.username || '').trim().toLowerCase();
+    var dKey = code && code !== 'N/A' ? code : (uName ? uName : (u.id || Math.random()));
+    if (seenKeys[dKey]) return;
+    seenKeys[dKey] = true;
+
+    var maskedPass = maskPassword(u.password || 'Password123!');
+    var hireDate = u.joinDate || '2020-01-01';
+    var supervisorName = 'None / Direct Executive';
+    if (u.teamLeaderId && userMap) {
+      var sv = userMap[u.teamLeaderId] || userMap[String(u.teamLeaderId).toUpperCase()];
+      supervisorName = sv ? sv.name + ' (' + (sv.designation || sv.role) + ')' : u.teamLeaderId;
+    }
+    var mRate = (u.monthlyRate !== undefined && u.monthlyRate !== null && !isNaN(Number(u.monthlyRate))) ? Number(u.monthlyRate) : 0;
+    var hRate = (u.hourlyRate !== undefined && u.hourlyRate !== null && !isNaN(Number(u.hourlyRate))) ? Number(u.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
+
+    empRows.push([
+      u.employeeCode || 'N/A',
+      u.username || 'agent',
+      u.name || 'Unknown',
+      u.email || '',
+      u.role || 'agent',
+      u.designation || 'Agent',
+      hireDate,
+      mRate,
+      hRate,
+      supervisorName,
+      u.screenshotMonitored ? 'YES' : 'NO',
+      u.activityMonitored ? 'YES' : 'NO',
+      u.status || 'active',
+      maskedPass
+    ]);
+  });
+
+  // Collect ALL employee directory tabs present in the spreadsheet
+  var targetSheets = [];
+  var allSheets = ss.getSheets();
+  for (var s = 0; s < allSheets.length; s++) {
+    var raw = allSheets[s].getName().toLowerCase().replace(/[\s_\-]+/g, '');
+    if (raw === 'mployeedirectory' || raw === 'employeedirectory' || raw === 'employees' || raw === 'staffdirectory') {
+      targetSheets.push(allSheets[s]);
+    }
+  }
+
+  if (targetSheets.length === 0) {
+    targetSheets.push(getEmployeeDirectorySheet(ss));
+  }
+
+  // Populate EVERY matching sheet with the clean 14 columns
+  targetSheets.forEach(function(sh) {
+    try {
+      populateCleanSheet(sh, empHeaders, empRows, '#0369a1');
+    } catch(err) {
+      Logger.log('Error populating sheet ' + sh.getName() + ': ' + err.toString());
+    }
+  });
+
+  return empRows.length;
 }
 
 var CANONICAL_STAFF = {
@@ -793,6 +935,10 @@ function upsertSinglePresenceRow(sheet, p) {
     lastHbIso
   ];
 
+  if (sheet.getMaxColumns() < 13) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), 13 - sheet.getMaxColumns());
+  }
+
   if (matchRow > 0) {
     sheet.getRange(matchRow, 1, 1, 13).setValues([newRowData]);
   } else {
@@ -813,6 +959,109 @@ function updateLivePresenceMerged(targetSheet, incomingPresenceList) {
     }
   }
   return updatedRows;
+}
+
+/**
+ * Dedicated function to upsert live tracking time sessions into Live_Sessions and Time_Logs
+ * with all 15 columns, start times, total duration, status, and activity percentages.
+ */
+var liveSessionHeaders = [
+  'Session ID',
+  'Employee Code',
+  'Employee Name',
+  'Designation',
+  'Task Category',
+  'Date',
+  'Start Time',
+  'End Time',
+  'Duration (Seconds)',
+  'Total Time',
+  'Idle Deductions (Mins)',
+  'Mouse Avg %',
+  'Keyboard Avg %',
+  'Status',
+  'Notes'
+];
+
+function upsertLiveTrackingSessionRow(sheet, p) {
+  if (!sheet || !p) return null;
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(liveSessionHeaders);
+    sheet.getRange(1, 1, 1, liveSessionHeaders.length)
+      .setFontWeight('bold')
+      .setBackground('#047857')
+      .setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+  }
+
+  var targetCode = String(p.employeeCode || '').trim().toUpperCase();
+  var targetName = String(p.userName || p.name || '').trim();
+  var resolvedName = resolveStaffFullName(targetCode, targetName, targetName, p.userId);
+  var targetSessionId = p.sessionId || ('live-' + (p.userId || targetCode.toLowerCase() || 'agent'));
+
+  var lastRow = sheet.getLastRow();
+  var matchRow = -1;
+  var existingRow = null;
+
+  if (lastRow > 1) {
+    try {
+      var maxCols = Math.max(sheet.getLastColumn(), 15);
+      var sheetData = sheet.getRange(2, 1, lastRow - 1, maxCols).getValues();
+      for (var r = 0; r < sheetData.length; r++) {
+        var row = sheetData[r];
+        var rowSessionId = String(row[0] || '').trim();
+        var rowCode = String(row[1] || '').trim().toUpperCase();
+        var rowName = String(row[2] || '').trim().toLowerCase();
+        if (rowSessionId === targetSessionId ||
+            (targetCode && targetCode !== 'N/A' && rowCode === targetCode && (String(row[13]).toLowerCase() === 'running' || String(row[7]).toLowerCase().indexOf('running') !== -1)) ||
+            (resolvedName && rowName === resolvedName.toLowerCase() && (String(row[13]).toLowerCase() === 'running' || String(row[7]).toLowerCase().indexOf('running') !== -1))) {
+          matchRow = r + 2;
+          existingRow = row;
+          break;
+        }
+      }
+    } catch(e) {}
+  }
+
+  var isTracking = p.isTracking === true || (p.status === 'online' && p.isTracking) || (p.statusLabel && p.statusLabel.indexOf('Live Tracking') !== -1);
+  var elapsedSecs = typeof p.elapsedSeconds === 'number' ? Math.max(0, Math.floor(p.elapsedSeconds)) : 0;
+  if (!elapsedSecs && existingRow && existingRow[8]) {
+    elapsedSecs = Number(existingRow[8]) || 0;
+  }
+  var todayStr = Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
+  var startTime = p.firstCheckin || (existingRow && existingRow[6] ? existingRow[6] : Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a'));
+  var endTime = isTracking ? 'Running Live' : Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a');
+  var status = isTracking ? 'running' : 'completed';
+
+  var rowData = [
+    targetSessionId,
+    targetCode || 'N/A',
+    resolvedName || targetName || 'Employee',
+    p.designation || (existingRow ? existingRow[3] : 'Agent'),
+    p.currentTask || (existingRow ? existingRow[4] : 'Active Work'),
+    (existingRow && existingRow[5]) ? existingRow[5] : todayStr,
+    startTime,
+    endTime,
+    elapsedSecs,
+    formatTotalTime(elapsedSecs),
+    p.idleMinutes || '0 mins',
+    (p.mouseActivity != null ? p.mouseActivity : 95) + '%',
+    (p.keyboardActivity != null ? p.keyboardActivity : 95) + '%',
+    status,
+    isTracking ? 'Tracking live in LLC Time Tracker Client' : 'Shift Concluded'
+  ];
+
+  if (sheet.getMaxColumns() < 15) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), 15 - sheet.getMaxColumns());
+  }
+
+  if (matchRow > 0) {
+    sheet.getRange(matchRow, 1, 1, 15).setValues([rowData]);
+  } else {
+    sheet.appendRow(rowData);
+  }
+  return rowData;
 }
 
 function setupSheetsSchema() {
@@ -904,6 +1153,11 @@ function setupSheetsSchema() {
       headers: ['Designation Name', 'Allowed Tracking Tasks (Comma Separated)', 'Total Tasks Count', 'Last Updated (ISO)']
     },
     {
+      tab: 'Live_Sessions',
+      color: '#059669', // Emerald
+      headers: ['Session ID', 'Employee Code', 'Employee Name', 'Designation', 'Task Category', 'Date', 'Start Time', 'End Time', 'Duration (Seconds)', 'Total Time', 'Idle Deductions (Mins)', 'Mouse Avg %', 'Keyboard Avg %', 'Status', 'Notes']
+    },
+    {
       tab: 'Designations_Permissions',
       color: '#8b5cf6', // Violet
       headers: [
@@ -926,6 +1180,19 @@ function setupSheetsSchema() {
   ];
 
   schema.forEach(function(item) {
+    if (item.tab === 'Employee_Directory') {
+      var empCandidates = ['mployee_Directory', 'Employee_Directory'];
+      empCandidates.forEach(function(cName) {
+        var sh = ss.getSheetByName(cName);
+        if (sh && sh.getLastRow() === 0) {
+          sh.appendRow(item.headers);
+          sh.getRange(1, 1, 1, item.headers.length).setFontWeight('bold').setBackground('#0284c7').setFontColor('#ffffff');
+          sh.setFrozenRows(1);
+        }
+      });
+      return;
+    }
+
     var sheet = ss.getSheetByName(item.tab);
     if (!sheet) {
       sheet = ss.insertSheet(item.tab);
@@ -946,7 +1213,6 @@ function setupSheetsSchema() {
 function doPost(e) {
   try {
     var ss = getSpreadsheet();
-    setupSheetsSchema();
 
     var data = {};
     if (e && e.postData && e.postData.contents) {
@@ -963,6 +1229,7 @@ function doPost(e) {
       var allDataTabs = [
         'Time_Logs',
         'Active_Logs',
+        'Live_Sessions',
         'Daily_Summary',
         'Weekly_Summary',
         'Monthly_Summary',
@@ -986,7 +1253,7 @@ function doPost(e) {
         }
       });
       // Clear Live_Presence rows below header
-      var presSheet = ss.getSheetByName('Live_Presence') || ss.getSheetByName('Live_Sessions');
+      var presSheet = ss.getSheetByName('Live_Presence') || ss.getSheetByName('Live Presence');
       if (presSheet && presSheet.getLastRow() > 1) {
         try {
           presSheet.getRange(2, 1, presSheet.getLastRow() - 1, Math.max(presSheet.getLastColumn(), 1)).clearContent();
@@ -1002,22 +1269,54 @@ function doPost(e) {
 
     // ==========================================
     // HEARTBEAT_UPDATE (Targeted Single-Row Agent Tracking Pulse)
+    // Runs in <200ms without schema rebuilding overhead!
     // ==========================================
     if (data.action === 'HEARTBEAT_UPDATE') {
-      var presSheet = ss.getSheetByName('Live_Presence');
-      var presAliasSheet = ss.getSheetByName('Live_Sessions');
-      if (!presSheet) {
-        presSheet = ss.insertSheet('Live_Presence');
-      }
+      var presSheet = ss.getSheetByName('Live_Presence') || ss.getSheetByName('Live Presence') || ss.insertSheet('Live_Presence');
       var pData = data.presence || data.userPresence || data.agent || data;
       if (pData) {
+        // 1. Update row in Live_Presence (13 columns Presence table)
         upsertSinglePresenceRow(presSheet, pData);
-        if (presAliasSheet) upsertSinglePresenceRow(presAliasSheet, pData);
+
+        // 2. Update live tracking session row in Live_Sessions (15 columns Time Log table)
+        var liveSessSheet = ss.getSheetByName('Live_Sessions') || ss.getSheetByName('Live Sessions');
+        if (liveSessSheet) {
+          upsertLiveTrackingSessionRow(liveSessSheet, pData);
+        }
+
+        // 3. Also keep Time_Logs updated if agent is currently tracking
+        var tLogsSheet = ss.getSheetByName('Time_Logs');
+        if (tLogsSheet && pData.isTracking) {
+          upsertLiveTrackingSessionRow(tLogsSheet, pData);
+        }
       }
+      SpreadsheetApp.flush();
       return ContentService.createTextOutput(JSON.stringify({
         status: 'SUCCESS',
         action: 'HEARTBEAT_UPDATE',
-        message: 'Heartbeat recorded successfully for ' + (pData.userName || pData.employeeCode || 'Agent')
+        message: 'Heartbeat and live tracking recorded successfully for ' + (pData.userName || pData.employeeCode || 'Agent')
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ==========================================
+    // ACTION: SYNC_EMPLOYEES (Instant employee roster push)
+    // Updates BOTH mployee_Directory AND Employee_Directory tabs!
+    // ==========================================
+    if (data.action === 'SYNC_EMPLOYEES' || data.action === 'SYNC_USERS' || data.action === 'SYNC_ROSTER') {
+      var rawUsersList = data.users || [];
+      var uMap = {};
+      rawUsersList.forEach(function(u) {
+        if (!u) return;
+        if (u.id) uMap[u.id] = u;
+        if (u.employeeCode) uMap[String(u.employeeCode).toUpperCase()] = u;
+      });
+      var count = syncEmployeeDirectoryInternal(ss, rawUsersList, uMap);
+      SpreadsheetApp.flush();
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'SUCCESS',
+        action: 'SYNC_EMPLOYEES',
+        count: count,
+        message: 'Successfully populated ' + count + ' employees into Employee_Directory and mployee_Directory tab!'
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -1056,16 +1355,25 @@ function doPost(e) {
       });
 
       // ==========================================
-      // 0. POPULATE LIVE PRESENCE & SESSIONS (Targeted Single-Row Upsert)
+      // 0. POPULATE EMPLOYEE DIRECTORY FIRST (Updates both mployee_Directory & Employee_Directory)
+      // ==========================================
+      try {
+        syncEmployeeDirectoryInternal(ss, users.length > 0 ? users : rawUsers, userMap);
+      } catch (empErr) {
+        Logger.log('Employee_Directory sync error: ' + empErr.toString());
+      }
+
+      // ==========================================
+      // 0. POPULATE LIVE PRESENCE (Dedicated 13-column Presence Table)
       // ==========================================
       var nowMs = new Date().getTime();
       var todayStr = Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
 
-      var presenceSheet = ss.getSheetByName('Live_Presence') || ss.insertSheet('Live_Presence');
-      var presenceAliasSheet = ss.getSheetByName('Live_Sessions');
+      var presenceSheet = ss.getSheetByName('Live_Presence') || ss.getSheetByName('Live Presence') || ss.insertSheet('Live_Presence');
       var finalPresenceRows = [];
-      if (presenceSheet && rawPresenceList.length > 0) finalPresenceRows = updateLivePresenceMerged(presenceSheet, rawPresenceList);
-      if (presenceAliasSheet && rawPresenceList.length > 0) updateLivePresenceMerged(presenceAliasSheet, rawPresenceList);
+      if (presenceSheet && rawPresenceList.length > 0) {
+        finalPresenceRows = updateLivePresenceMerged(presenceSheet, rawPresenceList);
+      }
 
       // ==========================================
       // 1. POPULATE LOGIN LOGS (Support both 'Login_Logs' and 'Login_Session_Logs')
@@ -1288,6 +1596,10 @@ function doPost(e) {
       if (activeSheet) {
         var actMerged = populateMergedSheet(activeSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
         if (!mergedTimeLogs.length) mergedTimeLogs = actMerged;
+      }
+      var liveSessionsSheet = ss.getSheetByName('Live_Sessions') || ss.getSheetByName('Live Sessions');
+      if (liveSessionsSheet) {
+        populateMergedSheet(liveSessionsSheet, activeHeaders, activeRows, '#047857', 0, 5);
       }
 
       if (!timesheetsSheet && !timeLogsSheet && !activeSheet) {
@@ -1733,38 +2045,7 @@ function doPost(e) {
       // 8. POPULATE EMPLOYEE DIRECTORY
       // ==========================================
       try {
-        var empHeaders = ['Employee Code', 'Username', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Date Hired', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)'];
-        var empRows = [];
-        var directoryUsers = (users && users.length > 0) ? users : rawUsers;
-        directoryUsers.forEach(function(u) {
-          var maskedPass = maskPassword(u.password || 'Password123!');
-          var hireDate = u.joinDate || '2020-01-01';
-          var supervisorName = 'None / Direct Executive';
-          if (u.teamLeaderId) {
-            var sv = userMap[u.teamLeaderId];
-            supervisorName = sv ? sv.name + ' (' + (sv.designation || sv.role) + ')' : u.teamLeaderId;
-          }
-          var mRate = (u.monthlyRate !== undefined && u.monthlyRate !== null && !isNaN(Number(u.monthlyRate))) ? Number(u.monthlyRate) : 0;
-          var hRate = (u.hourlyRate !== undefined && u.hourlyRate !== null && !isNaN(Number(u.hourlyRate))) ? Number(u.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
-          empRows.push([
-            u.employeeCode || 'N/A',
-            u.username || 'agent',
-            u.name || 'Unknown',
-            u.email || '',
-            u.role || 'agent',
-            u.designation || 'Agent',
-            hireDate,
-            mRate,
-            hRate,
-            supervisorName,
-            u.screenshotMonitored ? 'YES' : 'NO',
-            u.activityMonitored ? 'YES' : 'NO',
-            u.status || 'active',
-            maskedPass
-          ]);
-        });
-        var empSheet = ss.getSheetByName('Employee_Directory') || ss.insertSheet('Employee_Directory');
-        populateCleanSheet(empSheet, empHeaders, empRows, '#0369a1');
+        syncEmployeeDirectoryInternal(ss, (users && users.length > 0) ? users : rawUsers, userMap);
       } catch (empErr) {
         Logger.log('Error updating Employee_Directory: ' + empErr.toString());
       }
@@ -1920,8 +2201,7 @@ function doPost(e) {
 function doGet(e) {
   try {
     var ss = getSpreadsheet();
-    setupSheetsSchema();
-    var empSheet = ss.getSheetByName('Employee_Directory');
+    var empSheet = ss.getSheetByName('mployee_Directory') || ss.getSheetByName('Employee_Directory') || ss.getSheetByName('Employees');
     var employees = [];
     if (empSheet && empSheet.getLastRow() > 1) {
       var data = empSheet.getRange(2, 1, empSheet.getLastRow() - 1, 14).getValues();
@@ -1949,7 +2229,7 @@ function doGet(e) {
       });
     }
 
-    var timeLogsSheet = ss.getSheetByName('Time_Logs') || ss.getSheetByName('Active_Logs');
+    var timeLogsSheet = ss.getSheetByName('Time_Logs') || ss.getSheetByName('Active_Logs') || ss.getSheetByName('Live_Sessions');
     var timeLogs = [];
     if (timeLogsSheet && timeLogsSheet.getLastRow() > 1) {
       var tData = timeLogsSheet.getRange(2, 1, timeLogsSheet.getLastRow() - 1, 14).getValues();
@@ -1976,7 +2256,7 @@ function doGet(e) {
       });
     }
 
-    var presSheet = ss.getSheetByName('Live_Presence') || ss.getSheetByName('Live_Sessions');
+    var presSheet = ss.getSheetByName('Live_Presence') || ss.getSheetByName('Live Presence');
     var presenceList = [];
     if (presSheet && presSheet.getLastRow() > 1) {
       var pData = presSheet.getRange(2, 1, presSheet.getLastRow() - 1, 13).getValues();
@@ -2198,21 +2478,39 @@ export const fetchEmployeesFromGoogleSheets = async (
 
   // Method 2: Direct Google Sheets CSV Query (works on public / shared sheets)
   try {
-    const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=Employee_Directory`;
-    const response = await fetch(csvUrl);
-    if (!response.ok) {
-      throw new Error(`Spreadsheet fetch responded with status ${response.status}`);
-    }
+    const candidateTabs = ['Employee_Directory', 'mployee_Directory', 'Employees'];
+    let rows: string[][] = [];
+    let matchedTab = 'Employee_Directory';
 
-    const csvText = await response.text();
-    const rows = parseCSVRows(csvText);
+    for (const tabName of candidateTabs) {
+      try {
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tabName)}`;
+        const response = await fetch(csvUrl);
+        if (response.ok) {
+          const csvText = await response.text();
+          const parsed = parseCSVRows(csvText);
+          if (parsed.length > 1) {
+            const h = parsed[0] || [];
+            const isEmp = h.some((c: string) => {
+              const low = c.toLowerCase();
+              return low.includes('employee code') || low.includes('full name') || low.includes('username');
+            });
+            if (isEmp) {
+              rows = parsed;
+              matchedTab = tabName;
+              break;
+            }
+          }
+        }
+      } catch (tErr) {}
+    }
 
     if (rows.length <= 1) {
       return {
         success: false,
         employees: [],
         count: 0,
-        message: 'No employee rows found in the spreadsheet "Employee_Directory" tab.',
+        message: 'No employee rows found in the spreadsheet "Employee_Directory" or "mployee_Directory" tab.',
       };
     }
 
@@ -2477,6 +2775,83 @@ export const syncDataToGoogleSheetsWebhook = async (
   }
 };
 
+/**
+ * Dedicated fast-path webhook dispatcher that specifically syncs the Employee Directory tab
+ * directly in under 1 second without processing time logs or summaries.
+ */
+export const syncEmployeesToGoogleSheetsWebhook = async (
+  webhookUrl: string,
+  users: User[]
+): Promise<{ success: boolean; message: string; count?: number }> => {
+  if (!webhookUrl || !webhookUrl.trim()) {
+    return {
+      success: false,
+      message: 'No Google Sheets Webhook URL configured. Please paste your Google Apps Script Web App URL in Settings.',
+    };
+  }
+
+  const cleanUrl = webhookUrl.trim();
+  if (!isValidWebhookUrl(cleanUrl)) {
+    return {
+      success: false,
+      message: 'Webhook URL appears incomplete or is a placeholder. Please paste your deployed Web App URL ending in /exec.',
+    };
+  }
+
+  try {
+    const safeUsers = users.filter((u) => !u.isSecretBackup);
+    const payload = {
+      action: 'SYNC_EMPLOYEES',
+      users: safeUsers,
+      syncedAt: new Date().toISOString(),
+    };
+
+    // Strategy 1: Server-side proxy
+    try {
+      const proxyRes = await fetch('/api/sync-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webhookUrl: cleanUrl, payload }),
+      });
+      if (proxyRes.ok) {
+        const pData = await proxyRes.json();
+        if (pData && pData.success && pData.result?.status !== 'ERROR') {
+          return {
+            success: true,
+            count: pData.result?.count || safeUsers.length,
+            message: `✓ Successfully populated ${pData.result?.count || safeUsers.length} employees into Employee_Directory tab!`,
+          };
+        } else if (pData && (pData.error || pData.result?.status === 'ERROR')) {
+          const errDetail = pData.error || pData.result?.message || 'Apps Script execution failed';
+          return {
+            success: false,
+            message: `Google Sheets Error: ${errDetail}. Verify Apps Script is deployed as Web App (Anyone).`,
+          };
+        }
+      }
+    } catch (proxyErr) {}
+
+    // Strategy 2: Direct browser fetch
+    await fetch(cleanUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+    });
+
+    return {
+      success: true,
+      count: safeUsers.length,
+      message: `✓ Pushed ${safeUsers.length} employees directly to Google Sheets Employee_Directory tab!`,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `Failed to push employees: ${err?.message || 'Check network connection or webhook URL.'}`,
+    };
+  }
+};
+
 export interface AgentHeartbeatPayload {
   userId: string;
   employeeCode?: string;
@@ -2603,7 +2978,7 @@ export const fetchTimeLogsFromGoogleSheets = async (
   // Method 2: Direct Google Sheets CSV Query for Time_Logs tab
   if (spreadsheetId) {
     try {
-      const tabsToTry = ['Time_Logs', 'Active_Logs'];
+      const tabsToTry = ['Time_Logs', 'Active_Logs', 'Live_Sessions', 'Timesheets'];
       for (const tab of tabsToTry) {
         const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${tab}`;
         const response = await fetch(csvUrl);
@@ -2716,10 +3091,10 @@ export const fetchLivePresenceFromGoogleSheets = async (
     }
   }
 
-  // Method 2: Direct Google Sheets CSV Query for Live_Presence / Live_Sessions tab
+  // Method 2: Direct Google Sheets CSV Query for Live_Presence tab
   if (spreadsheetId) {
     try {
-      const tabsToTry = ['Live_Presence', 'Live_Sessions'];
+      const tabsToTry = ['Live_Presence', 'Live Presence'];
       for (const tab of tabsToTry) {
         const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${tab}`;
         const response = await fetch(csvUrl);
