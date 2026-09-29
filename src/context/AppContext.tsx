@@ -1546,18 +1546,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }, (err) => handleSnapshotError('timelogs', err));
 
       unsubUsers = onSnapshot(doc(db, 'system_state', 'users'), (snapshot) => {
-        if (snapshot.exists() && snapshot.data()?.data !== undefined) {
-          const remoteUsers: User[] = snapshot.data().data;
-          if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-            const sanitizedUsers = deduplicateUsers(ensureUsernames(remoteUsers));
-            setUsers((prev) => {
-              const merged = deduplicateUsers([...prev, ...sanitizedUsers]);
-              localStorage.setItem('trackpulse_users', JSON.stringify(merged));
-              return merged;
-            });
-          }
-        }
-      }, (err) => handleSnapshotError('users', err));
+  if (snapshot.exists() && snapshot.data()?.data !== undefined) {
+    const remoteUsers: User[] = snapshot.data().data;
+
+    if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
+      const sanitizedUsers = ensureUsernames(remoteUsers);
+
+      // FIRESTORE IS AUTHORITATIVE FOR USER RECORDS/PASSWORDS
+      setUsers(sanitizedUsers);
+      localStorage.setItem('trackpulse_users', JSON.stringify(sanitizedUsers));
+
+      // Keep currently selected user updated too
+      setCurrentUser((current) => {
+        const updated = sanitizedUsers.find(
+          (u) =>
+            u.id === current?.id ||
+            u.employeeCode?.toLowerCase() === current?.employeeCode?.toLowerCase() ||
+            u.username?.toLowerCase() === current?.username?.toLowerCase()
+        );
+
+        return updated || current;
+      });
+    }
+  }
+}, (err) => handleSnapshotError('users', err));
 
       unsubAudit = onSnapshot(doc(db, 'system_state', 'auditlogs'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -1771,14 +1783,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .then((res) => (res.ok ? res.json() : null))
         .then((remoteUsers) => {
           if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-            setUsers((prev) => {
-              const merged = deduplicateUsers([...prev, ...remoteUsers]);
-              if (merged.length !== prev.length || JSON.stringify(merged) !== JSON.stringify(prev)) {
-                localStorage.setItem('trackpulse_users', JSON.stringify(merged));
-                return merged;
-              }
-              return prev;
-            });
+            const sanitizedRemoteUsers = ensureUsernames(remoteUsers);
+
+setUsers(sanitizedRemoteUsers);
+localStorage.setItem(
+  'trackpulse_users',
+  JSON.stringify(sanitizedRemoteUsers)
+);
           }
         })
         .catch(() => {});
