@@ -2806,30 +2806,37 @@ export const syncEmployeesToGoogleSheetsWebhook = async (
       syncedAt: new Date().toISOString(),
     };
 
-    // Strategy 1: Server-side proxy
-    try {
-      const proxyRes = await fetch('/api/sync-sheets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ webhookUrl: cleanUrl, payload }),
-      });
-      if (proxyRes.ok) {
-        const pData = await proxyRes.json();
-        if (pData && pData.success && pData.result?.status !== 'ERROR') {
-          return {
-            success: true,
-            count: pData.result?.count || safeUsers.length,
-            message: `✓ Successfully populated ${pData.result?.count || safeUsers.length} employees into Employee_Directory tab!`,
-          };
-        } else if (pData && (pData.error || pData.result?.status === 'ERROR')) {
-          const errDetail = pData.error || pData.result?.message || 'Apps Script execution failed';
-          return {
-            success: false,
-            message: `Google Sheets Error: ${errDetail}. Verify Apps Script is deployed as Web App (Anyone).`,
-          };
-        }
-      }
-    } catch (proxyErr) {}
+// Strategy 1: Server-side proxy with timeout
+try {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  const proxyRes = await fetch('/api/sync-sheets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      webhookUrl: cleanUrl,
+      payload
+    }),
+    signal: controller.signal,
+  });
+
+  clearTimeout(timeout);
+
+  if (proxyRes.ok) {
+    const pData = await proxyRes.json();
+
+    if (pData?.success && pData.result?.status !== 'ERROR') {
+      return {
+        success: true,
+        count: pData.result?.count || safeUsers.length,
+        message: `✓ Successfully populated ${pData.result?.count || safeUsers.length} employees into Employee_Directory tab!`,
+      };
+    }
+  }
+} catch (proxyErr) {
+  console.warn('Employee sync proxy unavailable/timed out. Trying direct webhook...', proxyErr);
+}
 
     // Strategy 2: Direct browser fetch
     await fetch(cleanUrl, {
