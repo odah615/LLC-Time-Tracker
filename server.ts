@@ -39,7 +39,7 @@ let bridgeState: BridgeData = {
   attendance: [],
   auditlogs: [],
   config: {
-    webhookUrl: '',
+    webhookUrl: 'https://script.google.com/macros/s/AKfycbyKGMOWV0u5xcv_lOKBk6LXpbjrlgZiuqtCs3_HbqjekoJZdXpdfA_1kDjP7H0ulLsw3Q/exec',
     spreadsheetId: '1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA',
   },
 };
@@ -444,7 +444,12 @@ app.get('/api/sync-sheets', async (req, res) => {
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        watch: {
+          ignored: ['**/.sync_bridge.json'],
+        },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

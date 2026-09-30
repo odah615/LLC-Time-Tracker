@@ -1205,6 +1205,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Live dashboard refresh from Google Sheets
+useEffect(() => {
+  if (!isAuthenticated) return;
+
+  const refreshLivePresence = async () => {
+    try {
+      await importPresenceFromGoogleSheets();
+    } catch (err) {
+      console.warn('[LIVE PRESENCE] Dashboard refresh failed:', err);
+    }
+  };
+
+  refreshLivePresence();
+
+  const interval = setInterval(refreshLivePresence, 15000);
+
+  return () => clearInterval(interval);
+}, [isAuthenticated, users]);
+
   // Comprehensive One-Click Two-Way Sync for All Tabs from Google Sheets
   const syncAllFromGoogleSheets = async (overrideUrl?: string): Promise<{ success: boolean; message: string }> => {
     const targetUrl = overrideUrl || googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
@@ -2893,25 +2912,75 @@ localStorage.setItem(
   // Dedicated 60-second individual agent heartbeat loop to Google Sheets (action: 'HEARTBEAT_UPDATE')
   // Transmits targeted individual tracking pulses while user runs the tracker app
   useEffect(() => {
-    if (!isAuthenticated || !currentUser || !googleSheetsWebhookUrl || !isValidWebhookUrl(googleSheetsWebhookUrl)) {
+    if (!isAuthenticated || !currentUser) {
       return;
     }
 
-    const sendGoogleSheetsAgentHeartbeat = () => {
+    const sendGoogleSheetsAgentHeartbeat = async () => {
+      let activeUrl =
+        googleSheetsWebhookUrl ||
+        localStorage.getItem('trackpulse_sheets_webhook') ||
+        '';
+
+      if (!activeUrl || !isValidWebhookUrl(activeUrl)) {
+        try {
+          const res = await fetch('/api/config');
+          if (res.ok) {
+            const cfg = await res.json();
+            if (cfg?.webhookUrl && isValidWebhookUrl(cfg.webhookUrl)) {
+              activeUrl = cfg.webhookUrl.trim();
+              setGoogleSheetsWebhookUrlState(activeUrl);
+              localStorage.setItem('trackpulse_sheets_webhook', activeUrl);
+            }
+          }
+        } catch (err) {
+          console.warn('[SHEETS HEARTBEAT] Config fetch failed:', err);
+        }
+      }
+
+      if (!activeUrl || !isValidWebhookUrl(activeUrl)) {
+        console.warn('[SHEETS HEARTBEAT] No valid webhook URL');
+        return;
+      }
+
+      console.log('[SHEETS HEARTBEAT] CALLING', currentUser.employeeCode);
       const snap = liveTrackingSnapshotRef.current;
-      const isEffTracking = isTracking && !isPaused;
+
+      const isDesktop =
+        typeof window !== 'undefined' &&
+        Boolean(
+          (window as any).electronAPI ||
+          navigator.userAgent.includes('Electron')
+        );
+
+      // ONLY the Desktop App is allowed to track time.
+      const isEffTracking = isDesktop && isTracking && !isPaused;
+
       const statusLabel = isEffTracking
         ? '🟢 Live Tracking'
-        : isPaused
+        : isDesktop && isPaused
         ? '🟡 Idle / Break'
-        : '🔵 Desktop Online';
+        : isDesktop
+        ? '🔵 Desktop Online'
+        : '🟢 Website Online';
 
-      const isDesktop = typeof window !== 'undefined' && Boolean((window as any).electronAPI || navigator.userAgent.includes('Electron'));
-      const startFormatted = snap.startTimeIso
-        ? formatLogStartTime(snap.startTimeIso, 'Asia/Manila')
-        : '--:--';
+      const startFormatted =
+        isDesktop && snap.startTimeIso
+          ? formatLogStartTime(snap.startTimeIso, 'Asia/Manila')
+          : '--:--';
 
-      syncAgentHeartbeatToSheets(googleSheetsWebhookUrl, {
+      console.log('[SHEETS HEARTBEAT] Sending:', {
+        employeeCode: currentUser.employeeCode,
+        isTracking: isTracking && !isPaused,
+        elapsedSeconds: isEffTracking
+  ? Math.max(snap.elapsedSeconds, 0)
+  : 0,
+        timestamp: new Date().toISOString(),
+      });
+      
+      console.log('[SHEETS HEARTBEAT] CALLING', currentUser.employeeCode);
+
+      syncAgentHeartbeatToSheets(activeUrl, {
         userId: currentUser.id,
         employeeCode: currentUser.employeeCode || '',
         userName: currentUser.name,
@@ -2921,10 +2990,16 @@ localStorage.setItem(
         status: isPaused ? 'idle' : 'online',
         statusLabel,
         isOnline: true,
-        isTracking: isEffTracking,
-        isPaused: isPaused,
-        elapsedSeconds: Math.max(snap.elapsedSeconds, 0),
-        currentTask: currentTask || 'Active Work',
+        isTracking: isDesktop && isEffTracking,
+        isPaused: isDesktop ? isPaused : false,
+        elapsedSeconds: isDesktop && isEffTracking
+          ? Math.max(snap.elapsedSeconds, 0)
+          : 0,
+        currentTask: isEffTracking
+  ? currentTask || 'Active Work'
+  : isDesktop
+  ? 'Not Tracking'
+  : 'Website Session',
         currentApp: currentActiveApp || (isDesktop ? 'LLC Time Tracker Desktop App' : 'Web Browser'),
         loginPlatform: isDesktop ? 'software' : 'webapp',
         firstCheckin: startFormatted,
@@ -2932,7 +3007,17 @@ localStorage.setItem(
         lastHeartbeat: new Date().toISOString(),
         mouseActivity: snap.mouseActivity || 95,
         keyboardActivity: snap.keyboardActivity || 95,
-      }).catch((err) => console.warn('Google Sheets agent heartbeat pulse warning:', err));
+      }).then((result) => {
+        console.log('[SHEETS HEARTBEAT] Result:', result);
+      }).catch((err) => {
+        console.warn('[SHEETS HEARTBEAT] Failed:', err);
+            })
+        .then((result) => {
+          console.log('[SHEETS HEARTBEAT] Result:', result);
+        })
+        .catch((err) => {
+          console.warn('[SHEETS HEARTBEAT] Failed:', err);
+        });
     };
 
     // Initial pulse after 3 seconds
