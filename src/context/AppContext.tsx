@@ -1018,17 +1018,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const res = await fetchEmployeesFromGoogleSheets(targetUrl, DEFAULT_SPREADSHEET_ID, users);
 
     if (res.success && res.employees.length > 0) {
-      const deduplicated = deduplicateUsers(res.employees);
-      setUsers(deduplicated);
-      localStorage.setItem('trackpulse_users', JSON.stringify(deduplicated));
-      safeSetDoc(doc(db, 'system_state', 'users'), { data: deduplicated }).catch((err) =>
-        console.warn('Users save err:', err)
-      );
-      fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(deduplicated),
-      }).catch(() => {});
+  const deduplicated = deduplicateUsers(res.employees);
+
+  // IMPORTANT:
+  // Google Sheets is an employee directory source, NOT a delete source.
+  // Merge Sheets employees into the existing app roster.
+  // Employees missing temporarily from Sheets must NOT be deleted.
+
+  const existingById = new Map(users.map((u) => [u.id, u]));
+
+  const existingByCode = new Map(
+    users
+      .filter((u) => u.employeeCode)
+      .map((u) => [String(u.employeeCode).toUpperCase(), u])
+  );
+
+  const mergedUsers = [...users];
+
+  for (const sheetUser of deduplicated) {
+    const code = String(sheetUser.employeeCode || '').toUpperCase();
+
+    const existing =
+      existingById.get(sheetUser.id) ||
+      (code ? existingByCode.get(code) : undefined);
+
+    if (existing) {
+      const index = mergedUsers.findIndex((u) => u.id === existing.id);
+
+      if (index >= 0) {
+        mergedUsers[index] = {
+          ...existing,
+          ...sheetUser,
+
+          // Employee_Directory contains masked passwords.
+          // Never overwrite a real local password with "*****".
+          password:
+            sheetUser.password &&
+            !String(sheetUser.password).includes('*')
+              ? sheetUser.password
+              : existing.password,
+        };
+      }
+    } else {
+      // New employee found in Sheets → add them.
+      mergedUsers.push(sheetUser);
+    }
+  }
+
+  const finalUsers = deduplicateUsers(mergedUsers);
+
+  setUsers(finalUsers);
+  localStorage.setItem(
+    'trackpulse_users',
+    JSON.stringify(finalUsers)
+  );
+
+  safeSetDoc(doc(db, 'system_state', 'users'), {
+    data: finalUsers,
+  }).catch((err) =>
+    console.warn('Users save err:', err)
+  );
+
+  fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(finalUsers),
+  }).catch(() => {});
 
       // Rebuild and update Presence List
       const updatedPresence = res.employees.map((u) => {
