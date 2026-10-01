@@ -3064,6 +3064,33 @@ export const fetchLivePresenceFromGoogleSheets = async (
               (p.userName && userMap.get(p.userName.toLowerCase().trim())) ||
               (p.userId && userMap.get(p.userId));
 
+              const presenceStatus = String(
+                p.statusLabel || p.status || p.livePresenceStatus || ''
+              ).toLowerCase();
+
+              const isOnline =
+                p.isOnline !== undefined && p.isOnline !== null
+                  ? Boolean(p.isOnline)
+                  : !presenceStatus.includes('offline') &&
+                    (
+                      presenceStatus.includes('online') ||
+                      presenceStatus.includes('live tracking') ||
+                      String(p.platformMode || '').toLowerCase().includes('desktop') ||
+                      String(p.platformMode || '').toLowerCase().includes('website')
+                    );
+
+              const isTracking =
+                p.isTracking !== undefined && p.isTracking !== null
+                  ? Boolean(p.isTracking)
+                  : presenceStatus.includes('live tracking') ||
+                    presenceStatus.includes('tracking');
+
+              const isPaused =
+                p.isPaused !== undefined && p.isPaused !== null
+                  ? Boolean(p.isPaused)
+                  : presenceStatus.includes('idle') ||
+                    presenceStatus.includes('break');
+
             return {
               userId: matchedUser?.id || p.userId || `usr-${p.employeeCode || Date.now()}`,
               userName: p.userName || matchedUser?.name || 'Employee',
@@ -3072,14 +3099,14 @@ export const fetchLivePresenceFromGoogleSheets = async (
               designation: p.designation || matchedUser?.designation || 'Agent',
               department: matchedUser?.department || 'Operations',
               teamLeaderId: matchedUser?.teamLeaderId || '',
-              isOnline: Boolean(p.isOnline),
-              status: p.status || (p.isOnline ? 'online' : 'offline'),
-              isTracking: Boolean(p.isTracking),
-              isPaused: Boolean(p.isPaused),
+              isOnline,
+              status: isOnline ? 'online' : 'offline',
+              isTracking,
+              isPaused,
               elapsedSeconds: Number(p.elapsedSeconds) || 0,
-              mouseActivity: p.isTracking ? (Number(p.mouseActivity) || 85) : 0,
-              keyboardActivity: p.isTracking ? (Number(p.keyboardActivity) || 90) : 0,
-              currentTask: p.currentTask || (p.isOnline ? 'Active Work' : 'Shift Concluded'),
+              mouseActivity: isTracking ? (Number(p.mouseActivity) || 85) : 0,
+              keyboardActivity: isTracking ? (Number(p.keyboardActivity) || 90) : 0,
+              currentTask: p.currentTask || (isOnline ? 'Active Work' : 'Shift Concluded'),
               currentApp: p.currentApp || (p.loginPlatform === 'software' ? 'LLC Time Tracker Desktop App' : 'Web Browser'),
               loginPlatform: p.loginPlatform || 'software',
               lastHeartbeat: p.lastHeartbeat || new Date().toISOString(),

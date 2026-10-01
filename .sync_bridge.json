@@ -8,17 +8,17 @@
       "designation": "Admin",
       "department": "Executive Management",
       "teamLeaderId": "None / Direct Executive",
-      "isOnline": false,
-      "status": "offline",
-      "isTracking": false,
+      "isOnline": true,
+      "status": "online",
+      "isTracking": true,
       "isPaused": false,
-      "elapsedSeconds": 149,
+      "elapsedSeconds": 1008,
       "mouseActivity": 100,
       "keyboardActivity": 100,
-      "currentTask": "Shift Concluded",
+      "currentTask": "System Ops Review",
       "currentApp": "Google Chrome / External Application",
-      "lastHeartbeat": "2026-09-29T15:34:22.918Z",
-      "loginTime": "2026-09-29T15:31:48.719Z",
+      "lastHeartbeat": "2026-10-01T08:04:33.007Z",
+      "loginTime": "2026-10-01T07:46:44.013Z",
       "loginPlatform": "software"
     },
     "usr-llc-0023": {
@@ -29,18 +29,674 @@
       "designation": "Agent",
       "department": "Operations",
       "teamLeaderId": "Pia (Trainer)",
-      "isOnline": true,
-      "status": "online",
-      "isTracking": true,
+      "isOnline": false,
+      "status": "offline",
+      "isTracking": false,
       "isPaused": false,
-      "elapsedSeconds": 516,
-      "mouseActivity": 100,
-      "keyboardActivity": 100,
-      "currentTask": "Data Entry & Market Research",
-      "currentApp": "Google Chrome / External Application",
-      "lastHeartbeat": "2026-09-29T16:43:01.090Z",
+      "elapsedSeconds": 0,
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "currentTask": "Shift Concluded",
+      "currentApp": "LLC Time Tracker Desktop Software",
+      "lastHeartbeat": "2026-09-28T04:24:05.505Z",
       "loginTime": "2026-09-29T16:33:24.916Z",
       "loginPlatform": "software"
+    },
+    "usr-llc-0003": {
+      "userId": "usr-llc-0003",
+      "userName": "Trainer1",
+      "role": "trainer",
+      "designation": "Trainer",
+      "employeeCode": "LLC-0003",
+      "department": "Training",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-14T08:13:29.399Z",
+      "currentApp": "LLC Time Tracker Desktop Software",
+      "elapsedSeconds": 0,
+      "loginTime": "2026-09-14T08:13:29.399Z",
+      "isTracking": false,
+      "isPaused": false,
+      "currentTask": "Available / Ready",
+      "loginPlatform": "software"
+    },
+    "usr-llc-0004": {
+      "userId": "usr-llc-0004",
+      "userName": "Alexa Gabrielle Bardaje",
+      "role": "employee",
+      "designation": "Agent",
+      "employeeCode": "LLC-0004",
+      "department": "Operations",
+      "teamLeaderId": "usr-llc-0003",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-09T08:04:40.708Z",
+      "elapsedSeconds": 0,
+      "currentApp": "LLC Time Tracker Desktop Software",
+      "loginTime": "2026-09-29T01:02:37.278Z",
+      "currentTask": "Shift Concluded",
+      "loginPlatform": "software",
+      "isPaused": false,
+      "isTracking": false
+    },
+    "usr-llc-0005": {
+      "userId": "usr-llc-0005",
+      "userName": "April Sam Dimaano",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0005",
+      "department": "Operations",
+      "teamLeaderId": "usr-llc-0003",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-04T08:26:33.408Z",
+      "currentApp": "LLC Time Tracker Desktop Software",
+      "elapsedSeconds": 0,
+      "loginPlatform": "software",
+      "isPaused": false,
+      "currentTask": "Web Portal Session",
+      "loginTime": "2026-10-01T00:36:56.542Z",
+      "isTracking": false
+    },
+    "usr-llc-0006": {
+      "userId": "usr-llc-0006",
+      "userName": "Boris Andrew Villanueva",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0006",
+      "department": "Operations",
+      "teamLeaderId": "usr-llc-0003",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-04T08:25:02.891Z",
+      "isTracking": false,
+      "loginPlatform": "software",
+      "currentApp": "None",
+      "currentTask": "Shift Concluded",
+      "isPaused": false,
+      "elapsedSeconds": 0
+    },
+    "usr-llc-0007": {
+      "userId": "usr-llc-0007",
+      "userName": "Cyril Diola Garcia",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0007",
+      "department": "Operations",
+      "teamLeaderId": "Trainer1 (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-09T03:10:39.181Z",
+      "isPaused": false,
+      "currentApp": "LLC Time Tracker Desktop Software",
+      "loginPlatform": "software",
+      "currentTask": "Shift Concluded",
+      "elapsedSeconds": 0,
+      "isTracking": false
+    },
+    "usr-llc-0008": {
+      "userId": "usr-llc-0008",
+      "userName": "Daina Yanez",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0008",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-30T14:38:20.127Z",
+      "loginTime": "2026-09-29T06:51:04.200Z",
+      "isTracking": false,
+      "loginPlatform": "software",
+      "currentApp": "None",
+      "isPaused": false,
+      "elapsedSeconds": 0,
+      "currentTask": "Shift Concluded"
+    },
+    "usr-llc-0009": {
+      "userId": "usr-llc-0009",
+      "userName": "Fatima Dence David",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0009",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 85,
+      "keyboardActivity": 90,
+      "lastHeartbeat": "2026-10-01T04:37:36.886Z",
+      "loginTime": "2026-09-29T01:13:25.061Z",
+      "currentTask": "Shift Concluded",
+      "loginPlatform": "software",
+      "isTracking": false,
+      "elapsedSeconds": 0,
+      "currentApp": "None",
+      "isPaused": false
+    },
+    "usr-llc-0010": {
+      "userId": "usr-llc-0010",
+      "userName": "Gerald A. Salvador",
+      "role": "employee",
+      "designation": "Agent",
+      "employeeCode": "LLC-0010",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-09T23:56:26.774Z",
+      "currentApp": "LLC Time Tracker Desktop Software",
+      "loginPlatform": "software",
+      "elapsedSeconds": 0,
+      "currentTask": "Shift Concluded",
+      "isPaused": false,
+      "isTracking": false
+    },
+    "usr-llc-0011": {
+      "userId": "usr-llc-0011",
+      "userName": "Jayson Cariaga",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0011",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-30T09:24:37.599Z",
+      "currentApp": "LLC Time Tracker Desktop Software",
+      "loginTime": "2026-09-28T04:01:31.218Z",
+      "currentTask": "Shift Concluded",
+      "loginPlatform": "software",
+      "isPaused": false,
+      "elapsedSeconds": 0,
+      "isTracking": false
+    },
+    "usr-llc-0012": {
+      "userId": "usr-llc-0012",
+      "userName": "Jenalyn Nueva",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0012",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-29T06:34:47.068Z",
+      "isTracking": false,
+      "loginTime": "2026-09-29T06:11:31.955Z",
+      "isPaused": false,
+      "elapsedSeconds": 0,
+      "currentTask": "Shift Concluded",
+      "currentApp": "Google Chrome / External Application",
+      "loginPlatform": "software"
+    },
+    "usr-llc-0013": {
+      "userId": "usr-llc-0013",
+      "userName": "Kathleen Ann L. Totaan",
+      "role": "employee",
+      "designation": "Agent",
+      "employeeCode": "LLC-0013",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-09T23:50:23.703Z",
+      "currentTask": "Shift Concluded",
+      "isPaused": false,
+      "isTracking": false,
+      "loginPlatform": "software",
+      "elapsedSeconds": 0,
+      "currentApp": "LLC Time Tracker Desktop Software"
+    },
+    "usr-llc-0014": {
+      "userId": "usr-llc-0014",
+      "userName": "Lourdes Mary Cenina",
+      "role": "employee",
+      "designation": "Agent",
+      "employeeCode": "LLC-0014",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-09T06:41:30.155Z",
+      "elapsedSeconds": 0,
+      "isTracking": false,
+      "currentTask": "Shift Concluded",
+      "loginPlatform": "software",
+      "currentApp": "Google Chrome / External Application",
+      "isPaused": false
+    },
+    "usr-llc-0015": {
+      "userId": "usr-llc-0015",
+      "userName": "Luis David Ramirez",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0015",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-29T04:12:43.862Z",
+      "loginTime": "2026-09-29T02:37:30.582Z",
+      "loginPlatform": "software",
+      "currentApp": "Google Chrome / External Application",
+      "isTracking": false,
+      "isPaused": false,
+      "elapsedSeconds": 0,
+      "currentTask": "Shift Concluded"
+    },
+    "usr-llc-0016": {
+      "userId": "usr-llc-0016",
+      "userName": "Maria Racquel Gracia M. Libarios",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0016",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-28T09:40:29.457Z",
+      "currentApp": "LLC Time Tracker Desktop Software",
+      "elapsedSeconds": 0,
+      "isPaused": false,
+      "loginPlatform": "software",
+      "currentTask": "Shift Concluded",
+      "loginTime": "2026-09-28T08:47:58.656Z",
+      "isTracking": false
+    },
+    "usr-llc-0017": {
+      "userId": "usr-llc-0017",
+      "userName": "Mark Jesus A. Egoy",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0017",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-29T01:54:42.608Z",
+      "loginPlatform": "software",
+      "loginTime": "2026-09-29T01:34:42.582Z",
+      "isPaused": false,
+      "isTracking": false,
+      "elapsedSeconds": 0,
+      "currentTask": "Shift Concluded",
+      "currentApp": "Google Chrome / External Application"
+    },
+    "usr-llc-0018": {
+      "userId": "usr-llc-0018",
+      "userName": "Raquel Guiapal",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0018",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 85,
+      "keyboardActivity": 90,
+      "lastHeartbeat": "2026-09-30T23:36:04.795Z",
+      "loginPlatform": "software",
+      "currentApp": "None",
+      "isTracking": false,
+      "loginTime": "2026-09-30T19:16:36.670Z",
+      "elapsedSeconds": 0,
+      "isPaused": false,
+      "currentTask": "Shift Concluded"
+    },
+    "usr-llc-0019": {
+      "userId": "usr-llc-0019",
+      "userName": "Ron Louie Logan",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0019",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 85,
+      "keyboardActivity": 90,
+      "lastHeartbeat": "2026-09-30T23:37:10.550Z",
+      "isTracking": false,
+      "loginTime": "2026-09-28T23:15:11.496Z",
+      "loginPlatform": "software",
+      "isPaused": false,
+      "currentApp": "None",
+      "currentTask": "Shift Concluded",
+      "elapsedSeconds": 0
+    },
+    "usr-llc-0020": {
+      "userId": "usr-llc-0020",
+      "userName": "Rubilyne Barrameda",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0020",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "lastHeartbeat": "2026-09-29T01:03:20.869Z",
+      "loginTime": "2026-09-29T00:31:05.300Z",
+      "isPaused": false,
+      "isTracking": false,
+      "currentTask": "Shift Concluded",
+      "currentApp": "Google Chrome / External Application",
+      "elapsedSeconds": 0,
+      "loginPlatform": "software"
+    },
+    "usr-llc-0021": {
+      "userId": "usr-llc-0021",
+      "userName": "Shiela Romey",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0021",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 85,
+      "keyboardActivity": 90,
+      "lastHeartbeat": "2026-09-30T09:24:17.424Z",
+      "currentApp": "None",
+      "isPaused": false,
+      "elapsedSeconds": 0,
+      "currentTask": "Shift Concluded",
+      "isTracking": false,
+      "loginPlatform": "software"
+    },
+    "usr-llc-0022": {
+      "userId": "usr-llc-0022",
+      "userName": "Trixy Ashley Decena Mabutol",
+      "role": "agent",
+      "designation": "Agent",
+      "employeeCode": "LLC-0022",
+      "department": "Operations",
+      "teamLeaderId": "Pia (Trainer)",
+      "isOnline": false,
+      "status": "offline",
+      "mouseActivity": 85,
+      "keyboardActivity": 90,
+      "lastHeartbeat": "2026-09-30T23:36:32.912Z",
+      "isPaused": false,
+      "currentApp": "None",
+      "currentTask": "Shift Concluded",
+      "isTracking": false,
+      "elapsedSeconds": 0,
+      "loginPlatform": "software"
+    },
+    "usr-1787281055170": {
+      "isOnline": false,
+      "department": "Operations",
+      "teamLeaderId": "None / Direct Executive",
+      "isPaused": false,
+      "lastHeartbeat": "2026-09-03T00:51:56.159Z",
+      "userName": "Agent_Admin",
+      "isTracking": false,
+      "mouseActivity": 0,
+      "elapsedSeconds": 0,
+      "designation": "Admin",
+      "employeeCode": "LLC-0001",
+      "currentTask": "Available / Ready",
+      "currentApp": "LLC Time Tracker Desktop Software",
+      "loginTime": "2026-09-03T00:51:52.622Z",
+      "role": "admin",
+      "keyboardActivity": 0,
+      "userId": "usr-1787281055170",
+      "status": "offline",
+      "loginPlatform": "software"
+    },
+    "usr-1787281086796": {
+      "userId": "usr-1787281086796",
+      "userName": "Team_Leader1",
+      "employeeCode": "LLC-0002",
+      "role": "team_lead",
+      "designation": "Team Leader",
+      "department": "Operations",
+      "teamLeaderId": "None / Direct Executive",
+      "isOnline": false,
+      "status": "offline",
+      "isTracking": false,
+      "isPaused": false,
+      "elapsedSeconds": 0,
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "currentTask": "Shift Concluded",
+      "currentApp": "Web Browser",
+      "loginPlatform": "software",
+      "lastHeartbeat": "2026-09-09T03:02:16.176Z"
+    },
+    "usr-llc-0026": {
+      "loginPlatform": "software",
+      "elapsedSeconds": 0,
+      "isTracking": false,
+      "currentTask": "Shift Concluded",
+      "teamLeaderId": "Admin (Admin)",
+      "designation": "Team Leader",
+      "userName": "Allen",
+      "keyboardActivity": 0,
+      "isPaused": false,
+      "loginTime": "2026-10-01T00:33:34.233Z",
+      "employeeCode": "LLC-0026",
+      "isOnline": false,
+      "department": "Operations",
+      "status": "offline",
+      "role": "team_lead",
+      "mouseActivity": 0,
+      "userId": "usr-llc-0026",
+      "lastHeartbeat": "2026-09-28T04:25:29.390Z",
+      "currentApp": "LLC Time Tracker Desktop Software"
+    },
+    "usr-llc-0025": {
+      "isTracking": false,
+      "employeeCode": "LLC-0025",
+      "userName": "Lyanne",
+      "keyboardActivity": 90,
+      "lastHeartbeat": "2026-09-30T08:52:36.878Z",
+      "teamLeaderId": "Admin (Admin)",
+      "role": "team_lead",
+      "isOnline": false,
+      "mouseActivity": 85,
+      "department": "Operations",
+      "isPaused": false,
+      "userId": "usr-llc-0025",
+      "status": "offline",
+      "currentApp": "None",
+      "designation": "Team Leader",
+      "loginPlatform": "software",
+      "elapsedSeconds": 0,
+      "currentTask": "Shift Concluded"
+    },
+    "usr-llc-0024": {
+      "isPaused": false,
+      "role": "team_lead",
+      "teamLeaderId": "Admin (Admin)",
+      "currentApp": "None",
+      "isOnline": false,
+      "employeeCode": "LLC-0024",
+      "userId": "usr-llc-0024",
+      "status": "offline",
+      "loginPlatform": "software",
+      "userName": "Carl",
+      "lastHeartbeat": "1970-01-01T00:00:00.000Z",
+      "elapsedSeconds": 0,
+      "department": "Operations",
+      "currentTask": "Shift Concluded",
+      "designation": "Team Leader",
+      "isTracking": false,
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "loginTime": "2026-09-30T16:16:05.824Z"
+    },
+    "usr-llc-0027": {
+      "isTracking": false,
+      "designation": "Team Leader",
+      "currentTask": "Shift Concluded",
+      "loginPlatform": "software",
+      "department": "Operations",
+      "role": "team_lead",
+      "isPaused": false,
+      "employeeCode": "LLC-0027",
+      "status": "offline",
+      "userId": "usr-llc-0027",
+      "mouseActivity": 0,
+      "elapsedSeconds": 0,
+      "isOnline": false,
+      "keyboardActivity": 0,
+      "currentApp": "None",
+      "teamLeaderId": "Admin (Admin)",
+      "lastHeartbeat": "1970-01-01T00:00:00.000Z",
+      "userName": "Bryan"
+    },
+    "usr-llc-0028": {
+      "loginPlatform": "software",
+      "isOnline": false,
+      "department": "Operations",
+      "isPaused": false,
+      "role": "agent",
+      "elapsedSeconds": 0,
+      "isTracking": false,
+      "userName": "Test Agent",
+      "keyboardActivity": 0,
+      "currentApp": "None",
+      "userId": "usr-llc-0028",
+      "status": "offline",
+      "employeeCode": "LLC-0028",
+      "mouseActivity": 0,
+      "lastHeartbeat": "1970-01-01T00:00:00.000Z",
+      "designation": "Agent",
+      "teamLeaderId": "Allen (Team Leader)",
+      "currentTask": "Shift Concluded"
+    },
+    "usr-llc-0029": {
+      "lastHeartbeat": "1970-01-01T00:00:00.000Z",
+      "userName": "Kyra",
+      "isTracking": false,
+      "designation": "Team Leader",
+      "status": "offline",
+      "userId": "usr-llc-0029",
+      "currentTask": "Shift Concluded",
+      "department": "Operations",
+      "isOnline": false,
+      "isPaused": false,
+      "mouseActivity": 0,
+      "employeeCode": "LLC-0029",
+      "keyboardActivity": 0,
+      "role": "team_lead",
+      "teamLeaderId": "Admin (Admin)",
+      "loginPlatform": "software",
+      "currentApp": "None",
+      "elapsedSeconds": 0
+    },
+    "usr-llc-0030": {
+      "currentApp": "None",
+      "userId": "usr-llc-0030",
+      "status": "offline",
+      "loginPlatform": "software",
+      "role": "team_lead",
+      "keyboardActivity": 0,
+      "elapsedSeconds": 0,
+      "department": "Operations",
+      "lastHeartbeat": "1970-01-01T00:00:00.000Z",
+      "userName": "Hosen",
+      "employeeCode": "LLC-0030",
+      "designation": "Team Leader",
+      "isPaused": false,
+      "currentTask": "Shift Concluded",
+      "isTracking": false,
+      "isOnline": false,
+      "mouseActivity": 0,
+      "teamLeaderId": "Admin (Admin)"
+    },
+    "usr-llc-0031": {
+      "lastHeartbeat": "1970-01-01T00:00:00.000Z",
+      "isPaused": false,
+      "isOnline": false,
+      "currentApp": "None",
+      "designation": "Team Leader",
+      "currentTask": "Shift Concluded",
+      "userName": "Danah",
+      "userId": "usr-llc-0031",
+      "status": "offline",
+      "mouseActivity": 0,
+      "isTracking": false,
+      "employeeCode": "LLC-0031",
+      "role": "team_lead",
+      "elapsedSeconds": 0,
+      "loginPlatform": "software",
+      "teamLeaderId": "Admin (Admin)",
+      "department": "Operations",
+      "keyboardActivity": 0
+    },
+    "usr-llc-0032": {
+      "loginPlatform": "software",
+      "status": "offline",
+      "userId": "usr-llc-0032",
+      "employeeCode": "LLC-0032",
+      "role": "qa",
+      "currentApp": "None",
+      "keyboardActivity": 0,
+      "teamLeaderId": "Pia (Trainer)",
+      "elapsedSeconds": 0,
+      "userName": "Claire",
+      "mouseActivity": 0,
+      "department": "Operations",
+      "isOnline": false,
+      "lastHeartbeat": "1970-01-01T00:00:00.000Z",
+      "isPaused": false,
+      "currentTask": "Shift Concluded",
+      "isTracking": false,
+      "designation": "QA Specialist"
+    },
+    "usr-llc-0033": {
+      "keyboardActivity": 0,
+      "currentTask": "Shift Concluded",
+      "teamLeaderId": "Pia (Trainer)",
+      "userName": "Jocelyn Enriquez",
+      "isTracking": false,
+      "lastHeartbeat": "1970-01-01T00:00:00.000Z",
+      "designation": "Agent",
+      "isPaused": false,
+      "mouseActivity": 0,
+      "isOnline": false,
+      "employeeCode": "LLC-0033",
+      "department": "Operations",
+      "elapsedSeconds": 0,
+      "status": "offline",
+      "userId": "usr-llc-0033",
+      "loginPlatform": "software",
+      "role": "agent",
+      "currentApp": "None"
     }
   },
   "timelogs": [
@@ -87,10 +743,10 @@
       "geoLocalStartTime": "9:16 AM",
       "appsUsed": [
         {
-          "category": "productive",
-          "durationSeconds": 270,
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe"
+          "icon": "Globe",
+          "category": "productive",
+          "durationSeconds": 270
         }
       ],
       "durationSeconds": 270,
@@ -107,9 +763,9 @@
       "mouseActivityAvg": 92,
       "appsUsed": [
         {
+          "category": "productive",
           "durationSeconds": 255,
           "icon": "Globe",
-          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software"
         }
       ],
@@ -156,10 +812,10 @@
       "geoTimezone": "Asia/Manila",
       "appsUsed": [
         {
-          "category": "productive",
+          "durationSeconds": 95,
           "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 95
+          "category": "productive"
         }
       ],
       "designation": "Agent",
@@ -196,10 +852,10 @@
       "designation": "Agent",
       "appsUsed": [
         {
+          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
-          "durationSeconds": 602,
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software"
+          "durationSeconds": 602
         }
       ],
       "geoLocalStartTime": "7:06 AM",
@@ -226,9 +882,9 @@
       "appsUsed": [
         {
           "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 70,
-          "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software"
+          "icon": "Globe"
         }
       ],
       "status": "completed"
@@ -238,10 +894,10 @@
       "geoLocalStartTime": "11:25 AM",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 669,
           "icon": "Globe",
-          "category": "productive"
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "startTime": "2026-08-21T03:10:17.745Z",
@@ -266,10 +922,10 @@
       "startTime": "2026-09-07T06:12:13.551Z",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "category": "productive",
           "durationSeconds": 7862,
-          "appName": "LLC Time Tracker Desktop Software"
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
+          "category": "productive"
         }
       ],
       "designation": "Agent",
@@ -298,9 +954,9 @@
       "designation": "Agent",
       "appsUsed": [
         {
-          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 8235,
+          "category": "productive",
           "icon": "Globe"
         }
       ],
@@ -328,10 +984,10 @@
       "notes": "Logged via LLC Time Tracker desktop client (Agent) (Subtracted 24m idle inactivity; shift extended by +24m)",
       "appsUsed": [
         {
+          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
-          "icon": "Globe",
           "durationSeconds": 2165,
-          "appName": "LLC Time Tracker Desktop Software"
+          "icon": "Globe"
         }
       ],
       "mouseActivityAvg": 26,
@@ -348,10 +1004,10 @@
       "status": "completed",
       "appsUsed": [
         {
-          "category": "productive",
+          "durationSeconds": 4,
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe",
-          "durationSeconds": 4
+          "category": "productive",
+          "icon": "Globe"
         }
       ],
       "endTime": "2026-09-07T23:52:21.985Z",
@@ -391,9 +1047,9 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
           "icon": "Globe",
-          "durationSeconds": 453
+          "durationSeconds": 453,
+          "category": "productive"
         }
       ]
     },
@@ -403,10 +1059,10 @@
       "notes": "Logged via LLC Time Tracker desktop client (Agent) (Subtracted 87m idle inactivity; shift extended by +87m)",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
           "durationSeconds": 7106,
-          "icon": "Globe"
+          "category": "productive",
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "id": "log-1788768407248",
@@ -436,10 +1092,10 @@
       "durationSeconds": 2837,
       "appsUsed": [
         {
-          "category": "productive",
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 2837,
-          "icon": "Globe"
+          "category": "productive"
         }
       ],
       "geoLocalEndTime": "8:31 AM",
@@ -465,10 +1121,10 @@
       "geoTimezone": "Asia/Manila",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 7656,
-          "icon": "Globe",
-          "category": "productive"
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
         }
       ],
       "id": "log-1788768442356",
@@ -492,10 +1148,10 @@
       "userId": "usr-1788394014525",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "durationSeconds": 14,
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software"
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 14,
+          "icon": "Globe"
         }
       ],
       "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
@@ -511,10 +1167,10 @@
       "status": "completed",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
+          "icon": "Globe",
           "durationSeconds": 166,
-          "icon": "Globe"
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
         }
       ],
       "id": "log-1788744204283",
@@ -541,10 +1197,10 @@
       "keyboardActivityAvg": 100,
       "appsUsed": [
         {
-          "durationSeconds": 52,
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe",
-          "category": "productive"
+          "durationSeconds": 52,
+          "category": "productive",
+          "icon": "Globe"
         }
       ],
       "date": "2026-09-08",
@@ -571,10 +1227,10 @@
       "date": "2026-09-08",
       "appsUsed": [
         {
-          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe",
-          "durationSeconds": 5102
+          "category": "productive",
+          "durationSeconds": 5102,
+          "icon": "Globe"
         }
       ],
       "userId": "usr-1788394014525",
@@ -602,10 +1258,10 @@
       "durationSeconds": 7970,
       "appsUsed": [
         {
-          "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 7970,
-          "category": "productive"
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
         }
       ],
       "status": "completed",
@@ -630,9 +1286,9 @@
       "startTime": "2026-09-08T04:09:12.865Z",
       "appsUsed": [
         {
+          "durationSeconds": 5836,
           "icon": "Globe",
           "category": "productive",
-          "durationSeconds": 5836,
           "appName": "LLC Time Tracker Desktop Software"
         }
       ],
@@ -662,9 +1318,9 @@
       "idleSeconds": 0,
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
           "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 6077
         }
       ],
@@ -689,10 +1345,10 @@
       "userId": "usr-superadmin-red",
       "appsUsed": [
         {
-          "durationSeconds": 27529,
+          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
-          "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software"
+          "durationSeconds": 27529,
+          "icon": "Globe"
         }
       ],
       "idleSeconds": 0,
@@ -707,8 +1363,8 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 29010,
           "category": "productive",
+          "durationSeconds": 29010,
           "icon": "Globe"
         }
       ],
@@ -743,9 +1399,9 @@
       "startTime": "2026-09-07T23:51:36.031Z",
       "appsUsed": [
         {
-          "durationSeconds": 29479,
-          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 29479,
           "icon": "Globe"
         }
       ],
@@ -769,9 +1425,9 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 29298,
+          "category": "productive",
           "icon": "Globe",
-          "category": "productive"
+          "durationSeconds": 29298
         }
       ],
       "designation": "Agent",
@@ -795,9 +1451,9 @@
       "appsUsed": [
         {
           "category": "productive",
-          "durationSeconds": 2147,
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe"
+          "icon": "Globe",
+          "durationSeconds": 2147
         }
       ],
       "geoLocalEndTime": "4:05 PM",
@@ -816,10 +1472,10 @@
     {
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
+          "category": "productive",
           "durationSeconds": 2248,
-          "category": "productive"
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
@@ -845,10 +1501,10 @@
       "keyboardActivityAvg": 18,
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 25922,
+          "icon": "Globe",
           "category": "productive",
-          "icon": "Globe"
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "date": "2026-09-08",
@@ -872,9 +1528,9 @@
     {
       "appsUsed": [
         {
-          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
+          "icon": "Globe",
           "durationSeconds": 29582
         }
       ],
@@ -906,9 +1562,9 @@
       "appsUsed": [
         {
           "durationSeconds": 31868,
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
-          "icon": "Globe"
+          "category": "productive"
         }
       ],
       "geoLocalEndTime": "4:43 PM",
@@ -971,8 +1627,8 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 32695,
           "icon": "Globe",
+          "durationSeconds": 32695,
           "category": "productive"
         }
       ],
@@ -993,8 +1649,8 @@
       "notes": "Logged via LLC Time Tracker desktop client (Agent)",
       "appsUsed": [
         {
-          "durationSeconds": 57880,
           "icon": "Globe",
+          "durationSeconds": 57880,
           "appName": "LLC Time Tracker Desktop Software",
           "category": "productive"
         }
@@ -1026,8 +1682,8 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe",
           "category": "productive",
+          "icon": "Globe",
           "durationSeconds": 2175
         }
       ],
@@ -1042,9 +1698,9 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
           "durationSeconds": 56,
-          "icon": "Globe",
-          "category": "productive"
+          "icon": "Globe"
         }
       ],
       "task": "Data Entry & Market Research",
@@ -1081,10 +1737,10 @@
       "userId": "usr-superadmin-red",
       "appsUsed": [
         {
-          "durationSeconds": 82229,
-          "category": "productive",
           "icon": "Globe",
-          "appName": "Google Chrome / External Application"
+          "durationSeconds": 82229,
+          "appName": "Google Chrome / External Application",
+          "category": "productive"
         }
       ],
       "date": "2026-09-09",
@@ -1113,9 +1769,9 @@
       "appsUsed": [
         {
           "icon": "Globe",
-          "durationSeconds": 86243,
+          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "durationSeconds": 86243
         }
       ]
     },
@@ -1126,9 +1782,9 @@
       "appsUsed": [
         {
           "icon": "Globe",
-          "durationSeconds": 138,
           "appName": "Google Chrome / External Application",
-          "category": "productive"
+          "category": "productive",
+          "durationSeconds": 138
         }
       ],
       "status": "completed",
@@ -1151,10 +1807,10 @@
       "date": "2026-09-09",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 54,
           "category": "productive",
-          "icon": "Globe",
-          "durationSeconds": 54
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
         }
       ],
       "geoLocalEndTime": "7:58 AM",
@@ -1208,10 +1864,10 @@
       "geoLocalStartTime": "8:59 AM",
       "appsUsed": [
         {
-          "durationSeconds": 3875,
-          "icon": "Globe",
+          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "durationSeconds": 3875,
+          "icon": "Globe"
         }
       ],
       "date": "2026-09-09",
@@ -1241,10 +1897,10 @@
       "task": "Email Reachout",
       "appsUsed": [
         {
+          "durationSeconds": 11321,
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe",
           "category": "productive",
-          "durationSeconds": 11321
+          "icon": "Globe"
         }
       ],
       "mouseActivityAvg": 100,
@@ -1265,8 +1921,8 @@
       "appsUsed": [
         {
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 226
         }
       ],
@@ -1290,10 +1946,10 @@
     {
       "appsUsed": [
         {
-          "category": "productive",
+          "durationSeconds": 490,
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 490
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "geoLocalEndTime": "11:12 AM",
@@ -1336,9 +1992,9 @@
       "appsUsed": [
         {
           "durationSeconds": 328,
-          "category": "productive",
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe"
+          "category": "productive"
         }
       ],
       "status": "completed"
@@ -1359,10 +2015,10 @@
       "endTime": "2026-09-09T03:02:14.111Z",
       "appsUsed": [
         {
-          "category": "productive",
-          "durationSeconds": 11590,
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe"
+          "category": "productive",
+          "icon": "Globe",
+          "durationSeconds": 11590
         }
       ],
       "mouseActivityAvg": 100,
@@ -1391,9 +2047,9 @@
       "endTime": "2026-09-09T03:04:58.562Z",
       "appsUsed": [
         {
-          "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 27,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
           "icon": "Globe"
         }
       ],
@@ -1407,8 +2063,8 @@
         {
           "category": "productive",
           "icon": "Globe",
-          "durationSeconds": 17335,
-          "appName": "LLC Time Tracker Desktop Software"
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 17335
         }
       ],
       "endTime": "2026-09-09T06:53:31.623Z",
@@ -1440,9 +2096,9 @@
       "userAvatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250",
       "appsUsed": [
         {
-          "category": "productive",
-          "durationSeconds": 29199,
           "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 29199,
+          "category": "productive",
           "icon": "Globe"
         }
       ],
@@ -1599,10 +2255,10 @@
       "geoLocalStartTime": "7:52 AM",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "durationSeconds": 29513,
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "category": "productive",
+          "durationSeconds": 29513,
+          "icon": "Globe"
         }
       ],
       "endTime": "2026-09-09T08:04:26.157Z",
@@ -1658,10 +2314,10 @@
       "idleSeconds": 0,
       "appsUsed": [
         {
-          "category": "productive",
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 4265
+          "category": "productive",
+          "durationSeconds": 4265,
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "notes": "Logged via LLC Time Tracker desktop client (Agent)",
@@ -1691,10 +2347,10 @@
       "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "durationSeconds": 17949,
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software"
+          "durationSeconds": 17949,
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
         }
       ],
       "userId": "usr-llc-0012",
@@ -1718,10 +2374,10 @@
       "keyboardActivityAvg": 20,
       "appsUsed": [
         {
-          "icon": "Globe",
           "durationSeconds": 27916,
+          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "icon": "Globe"
         }
       ],
       "userId": "usr-1788394257822",
@@ -1750,9 +2406,9 @@
       "geoLocalStartTime": "7:56 AM",
       "appsUsed": [
         {
+          "category": "productive",
           "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
           "durationSeconds": 29507
         }
       ]
@@ -1760,10 +2416,10 @@
     {
       "appsUsed": [
         {
-          "durationSeconds": 5418,
-          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
-          "category": "productive"
+          "durationSeconds": 5418,
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "date": "2026-09-07",
@@ -1803,10 +2459,10 @@
       "userId": "usr-superadmin-red",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 30826,
+          "icon": "Globe",
           "category": "productive",
-          "icon": "Globe"
+          "durationSeconds": 30826,
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "date": "2026-09-09",
@@ -1819,10 +2475,10 @@
       "startTime": "2026-09-07T06:10:50.978Z",
       "appsUsed": [
         {
-          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 6963,
-          "category": "productive"
+          "icon": "Globe",
+          "category": "productive",
+          "durationSeconds": 6963
         }
       ],
       "idleSeconds": 1860,
@@ -1855,10 +2511,10 @@
       "status": "completed",
       "appsUsed": [
         {
-          "durationSeconds": 31148,
           "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
           "category": "productive",
-          "icon": "Globe"
+          "durationSeconds": 31148
         }
       ],
       "userAvatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250",
@@ -1884,10 +2540,10 @@
       "endTime": "2026-09-09T08:24:45.861Z",
       "appsUsed": [
         {
-          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe",
-          "durationSeconds": 30811
+          "durationSeconds": 30811,
+          "category": "productive",
+          "icon": "Globe"
         }
       ],
       "task": "Email Reachout",
@@ -1909,10 +2565,10 @@
       "startTime": "2026-09-07T06:11:23.146Z",
       "appsUsed": [
         {
+          "icon": "Globe",
           "durationSeconds": 6926,
-          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
-          "icon": "Globe"
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "id": "log-1788768409692",
@@ -1928,10 +2584,10 @@
       "geoLocalStartTime": "8:39 AM",
       "appsUsed": [
         {
-          "durationSeconds": 28869,
+          "category": "productive",
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "durationSeconds": 28869,
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "userId": "usr-superadmin-red",
@@ -1954,9 +2610,9 @@
       "id": "log-1788944286269",
       "appsUsed": [
         {
+          "durationSeconds": 32247,
           "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
-          "durationSeconds": 32247,
           "icon": "Globe"
         }
       ],
@@ -2013,10 +2669,10 @@
       "idleSeconds": 0,
       "appsUsed": [
         {
-          "icon": "Globe",
-          "durationSeconds": 93,
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software"
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 93,
+          "icon": "Globe"
         }
       ],
       "geoLocalEndTime": "4:59 PM",
@@ -2049,10 +2705,10 @@
       "notes": "Logged via LLC Time Tracker desktop client (Agent)",
       "appsUsed": [
         {
-          "category": "productive",
           "icon": "Globe",
-          "durationSeconds": 38083,
-          "appName": "LLC Time Tracker Desktop Software"
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 38083
         }
       ],
       "date": "2026-09-09",
@@ -2074,10 +2730,10 @@
       "task": "Email Reachout",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 84980,
           "icon": "Globe",
-          "category": "productive"
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "durationSeconds": 84980
         }
       ],
       "geoLocalStartTime": "7:51 AM",
@@ -2110,10 +2766,10 @@
       "idleSeconds": 0,
       "appsUsed": [
         {
+          "category": "productive",
           "durationSeconds": 55900,
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ]
     },
@@ -2131,9 +2787,9 @@
       "geoTimezone": "Asia/Manila",
       "appsUsed": [
         {
-          "category": "productive",
-          "appName": "Google Chrome / External Application",
           "durationSeconds": 86194,
+          "appName": "Google Chrome / External Application",
+          "category": "productive",
           "icon": "Globe"
         }
       ],
@@ -2157,10 +2813,10 @@
       "notes": "Logged via LLC Time Tracker desktop client (Agent)",
       "appsUsed": [
         {
+          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
-          "durationSeconds": 1068,
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software"
+          "durationSeconds": 1068
         }
       ],
       "mouseActivityAvg": 100,
@@ -2178,10 +2834,10 @@
       "date": "2026-09-10",
       "appsUsed": [
         {
-          "icon": "Globe",
+          "category": "productive",
           "appName": "Google Chrome / External Application",
-          "durationSeconds": 1,
-          "category": "productive"
+          "icon": "Globe",
+          "durationSeconds": 1
         }
       ],
       "idleSeconds": 0,
@@ -2205,10 +2861,10 @@
       "status": "completed",
       "appsUsed": [
         {
-          "icon": "Globe",
           "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 86472,
-          "appName": "LLC Time Tracker Desktop Software"
+          "icon": "Globe"
         }
       ],
       "userAvatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250",
@@ -2247,10 +2903,10 @@
       "keyboardActivityAvg": 20,
       "appsUsed": [
         {
-          "icon": "Globe",
+          "category": "productive",
           "durationSeconds": 2228,
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "date": "2026-09-10",
@@ -2269,9 +2925,9 @@
       "keyboardActivityAvg": 100,
       "appsUsed": [
         {
-          "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 78541,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
           "icon": "Globe"
         }
       ],
@@ -2303,10 +2959,10 @@
       "geoTimezone": "Asia/Manila",
       "appsUsed": [
         {
-          "icon": "Globe",
           "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 6
+          "durationSeconds": 6,
+          "icon": "Globe"
         }
       ],
       "mouseActivityAvg": 53,
@@ -2318,8 +2974,8 @@
       "appsUsed": [
         {
           "durationSeconds": 324,
-          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
           "category": "productive"
         }
       ],
@@ -2359,9 +3015,9 @@
       "task": "Data Entry & Market Research",
       "appsUsed": [
         {
+          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
           "durationSeconds": 6720,
-          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive"
         }
       ],
@@ -2387,8 +3043,8 @@
         {
           "icon": "Globe",
           "durationSeconds": 4985,
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "idleSeconds": 0,
@@ -2404,10 +3060,10 @@
       "userId": "usr-1788394130787",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
           "icon": "Globe",
-          "durationSeconds": 7629
+          "durationSeconds": 7629,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
         }
       ],
       "mouseActivityAvg": 100,
@@ -2450,6 +3106,1742 @@
           "durationSeconds": 11718
         }
       ]
+    },
+    {
+      "id": "log-1790762717140",
+      "userId": "usr-llc-0023",
+      "userName": "Juan David",
+      "userAvatar": "https://images.unsplash.com/photo-1534528763775?auto=format&fit=crop&q=80&w=250",
+      "designation": "Agent",
+      "task": "Data Entry & Market Research",
+      "startTime": "2026-09-29T16:33:24.916Z",
+      "endTime": "2026-09-30T10:05:16.831Z",
+      "durationSeconds": 63112,
+      "status": "completed",
+      "geoTimezone": "Asia/Manila",
+      "geoLocalStartTime": "12:33 AM",
+      "geoLocalEndTime": "6:05 PM",
+      "mouseActivityAvg": 100,
+      "keyboardActivityAvg": 100,
+      "idleSeconds": 0,
+      "date": "2026-09-30",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "appsUsed": [
+        {
+          "appName": "Google Chrome / External Application",
+          "icon": "Globe",
+          "durationSeconds": 63112,
+          "category": "productive"
+        }
+      ]
+    },
+    {
+      "geoLocalEndTime": "10:35 PM",
+      "keyboardActivityAvg": 100,
+      "date": "2026-09-30",
+      "durationSeconds": 4193,
+      "endTime": "2026-09-30T14:35:48.158Z",
+      "geoTimezone": "Asia/Manila",
+      "mouseActivityAvg": 100,
+      "startTime": "2026-09-30T13:25:54.200Z",
+      "designation": "Agent",
+      "userName": "Daina Yanez",
+      "task": "Email Reachout",
+      "idleSeconds": 0,
+      "geoLocalStartTime": "9:25 PM",
+      "appsUsed": [
+        {
+          "category": "productive",
+          "durationSeconds": 4193,
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
+        }
+      ],
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "id": "log-1790778948159",
+      "status": "completed",
+      "userId": "usr-1788394075900",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)"
+    },
+    {
+      "appsUsed": [
+        {
+          "category": "productive",
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 3
+        }
+      ],
+      "mouseActivityAvg": 100,
+      "geoLocalEndTime": "9:25 PM",
+      "id": "log-1790774754202",
+      "durationSeconds": 3,
+      "userId": "usr-1788394075900",
+      "status": "completed",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "idleSeconds": 0,
+      "geoLocalStartTime": "9:25 PM",
+      "startTime": "2026-09-30T13:25:50.997Z",
+      "designation": "Agent",
+      "endTime": "2026-09-30T13:25:54.200Z",
+      "date": "2026-09-30",
+      "userName": "Daina Yanez",
+      "geoTimezone": "Asia/Manila",
+      "task": "Data Entry & Market Research",
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "keyboardActivityAvg": 100
+    },
+    {
+      "durationSeconds": 2,
+      "designation": "Agent",
+      "geoLocalEndTime": "2:32 PM",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "date": "2026-09-30",
+      "appsUsed": [
+        {
+          "durationSeconds": 2,
+          "category": "productive",
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software"
+        }
+      ],
+      "geoLocalStartTime": "2:32 PM",
+      "task": "Data Entry & Market Research",
+      "geoTimezone": "Asia/Manila",
+      "startTime": "2026-09-30T06:32:37.863Z",
+      "userName": "Daina Yanez",
+      "keyboardActivityAvg": 100,
+      "userId": "usr-1788394075900",
+      "status": "completed",
+      "id": "log-1790749960215",
+      "endTime": "2026-09-30T06:32:40.214Z",
+      "mouseActivityAvg": 100,
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "idleSeconds": 0
+    },
+    {
+      "designation": "Agent",
+      "keyboardActivityAvg": 100,
+      "userName": "Daina Yanez",
+      "durationSeconds": 3,
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "startTime": "2026-09-30T00:47:16.931Z",
+      "geoLocalEndTime": "8:47 AM",
+      "geoTimezone": "Asia/Manila",
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "endTime": "2026-09-30T00:47:20.251Z",
+      "date": "2026-09-30",
+      "appsUsed": [
+        {
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
+          "category": "productive",
+          "durationSeconds": 3
+        }
+      ],
+      "status": "completed",
+      "userId": "usr-1788394075900",
+      "id": "log-1790729240253",
+      "idleSeconds": 0,
+      "geoLocalStartTime": "8:47 AM",
+      "mouseActivityAvg": 100,
+      "task": "Data Entry & Market Research"
+    },
+    {
+      "task": "Email Reachout",
+      "appsUsed": [
+        {
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "icon": "Globe",
+          "durationSeconds": 19729
+        }
+      ],
+      "designation": "Agent",
+      "keyboardActivityAvg": 100,
+      "date": "2026-09-29",
+      "startTime": "2026-09-29T06:51:07.240Z",
+      "endTime": "2026-09-29T12:19:56.477Z",
+      "geoTimezone": "Asia/Manila",
+      "durationSeconds": 19729,
+      "userName": "Daina Yanez",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "mouseActivityAvg": 100,
+      "geoLocalEndTime": "8:19 PM",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "userId": "usr-1788394075900",
+      "id": "log-1790684396481",
+      "idleSeconds": 0,
+      "status": "completed",
+      "geoLocalStartTime": "2:51 PM"
+    },
+    {
+      "designation": "Agent",
+      "endTime": "2026-09-29T06:51:07.240Z",
+      "appsUsed": [
+        {
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
+          "category": "productive",
+          "durationSeconds": 3
+        }
+      ],
+      "id": "log-1790664667241",
+      "keyboardActivityAvg": 100,
+      "geoTimezone": "Asia/Manila",
+      "geoLocalEndTime": "2:51 PM",
+      "durationSeconds": 3,
+      "geoLocalStartTime": "2:51 PM",
+      "task": "Data Entry & Market Research",
+      "startTime": "2026-09-29T06:51:04.200Z",
+      "status": "completed",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "userId": "usr-llc-0008",
+      "userName": "Daina Yanez",
+      "date": "2026-09-29",
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "idleSeconds": 0,
+      "mouseActivityAvg": 100
+    },
+    {
+      "mouseActivityAvg": 100,
+      "geoTimezone": "Asia/Manila",
+      "task": "Email Reachout",
+      "date": "2026-09-29",
+      "appsUsed": [
+        {
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "icon": "Globe",
+          "durationSeconds": 11675
+        }
+      ],
+      "id": "log-1790654691228",
+      "designation": "Agent",
+      "keyboardActivityAvg": 100,
+      "geoLocalStartTime": "8:50 AM",
+      "idleSeconds": 0,
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "endTime": "2026-09-29T04:04:51.226Z",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "status": "completed",
+      "userId": "usr-llc-0008",
+      "userName": "Daina Yanez",
+      "geoLocalEndTime": "12:04 PM",
+      "durationSeconds": 11675,
+      "startTime": "2026-09-29T00:50:15.937Z"
+    },
+    {
+      "endTime": "2026-09-29T00:50:15.937Z",
+      "date": "2026-09-29",
+      "idleSeconds": 0,
+      "durationSeconds": 5,
+      "geoLocalEndTime": "8:50 AM",
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "userName": "Daina Yanez",
+      "task": "Data Entry & Market Research",
+      "geoTimezone": "Asia/Manila",
+      "geoLocalStartTime": "8:50 AM",
+      "mouseActivityAvg": 100,
+      "status": "completed",
+      "userId": "usr-llc-0008",
+      "startTime": "2026-09-29T00:50:10.718Z",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "designation": "Agent",
+      "keyboardActivityAvg": 100,
+      "appsUsed": [
+        {
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 5,
+          "icon": "Globe"
+        }
+      ],
+      "id": "log-1790643015939"
+    },
+    {
+      "id": "log-1790601725568",
+      "task": "Data Entry & Market Research",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "designation": "Agent",
+      "startTime": "2026-09-28T08:16:55.831Z",
+      "userName": "Daina Yanez",
+      "geoTimezone": "Asia/Manila",
+      "date": "2026-09-28",
+      "mouseActivityAvg": 100,
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "userId": "usr-1788394075900",
+      "status": "completed",
+      "geoLocalEndTime": "9:22 PM",
+      "idleSeconds": 0,
+      "durationSeconds": 18309,
+      "endTime": "2026-09-28T13:22:05.567Z",
+      "geoLocalStartTime": "4:16 PM",
+      "appsUsed": [
+        {
+          "durationSeconds": 18309,
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
+        }
+      ],
+      "keyboardActivityAvg": 100
+    },
+    {
+      "id": "log-1790568509285",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "durationSeconds": 11236,
+      "designation": "Agent",
+      "geoLocalEndTime": "12:08 PM",
+      "userName": "Daina Yanez",
+      "geoLocalStartTime": "9:01 AM",
+      "geoTimezone": "Asia/Manila",
+      "mouseActivityAvg": 100,
+      "endTime": "2026-09-28T04:08:29.272Z",
+      "date": "2026-09-28",
+      "appsUsed": [
+        {
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 11236,
+          "category": "productive",
+          "icon": "Globe"
+        }
+      ],
+      "status": "completed",
+      "userId": "usr-1788394075900",
+      "idleSeconds": 0,
+      "keyboardActivityAvg": 100,
+      "startTime": "2026-09-28T01:01:12.333Z",
+      "task": "Data Entry & Market Research",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)"
+    },
+    {
+      "geoLocalStartTime": "8:56 PM",
+      "geoTimezone": "Asia/Manila",
+      "mouseActivityAvg": 100,
+      "keyboardActivityAvg": 100,
+      "designation": "Agent",
+      "userName": "Daina Yanez",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "endTime": "2026-09-25T12:56:41.198Z",
+      "startTime": "2026-09-25T12:56:37.841Z",
+      "task": "Data Entry & Market Research",
+      "idleSeconds": 0,
+      "appsUsed": [
+        {
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "durationSeconds": 3,
+          "icon": "Globe"
+        }
+      ],
+      "geoLocalEndTime": "8:56 PM",
+      "date": "2026-09-25",
+      "status": "completed",
+      "durationSeconds": 3,
+      "userId": "usr-1788394075900",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "id": "log-1790341001199"
+    },
+    {
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "designation": "Agent",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "id": "log-1790322443320",
+      "appsUsed": [
+        {
+          "category": "productive",
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 3
+        }
+      ],
+      "mouseActivityAvg": 100,
+      "geoTimezone": "Asia/Manila",
+      "startTime": "2026-09-25T07:47:20.042Z",
+      "geoLocalStartTime": "3:47 PM",
+      "task": "Data Entry & Market Research",
+      "endTime": "2026-09-25T07:47:23.319Z",
+      "idleSeconds": 0,
+      "keyboardActivityAvg": 100,
+      "status": "completed",
+      "userId": "usr-1788394075900",
+      "date": "2026-09-25",
+      "geoLocalEndTime": "3:47 PM",
+      "userName": "Daina Yanez",
+      "durationSeconds": 3
+    },
+    {
+      "geoLocalStartTime": "9:03 AM",
+      "id": "log-1790298196579",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "appsUsed": [
+        {
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "durationSeconds": 3
+        }
+      ],
+      "mouseActivityAvg": 100,
+      "idleSeconds": 0,
+      "startTime": "2026-09-25T01:03:12.796Z",
+      "designation": "Agent",
+      "geoLocalEndTime": "9:03 AM",
+      "durationSeconds": 3,
+      "status": "completed",
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "endTime": "2026-09-25T01:03:16.578Z",
+      "userId": "usr-1788394075900",
+      "task": "Data Entry & Market Research",
+      "keyboardActivityAvg": 100,
+      "geoTimezone": "Asia/Manila",
+      "date": "2026-09-25",
+      "userName": "Daina Yanez"
+    },
+    {
+      "startTime": "2026-09-23T12:55:19.378Z",
+      "status": "completed",
+      "durationSeconds": 3,
+      "userId": "usr-1788394075900",
+      "geoLocalEndTime": "8:55 PM",
+      "mouseActivityAvg": 100,
+      "designation": "Agent",
+      "endTime": "2026-09-23T12:55:22.752Z",
+      "userName": "Daina Yanez",
+      "geoTimezone": "Asia/Manila",
+      "geoLocalStartTime": "8:55 PM",
+      "date": "2026-09-23",
+      "id": "log-1790168122753",
+      "keyboardActivityAvg": 100,
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "idleSeconds": 0,
+      "task": "Data Entry & Market Research",
+      "appsUsed": [
+        {
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
+          "category": "productive",
+          "durationSeconds": 3
+        }
+      ]
+    },
+    {
+      "mouseActivityAvg": 96,
+      "geoLocalStartTime": "9:17 AM",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "geoTimezone": "Asia/Manila",
+      "keyboardActivityAvg": 96,
+      "designation": "Agent",
+      "id": "log-1790137105666",
+      "appsUsed": [
+        {
+          "icon": "Globe",
+          "durationSeconds": 10877,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
+        }
+      ],
+      "startTime": "2026-09-23T01:17:08.447Z",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "task": "Data Entry & Market Research",
+      "idleSeconds": 0,
+      "userName": "Daina Yanez",
+      "durationSeconds": 10877,
+      "userId": "usr-1788394075900",
+      "status": "completed",
+      "geoLocalEndTime": "12:18 PM",
+      "date": "2026-09-23",
+      "endTime": "2026-09-23T04:18:25.664Z"
+    },
+    {
+      "geoTimezone": "Asia/Manila",
+      "keyboardActivityAvg": 100,
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "userName": "Daina Yanez",
+      "notes": "Task segment for Email Reachout (Switched to Data Entry & Market Research)",
+      "id": "log-1790126228449",
+      "designation": "Agent",
+      "endTime": "2026-09-23T01:17:08.447Z",
+      "task": "Email Reachout",
+      "idleSeconds": 0,
+      "geoLocalEndTime": "9:17 AM",
+      "userId": "usr-1788394075900",
+      "startTime": "2026-09-23T01:17:03.495Z",
+      "durationSeconds": 4,
+      "status": "completed",
+      "appsUsed": [
+        {
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 4,
+          "icon": "Globe"
+        }
+      ],
+      "geoLocalStartTime": "9:17 AM",
+      "date": "2026-09-23",
+      "mouseActivityAvg": 100
+    },
+    {
+      "appsUsed": [
+        {
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 2,
+          "category": "productive"
+        }
+      ],
+      "idleSeconds": 0,
+      "task": "Data Entry & Market Research",
+      "startTime": "2026-09-23T01:17:00.507Z",
+      "date": "2026-09-23",
+      "endTime": "2026-09-23T01:17:03.495Z",
+      "status": "completed",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "userId": "usr-1788394075900",
+      "userName": "Daina Yanez",
+      "mouseActivityAvg": 100,
+      "geoTimezone": "Asia/Manila",
+      "durationSeconds": 2,
+      "geoLocalEndTime": "9:17 AM",
+      "geoLocalStartTime": "9:17 AM",
+      "keyboardActivityAvg": 100,
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "designation": "Agent",
+      "id": "log-1790126223496"
+    },
+    {
+      "id": "log-1790103022816",
+      "designation": "Agent",
+      "userName": "Daina Yanez",
+      "startTime": "2026-09-22T18:50:20.371Z",
+      "geoTimezone": "Asia/Manila",
+      "endTime": "2026-09-22T18:50:22.815Z",
+      "date": "2026-09-23",
+      "appsUsed": [
+        {
+          "durationSeconds": 2,
+          "icon": "Globe",
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software"
+        }
+      ],
+      "geoLocalStartTime": "2:50 AM",
+      "status": "completed",
+      "keyboardActivityAvg": 100,
+      "userId": "usr-1788394075900",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "idleSeconds": 0,
+      "task": "Data Entry & Market Research",
+      "geoLocalEndTime": "2:50 AM",
+      "mouseActivityAvg": 100,
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "durationSeconds": 2
+    },
+    {
+      "geoLocalStartTime": "2:49 AM",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "mouseActivityAvg": 100,
+      "id": "log-1790102961167",
+      "keyboardActivityAvg": 100,
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "userName": "Daina Yanez",
+      "idleSeconds": 0,
+      "designation": "Agent",
+      "task": "Data Entry & Market Research",
+      "startTime": "2026-09-22T18:49:11.994Z",
+      "endTime": "2026-09-22T18:49:21.165Z",
+      "appsUsed": [
+        {
+          "durationSeconds": 9,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "icon": "Globe"
+        }
+      ],
+      "status": "completed",
+      "userId": "usr-1788394075900",
+      "date": "2026-09-23",
+      "geoTimezone": "Asia/Manila",
+      "geoLocalEndTime": "2:49 AM",
+      "durationSeconds": 9
+    },
+    {
+      "geoLocalStartTime": "8:44 AM",
+      "keyboardActivityAvg": 100,
+      "date": "2026-09-22",
+      "idleSeconds": 0,
+      "task": "Email Reachout",
+      "mouseActivityAvg": 100,
+      "endTime": "2026-09-22T03:58:18.110Z",
+      "appsUsed": [
+        {
+          "durationSeconds": 11647,
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
+        }
+      ],
+      "userId": "usr-1788394075900",
+      "status": "completed",
+      "durationSeconds": 11647,
+      "geoLocalEndTime": "11:58 AM",
+      "id": "log-1790049498112",
+      "geoTimezone": "Asia/Manila",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "designation": "Agent",
+      "userName": "Daina Yanez",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "startTime": "2026-09-22T00:44:10.897Z"
+    },
+    {
+      "mouseActivityAvg": 100,
+      "geoLocalStartTime": "8:44 AM",
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "idleSeconds": 0,
+      "endTime": "2026-09-22T00:44:10.897Z",
+      "appsUsed": [
+        {
+          "category": "productive",
+          "durationSeconds": 3,
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software"
+        }
+      ],
+      "userId": "usr-1788394075900",
+      "status": "completed",
+      "startTime": "2026-09-22T00:44:07.114Z",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "geoLocalEndTime": "8:44 AM",
+      "durationSeconds": 3,
+      "geoTimezone": "Asia/Manila",
+      "keyboardActivityAvg": 100,
+      "id": "log-1790037850898",
+      "date": "2026-09-22",
+      "task": "Data Entry & Market Research",
+      "designation": "Agent",
+      "userName": "Daina Yanez"
+    },
+    {
+      "status": "completed",
+      "userId": "usr-1788394075900",
+      "idleSeconds": 0,
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "keyboardActivityAvg": 100,
+      "startTime": "2026-09-21T07:55:16.681Z",
+      "mouseActivityAvg": 100,
+      "endTime": "2026-09-21T07:55:39.854Z",
+      "id": "log-1789977339856",
+      "appsUsed": [
+        {
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "durationSeconds": 23
+        }
+      ],
+      "geoLocalEndTime": "3:55 PM",
+      "geoTimezone": "Asia/Manila",
+      "date": "2026-09-21",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "durationSeconds": 23,
+      "designation": "Agent",
+      "geoLocalStartTime": "3:55 PM",
+      "userName": "Daina Yanez",
+      "task": "Data Entry & Market Research"
+    },
+    {
+      "geoTimezone": "Asia/Manila",
+      "id": "log-1789976879883",
+      "endTime": "2026-09-21T07:47:59.879Z",
+      "geoLocalStartTime": "7:31 AM",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "appsUsed": [
+        {
+          "durationSeconds": 29791,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "icon": "Globe"
+        }
+      ],
+      "designation": "Agent",
+      "durationSeconds": 29791,
+      "geoLocalEndTime": "3:47 PM",
+      "idleSeconds": 0,
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "date": "2026-09-21",
+      "status": "completed",
+      "keyboardActivityAvg": 100,
+      "userId": "usr-1788394075900",
+      "startTime": "2026-09-20T23:31:27.908Z",
+      "userName": "Daina Yanez",
+      "task": "Data Entry & Market Research",
+      "mouseActivityAvg": 100
+    },
+    {
+      "designation": "Agent",
+      "userName": "Daina Yanez",
+      "geoLocalStartTime": "7:47 AM",
+      "mouseActivityAvg": 100,
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "durationSeconds": 29362,
+      "startTime": "2026-09-17T23:47:36.235Z",
+      "geoLocalEndTime": "3:56 PM",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "geoTimezone": "Asia/Manila",
+      "endTime": "2026-09-18T07:56:58.550Z",
+      "date": "2026-09-18",
+      "appsUsed": [
+        {
+          "durationSeconds": 29362,
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
+        }
+      ],
+      "status": "completed",
+      "userId": "usr-1788394075900",
+      "id": "log-1789718218554",
+      "idleSeconds": 0,
+      "keyboardActivityAvg": 100,
+      "task": "Email Reachout"
+    },
+    {
+      "keyboardActivityAvg": 100,
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "task": "Data Entry & Market Research",
+      "mouseActivityAvg": 100,
+      "idleSeconds": 0,
+      "date": "2026-09-18",
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "appsUsed": [
+        {
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
+          "category": "productive",
+          "durationSeconds": 4
+        }
+      ],
+      "status": "completed",
+      "userId": "usr-1788394075900",
+      "startTime": "2026-09-17T23:47:32.173Z",
+      "id": "log-1789688856235",
+      "designation": "Agent",
+      "userName": "Daina Yanez",
+      "geoLocalStartTime": "7:47 AM",
+      "geoTimezone": "Asia/Manila",
+      "endTime": "2026-09-17T23:47:36.235Z",
+      "geoLocalEndTime": "7:47 AM",
+      "durationSeconds": 4
+    },
+    {
+      "date": "2026-09-17",
+      "status": "completed",
+      "userId": "usr-1788394075900",
+      "geoTimezone": "Asia/Manila",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "durationSeconds": 29643,
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "endTime": "2026-09-17T08:02:15.272Z",
+      "geoLocalStartTime": "7:48 AM",
+      "geoLocalEndTime": "4:02 PM",
+      "designation": "Agent",
+      "startTime": "2026-09-16T23:48:11.385Z",
+      "task": "Email Reachout",
+      "appsUsed": [
+        {
+          "durationSeconds": 29643,
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
+        }
+      ],
+      "idleSeconds": 0,
+      "keyboardActivityAvg": 100,
+      "id": "log-1789632135276",
+      "userName": "Daina Yanez",
+      "mouseActivityAvg": 100
+    },
+    {
+      "durationSeconds": 5,
+      "keyboardActivityAvg": 100,
+      "designation": "Agent",
+      "geoLocalEndTime": "7:48 AM",
+      "mouseActivityAvg": 100,
+      "id": "log-1789602491386",
+      "status": "completed",
+      "endTime": "2026-09-16T23:48:11.385Z",
+      "userId": "usr-1788394075900",
+      "appsUsed": [
+        {
+          "icon": "Globe",
+          "durationSeconds": 5,
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software"
+        }
+      ],
+      "geoTimezone": "Asia/Manila",
+      "date": "2026-09-17",
+      "geoLocalStartTime": "7:48 AM",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "userName": "Daina Yanez",
+      "idleSeconds": 0,
+      "startTime": "2026-09-16T23:48:06.034Z",
+      "task": "Data Entry & Market Research",
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)"
+    },
+    {
+      "userName": "Daina Yanez",
+      "date": "2026-09-16",
+      "geoTimezone": "Asia/Manila",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "designation": "Agent",
+      "status": "completed",
+      "startTime": "2026-09-15T23:46:04.821Z",
+      "task": "Email Reachout",
+      "geoLocalStartTime": "7:46 AM",
+      "userId": "usr-1788394075900",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "idleSeconds": 0,
+      "geoLocalEndTime": "4:06 PM",
+      "appsUsed": [
+        {
+          "icon": "Globe",
+          "durationSeconds": 30054,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
+        }
+      ],
+      "durationSeconds": 30054,
+      "id": "log-1789546018898",
+      "mouseActivityAvg": 100,
+      "endTime": "2026-09-16T08:06:58.892Z",
+      "keyboardActivityAvg": 100
+    },
+    {
+      "keyboardActivityAvg": 100,
+      "date": "2026-09-16",
+      "idleSeconds": 0,
+      "endTime": "2026-09-15T23:46:10.425Z",
+      "task": "Data Entry & Market Research",
+      "userName": "Daina Yanez",
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "durationSeconds": 5,
+      "geoLocalEndTime": "7:46 AM",
+      "mouseActivityAvg": 100,
+      "geoLocalStartTime": "7:46 AM",
+      "userId": "usr-1788394075900",
+      "designation": "Agent",
+      "status": "completed",
+      "startTime": "2026-09-15T23:46:04.821Z",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "geoTimezone": "Asia/Manila",
+      "id": "log-1789515970426",
+      "appsUsed": [
+        {
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
+          "durationSeconds": 5,
+          "category": "productive"
+        }
+      ]
+    },
+    {
+      "mouseActivityAvg": 100,
+      "userName": "Daina Yanez",
+      "id": "log-1789459385210",
+      "keyboardActivityAvg": 100,
+      "geoLocalEndTime": "4:03 PM",
+      "durationSeconds": 29610,
+      "idleSeconds": 0,
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "userId": "usr-1788394075900",
+      "geoLocalStartTime": "7:49 AM",
+      "status": "completed",
+      "geoTimezone": "Asia/Manila",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "appsUsed": [
+        {
+          "durationSeconds": 29610,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "icon": "Globe"
+        }
+      ],
+      "date": "2026-09-15",
+      "task": "Email Reachout",
+      "endTime": "2026-09-15T08:03:05.203Z",
+      "designation": "Agent",
+      "startTime": "2026-09-14T23:49:35.013Z"
+    },
+    {
+      "endTime": "2026-09-14T08:04:16.986Z",
+      "geoLocalEndTime": "4:04 PM",
+      "durationSeconds": 29766,
+      "userId": "usr-1788394075900",
+      "status": "completed",
+      "id": "log-1789373056988",
+      "date": "2026-09-14",
+      "mouseActivityAvg": 93,
+      "task": "Data Entry & Market Research",
+      "keyboardActivityAvg": 90,
+      "userName": "Daina Yanez",
+      "idleSeconds": 0,
+      "designation": "Agent",
+      "geoLocalStartTime": "7:48 AM",
+      "appsUsed": [
+        {
+          "durationSeconds": 29766,
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
+        }
+      ],
+      "geoTimezone": "Asia/Manila",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "startTime": "2026-09-13T23:48:10.620Z",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250"
+    },
+    {
+      "date": "2026-09-11",
+      "keyboardActivityAvg": 100,
+      "geoLocalStartTime": "7:43 AM",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "userName": "Daina Yanez",
+      "idleSeconds": 0,
+      "id": "log-1789106480373",
+      "durationSeconds": 22665,
+      "task": "Email Reachout",
+      "mouseActivityAvg": 100,
+      "geoLocalEndTime": "2:01 PM",
+      "status": "completed",
+      "userId": "usr-1788394075900",
+      "appsUsed": [
+        {
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 22665,
+          "icon": "Globe",
+          "category": "productive"
+        }
+      ],
+      "endTime": "2026-09-11T06:01:20.369Z",
+      "geoTimezone": "Asia/Manila",
+      "startTime": "2026-09-10T23:43:35.096Z",
+      "designation": "Agent",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250"
+    },
+    {
+      "designation": "Agent",
+      "endTime": "2026-09-10T08:07:27.484Z",
+      "geoTimezone": "Asia/Manila",
+      "startTime": "2026-09-09T23:44:57.168Z",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "userName": "Daina Yanez",
+      "id": "log-1789027647487",
+      "date": "2026-09-10",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent) (Subtracted 442m idle inactivity; shift extended by +442m)",
+      "mouseActivityAvg": 19,
+      "status": "completed",
+      "appsUsed": [
+        {
+          "durationSeconds": 30150,
+          "icon": "Globe",
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software"
+        }
+      ],
+      "userId": "usr-1788394075900",
+      "geoLocalEndTime": "4:07 PM",
+      "idleSeconds": 26520,
+      "keyboardActivityAvg": 19,
+      "task": "Email Reachout",
+      "durationSeconds": 30150,
+      "geoLocalStartTime": "7:44 AM"
+    },
+    {
+      "userName": "Allen",
+      "task": "Team Supervision",
+      "mouseActivityAvg": 100,
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "geoLocalEndTime": "12:25 PM",
+      "durationSeconds": 29,
+      "startTime": "2026-09-28T04:24:58.598Z",
+      "notes": "Logged via LLC Time Tracker desktop client (Team Leader)",
+      "idleSeconds": 0,
+      "endTime": "2026-09-28T04:25:27.863Z",
+      "geoLocalStartTime": "12:24 PM",
+      "date": "2026-09-28",
+      "id": "log-1790569527865",
+      "appsUsed": [
+        {
+          "icon": "Globe",
+          "durationSeconds": 29,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
+        }
+      ],
+      "designation": "Team Leader",
+      "keyboardActivityAvg": 100,
+      "geoTimezone": "Asia/Manila",
+      "userId": "usr-1790556882994",
+      "status": "completed"
+    },
+    {
+      "id": "log-1790569442962",
+      "geoLocalStartTime": "12:23 PM",
+      "geoLocalEndTime": "12:24 PM",
+      "idleSeconds": 0,
+      "durationSeconds": 54,
+      "keyboardActivityAvg": 100,
+      "appsUsed": [
+        {
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 54,
+          "icon": "Globe"
+        }
+      ],
+      "task": "Data Entry & Market Research",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "geoTimezone": "Asia/Manila",
+      "userId": "usr-1790554895867",
+      "status": "completed",
+      "designation": "Agent",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "endTime": "2026-09-28T04:24:02.961Z",
+      "startTime": "2026-09-28T04:23:08.479Z",
+      "mouseActivityAvg": 100,
+      "userName": "Juan David",
+      "date": "2026-09-28"
+    },
+    {
+      "appsUsed": [
+        {
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 1955,
+          "icon": "Globe"
+        }
+      ],
+      "id": "log-1790569377736",
+      "mouseActivityAvg": 100,
+      "durationSeconds": 1955,
+      "designation": "Trainer",
+      "startTime": "2026-09-28T03:50:22.505Z",
+      "geoLocalEndTime": "12:22 PM",
+      "userAvatar": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=250",
+      "geoTimezone": "Asia/Manila",
+      "notes": "Logged via LLC Time Tracker desktop client (Trainer)",
+      "date": "2026-09-28",
+      "endTime": "2026-09-28T04:22:57.734Z",
+      "userName": "Pia",
+      "idleSeconds": 0,
+      "task": "Training",
+      "status": "completed",
+      "geoLocalStartTime": "11:50 AM",
+      "userId": "usr-llc-0003",
+      "keyboardActivityAvg": 100
+    },
+    {
+      "userAvatar": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=250",
+      "idleSeconds": 0,
+      "keyboardActivityAvg": 100,
+      "status": "completed",
+      "userId": "usr-llc-0003",
+      "mouseActivityAvg": 100,
+      "task": "Training",
+      "date": "2026-09-28",
+      "notes": "Logged via LLC Time Tracker desktop client (Trainer)",
+      "userName": "Pia",
+      "durationSeconds": 100,
+      "id": "log-1790567391571",
+      "geoLocalEndTime": "11:49 AM",
+      "geoLocalStartTime": "11:48 AM",
+      "geoTimezone": "Asia/Manila",
+      "endTime": "2026-09-28T03:49:51.570Z",
+      "designation": "Trainer",
+      "startTime": "2026-09-28T03:48:11.406Z",
+      "appsUsed": [
+        {
+          "category": "productive",
+          "icon": "Globe",
+          "durationSeconds": 100,
+          "appName": "LLC Time Tracker Desktop Software"
+        }
+      ]
+    },
+    {
+      "userName": "Maria Racquel Gracia M. Libarios",
+      "idleSeconds": 65760,
+      "startTime": "2026-09-09T23:56:24.308Z",
+      "date": "2026-09-11",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent) (Subtracted 1096m idle inactivity; shift extended by +1096m)",
+      "durationSeconds": 86259,
+      "userAvatar": "https://images.unsplash.com/photo-1534528758775?auto=format&fit=crop&q=80&w=250",
+      "keyboardActivityAvg": 19,
+      "geoLocalEndTime": "7:54 AM",
+      "task": "Email Reachout",
+      "userId": "usr-llc-0016",
+      "status": "completed",
+      "mouseActivityAvg": 19,
+      "geoLocalStartTime": "7:56 AM",
+      "appsUsed": [
+        {
+          "category": "productive",
+          "icon": "Globe",
+          "durationSeconds": 86259,
+          "appName": "Google Chrome / External Application"
+        }
+      ],
+      "geoTimezone": "Asia/Manila",
+      "id": "log-1789084443765",
+      "endTime": "2026-09-10T23:54:03.564Z",
+      "designation": "Agent"
+    },
+    {
+      "task": "Data Entry & Market Research",
+      "id": "log-1790568114811",
+      "userId": "usr-1788394130787",
+      "endTime": "2026-09-28T04:01:54.810Z",
+      "status": "completed",
+      "userName": "Jayson Cariaga",
+      "keyboardActivityAvg": 100,
+      "geoLocalStartTime": "12:01 PM",
+      "startTime": "2026-09-28T04:01:31.218Z",
+      "durationSeconds": 23,
+      "geoLocalEndTime": "12:01 PM",
+      "date": "2026-09-28",
+      "idleSeconds": 0,
+      "mouseActivityAvg": 100,
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "appsUsed": [
+        {
+          "durationSeconds": 23,
+          "category": "productive",
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software"
+        }
+      ],
+      "designation": "Agent",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "geoTimezone": "Asia/Manila"
+    },
+    {
+      "idleSeconds": 0,
+      "mouseActivityAvg": 100,
+      "geoLocalEndTime": "10:22 AM",
+      "userId": "usr-1788394130787",
+      "durationSeconds": 10157,
+      "status": "completed",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "startTime": "2026-09-27T23:33:05.830Z",
+      "keyboardActivityAvg": 100,
+      "userName": "Jayson Cariaga",
+      "endTime": "2026-09-28T02:22:23.086Z",
+      "task": "Data Entry & Market Research",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "geoTimezone": "Asia/Manila",
+      "geoLocalStartTime": "7:33 AM",
+      "appsUsed": [
+        {
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 10157,
+          "category": "productive",
+          "icon": "Globe"
+        }
+      ],
+      "id": "log-1790562143089",
+      "date": "2026-09-28",
+      "designation": "Agent"
+    },
+    {
+      "geoLocalEndTime": "6:28 PM",
+      "durationSeconds": 538,
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "id": "log-1790332136448",
+      "idleSeconds": 0,
+      "endTime": "2026-09-25T10:28:56.447Z",
+      "userId": "usr-1788394130787",
+      "appsUsed": [
+        {
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 538,
+          "category": "productive"
+        }
+      ],
+      "status": "completed",
+      "startTime": "2026-09-25T10:19:58.097Z",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "keyboardActivityAvg": 100,
+      "mouseActivityAvg": 100,
+      "geoTimezone": "Asia/Manila",
+      "date": "2026-09-25",
+      "task": "Email Reachout",
+      "designation": "Agent",
+      "userName": "Jayson Cariaga",
+      "geoLocalStartTime": "6:19 PM"
+    },
+    {
+      "startTime": "2026-09-25T10:19:17.548Z",
+      "idleSeconds": 0,
+      "userId": "usr-1788394130787",
+      "status": "completed",
+      "geoLocalStartTime": "6:19 PM",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "id": "log-1790331559833",
+      "appsUsed": [
+        {
+          "icon": "Globe",
+          "durationSeconds": 2,
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software"
+        }
+      ],
+      "geoLocalEndTime": "6:19 PM",
+      "endTime": "2026-09-25T10:19:19.832Z",
+      "task": "Data Entry & Market Research",
+      "keyboardActivityAvg": 100,
+      "durationSeconds": 2,
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "geoTimezone": "Asia/Manila",
+      "mouseActivityAvg": 100,
+      "date": "2026-09-25",
+      "designation": "Agent",
+      "userName": "Jayson Cariaga"
+    },
+    {
+      "id": "log-1790328492893",
+      "idleSeconds": 0,
+      "durationSeconds": 136,
+      "geoLocalEndTime": "5:28 PM",
+      "userId": "usr-1788394130787",
+      "status": "completed",
+      "keyboardActivityAvg": 100,
+      "mouseActivityAvg": 100,
+      "userName": "Jayson Cariaga",
+      "startTime": "2026-09-25T09:25:56.573Z",
+      "task": "Email Reachout",
+      "endTime": "2026-09-25T09:28:12.892Z",
+      "geoTimezone": "Asia/Manila",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "geoLocalStartTime": "5:25 PM",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "appsUsed": [
+        {
+          "durationSeconds": 136,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "icon": "Globe"
+        }
+      ],
+      "designation": "Agent",
+      "date": "2026-09-25"
+    },
+    {
+      "task": "Data Entry & Market Research",
+      "mouseActivityAvg": 100,
+      "userName": "Jayson Cariaga",
+      "durationSeconds": 6,
+      "geoLocalEndTime": "5:25 PM",
+      "endTime": "2026-09-25T09:25:56.573Z",
+      "geoTimezone": "Asia/Manila",
+      "startTime": "2026-09-25T09:25:49.771Z",
+      "userId": "usr-1788394130787",
+      "keyboardActivityAvg": 100,
+      "status": "completed",
+      "date": "2026-09-25",
+      "designation": "Agent",
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "appsUsed": [
+        {
+          "durationSeconds": 6,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "icon": "Globe"
+        }
+      ],
+      "idleSeconds": 0,
+      "id": "log-1790328356583",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "geoLocalStartTime": "5:25 PM"
+    },
+    {
+      "keyboardActivityAvg": 100,
+      "mouseActivityAvg": 100,
+      "endTime": "2026-09-25T05:35:39.320Z",
+      "appsUsed": [
+        {
+          "durationSeconds": 20888,
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
+        }
+      ],
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "geoLocalEndTime": "1:35 PM",
+      "durationSeconds": 20888,
+      "idleSeconds": 0,
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "startTime": "2026-09-24T23:47:30.446Z",
+      "geoLocalStartTime": "7:47 AM",
+      "status": "completed",
+      "task": "Email Reachout",
+      "designation": "Agent",
+      "userId": "usr-1788394130787",
+      "userName": "Jayson Cariaga",
+      "date": "2026-09-25",
+      "id": "log-1790314539324",
+      "geoTimezone": "Asia/Manila"
+    },
+    {
+      "task": "Email Reachout",
+      "userName": "Jayson Cariaga",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "id": "log-1790262640412",
+      "geoLocalEndTime": "11:10 PM",
+      "durationSeconds": 12702,
+      "geoTimezone": "Asia/Manila",
+      "geoLocalStartTime": "7:38 PM",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "date": "2026-09-24",
+      "designation": "Agent",
+      "endTime": "2026-09-24T15:10:40.411Z",
+      "mouseActivityAvg": 100,
+      "idleSeconds": 0,
+      "appsUsed": [
+        {
+          "durationSeconds": 12702,
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
+        }
+      ],
+      "startTime": "2026-09-24T11:38:58.039Z",
+      "keyboardActivityAvg": 100,
+      "userId": "usr-1788394130787",
+      "status": "completed"
+    },
+    {
+      "durationSeconds": 18410,
+      "geoLocalEndTime": "12:51 PM",
+      "startTime": "2026-09-23T23:44:17.864Z",
+      "userName": "Jayson Cariaga",
+      "keyboardActivityAvg": 100,
+      "idleSeconds": 0,
+      "endTime": "2026-09-24T04:51:08.640Z",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "geoLocalStartTime": "7:44 AM",
+      "id": "log-1790225468642",
+      "designation": "Agent",
+      "mouseActivityAvg": 100,
+      "date": "2026-09-24",
+      "task": "Email Reachout",
+      "geoTimezone": "Asia/Manila",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "userId": "usr-1788394130787",
+      "appsUsed": [
+        {
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "durationSeconds": 18410,
+          "icon": "Globe"
+        }
+      ],
+      "status": "completed"
+    },
+    {
+      "appsUsed": [
+        {
+          "durationSeconds": 17,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "icon": "Globe"
+        }
+      ],
+      "mouseActivityAvg": 100,
+      "designation": "Agent",
+      "endTime": "2026-09-23T23:44:17.864Z",
+      "keyboardActivityAvg": 100,
+      "geoTimezone": "Asia/Manila",
+      "durationSeconds": 17,
+      "geoLocalEndTime": "7:44 AM",
+      "startTime": "2026-09-23T23:44:00.309Z",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "geoLocalStartTime": "7:44 AM",
+      "userName": "Jayson Cariaga",
+      "task": "Data Entry & Market Research",
+      "idleSeconds": 0,
+      "date": "2026-09-24",
+      "id": "log-1790207057880",
+      "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
+      "status": "completed",
+      "userId": "usr-1788394130787"
+    },
+    {
+      "mouseActivityAvg": 100,
+      "idleSeconds": 0,
+      "date": "2026-09-24",
+      "status": "completed",
+      "userId": "usr-1788394130787",
+      "durationSeconds": 6,
+      "geoLocalStartTime": "12:07 AM",
+      "geoLocalEndTime": "12:07 AM",
+      "startTime": "2026-09-23T16:07:29.340Z",
+      "endTime": "2026-09-23T16:07:35.546Z",
+      "userName": "Jayson Cariaga",
+      "task": "Data Entry & Market Research",
+      "id": "log-1790179655547",
+      "geoTimezone": "Asia/Manila",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "keyboardActivityAvg": 100,
+      "appsUsed": [
+        {
+          "icon": "Globe",
+          "category": "productive",
+          "durationSeconds": 6,
+          "appName": "LLC Time Tracker Desktop Software"
+        }
+      ],
+      "designation": "Agent",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)"
+    },
+    {
+      "keyboardActivityAvg": 100,
+      "userName": "Jayson Cariaga",
+      "idleSeconds": 0,
+      "date": "2026-09-23",
+      "geoLocalStartTime": "7:49 AM",
+      "task": "Data Entry & Market Research",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "id": "log-1790159088243",
+      "geoTimezone": "Asia/Manila",
+      "appsUsed": [
+        {
+          "durationSeconds": 38128,
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
+          "category": "productive"
+        }
+      ],
+      "startTime": "2026-09-22T23:49:19.488Z",
+      "designation": "Agent",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "endTime": "2026-09-23T10:24:48.235Z",
+      "userId": "usr-1788394130787",
+      "mouseActivityAvg": 100,
+      "durationSeconds": 38128,
+      "status": "completed",
+      "geoLocalEndTime": "6:24 PM"
+    },
+    {
+      "geoTimezone": "Asia/Manila",
+      "id": "log-1790065974796",
+      "durationSeconds": 31414,
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "appsUsed": [
+        {
+          "icon": "Globe",
+          "durationSeconds": 31414,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
+        }
+      ],
+      "geoLocalEndTime": "4:32 PM",
+      "keyboardActivityAvg": 100,
+      "designation": "Agent",
+      "geoLocalStartTime": "7:49 AM",
+      "status": "completed",
+      "userId": "usr-1788394130787",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "userName": "Jayson Cariaga",
+      "date": "2026-09-22",
+      "idleSeconds": 0,
+      "startTime": "2026-09-21T23:49:20.309Z",
+      "mouseActivityAvg": 100,
+      "endTime": "2026-09-22T08:32:54.791Z",
+      "task": "Data Entry & Market Research"
+    },
+    {
+      "geoLocalStartTime": "7:43 AM",
+      "mouseActivityAvg": 100,
+      "geoTimezone": "Asia/Manila",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "endTime": "2026-09-21T08:07:02.583Z",
+      "startTime": "2026-09-20T23:43:01.654Z",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "designation": "Agent",
+      "appsUsed": [
+        {
+          "durationSeconds": 30240,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "icon": "Globe"
+        }
+      ],
+      "idleSeconds": 0,
+      "keyboardActivityAvg": 100,
+      "date": "2026-09-21",
+      "userId": "usr-1788394130787",
+      "status": "completed",
+      "task": "Data Entry & Market Research",
+      "id": "log-1789978022585",
+      "userName": "Jayson Cariaga",
+      "durationSeconds": 30240,
+      "geoLocalEndTime": "4:07 PM"
+    },
+    {
+      "mouseActivityAvg": 100,
+      "idleSeconds": 0,
+      "startTime": "2026-09-17T23:44:28.625Z",
+      "geoLocalEndTime": "4:35 PM",
+      "userName": "Jayson Cariaga",
+      "id": "log-1789720507653",
+      "durationSeconds": 31839,
+      "geoLocalStartTime": "7:44 AM",
+      "status": "completed",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "userId": "usr-1788394130787",
+      "keyboardActivityAvg": 100,
+      "geoTimezone": "Asia/Manila",
+      "task": "Data Entry & Market Research",
+      "date": "2026-09-18",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "appsUsed": [
+        {
+          "durationSeconds": 31839,
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
+        }
+      ],
+      "endTime": "2026-09-18T08:35:07.647Z",
+      "designation": "Agent"
+    },
+    {
+      "idleSeconds": 0,
+      "id": "log-1789633161693",
+      "endTime": "2026-09-17T08:19:21.689Z",
+      "keyboardActivityAvg": 100,
+      "userId": "usr-1788394130787",
+      "status": "completed",
+      "userName": "Jayson Cariaga",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "geoLocalStartTime": "1:03 PM",
+      "startTime": "2026-09-17T05:03:01.650Z",
+      "mouseActivityAvg": 100,
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "durationSeconds": 11780,
+      "geoTimezone": "Asia/Manila",
+      "geoLocalEndTime": "4:19 PM",
+      "date": "2026-09-17",
+      "task": "Email Reachout",
+      "appsUsed": [
+        {
+          "category": "productive",
+          "durationSeconds": 11780,
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
+        }
+      ],
+      "designation": "Agent"
+    },
+    {
+      "keyboardActivityAvg": 100,
+      "designation": "Agent",
+      "task": "Data Entry & Market Research",
+      "durationSeconds": 18761,
+      "geoLocalEndTime": "1:02 PM",
+      "geoTimezone": "Asia/Manila",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "mouseActivityAvg": 100,
+      "date": "2026-09-17",
+      "appsUsed": [
+        {
+          "durationSeconds": 18761,
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
+        }
+      ],
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "status": "completed",
+      "userId": "usr-1788394130787",
+      "geoLocalStartTime": "7:50 AM",
+      "startTime": "2026-09-16T23:50:14.394Z",
+      "id": "log-1789621375529",
+      "userName": "Jayson Cariaga",
+      "idleSeconds": 0,
+      "endTime": "2026-09-17T05:02:55.525Z"
+    },
+    {
+      "keyboardActivityAvg": 100,
+      "idleSeconds": 0,
+      "id": "log-1789565478112",
+      "userName": "Jayson Cariaga",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "status": "completed",
+      "durationSeconds": 49958,
+      "userId": "usr-1788394130787",
+      "geoLocalEndTime": "9:31 PM",
+      "appsUsed": [
+        {
+          "durationSeconds": 49958,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "icon": "Globe"
+        }
+      ],
+      "endTime": "2026-09-16T13:31:18.104Z",
+      "date": "2026-09-16",
+      "startTime": "2026-09-15T23:38:40.011Z",
+      "geoTimezone": "Asia/Manila",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "geoLocalStartTime": "7:38 AM",
+      "mouseActivityAvg": 100,
+      "task": "Data Entry & Market Research",
+      "designation": "Agent"
+    },
+    {
+      "id": "log-1789460501615",
+      "status": "completed",
+      "userId": "usr-1788394130787",
+      "designation": "Agent",
+      "appsUsed": [
+        {
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
+          "durationSeconds": 31269,
+          "category": "productive"
+        }
+      ],
+      "mouseActivityAvg": 100,
+      "geoTimezone": "Asia/Manila",
+      "date": "2026-09-15",
+      "userName": "Jayson Cariaga",
+      "startTime": "2026-09-14T23:40:32.380Z",
+      "endTime": "2026-09-15T08:21:41.609Z",
+      "geoLocalStartTime": "7:40 AM",
+      "keyboardActivityAvg": 100,
+      "idleSeconds": 0,
+      "task": "Email Reachout",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "geoLocalEndTime": "4:21 PM",
+      "durationSeconds": 31269,
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)"
+    },
+    {
+      "endTime": "2026-09-14T08:08:24.212Z",
+      "appsUsed": [
+        {
+          "durationSeconds": 30049,
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
+        }
+      ],
+      "designation": "Agent",
+      "geoLocalStartTime": "7:47 AM",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "geoTimezone": "Asia/Manila",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "mouseActivityAvg": 100,
+      "startTime": "2026-09-13T23:47:34.915Z",
+      "geoLocalEndTime": "4:08 PM",
+      "keyboardActivityAvg": 100,
+      "task": "Email Reachout",
+      "status": "completed",
+      "userName": "Jayson Cariaga",
+      "durationSeconds": 30049,
+      "userId": "usr-1788394130787",
+      "id": "log-1789373304218",
+      "date": "2026-09-14",
+      "idleSeconds": 0
+    },
+    {
+      "geoTimezone": "Asia/Manila",
+      "userName": "Jayson Cariaga",
+      "geoLocalStartTime": "7:51 AM",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "date": "2026-09-11",
+      "startTime": "2026-09-10T23:51:52.953Z",
+      "designation": "Agent",
+      "task": "Email Reachout",
+      "durationSeconds": 20338,
+      "id": "log-1789104651931",
+      "mouseActivityAvg": 100,
+      "geoLocalEndTime": "1:30 PM",
+      "idleSeconds": 0,
+      "keyboardActivityAvg": 100,
+      "appsUsed": [
+        {
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 20338,
+          "category": "productive"
+        }
+      ],
+      "userId": "usr-1788394130787",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "endTime": "2026-09-11T05:30:51.905Z",
+      "status": "completed"
+    },
+    {
+      "durationSeconds": 24072,
+      "id": "log-1789031469749",
+      "designation": "Agent",
+      "geoLocalEndTime": "5:11 PM",
+      "startTime": "2026-09-10T02:29:56.985Z",
+      "userName": "Jayson Cariaga",
+      "geoTimezone": "Asia/Manila",
+      "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
+      "notes": "Logged via LLC Time Tracker desktop client (Agent)",
+      "status": "completed",
+      "userId": "usr-1788394130787",
+      "geoLocalStartTime": "10:29 AM",
+      "mouseActivityAvg": 100,
+      "task": "Email Reachout",
+      "keyboardActivityAvg": 100,
+      "date": "2026-09-10",
+      "appsUsed": [
+        {
+          "icon": "Globe",
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 24072
+        }
+      ],
+      "endTime": "2026-09-10T09:11:09.748Z",
+      "idleSeconds": 0
+    },
+    {
+      "userId": "usr-llc-0003",
+      "geoTimezone": "Asia/Manila",
+      "startTime": "2026-09-29T13:59:54.093Z",
+      "userAvatar": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=250",
+      "status": "completed",
+      "idleSeconds": 0,
+      "durationSeconds": 137613,
+      "date": "2026-10-01",
+      "appsUsed": [
+        {
+          "durationSeconds": 137613,
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
+          "category": "productive"
+        }
+      ],
+      "designation": "Trainer",
+      "id": "log-1790828007103",
+      "geoLocalEndTime": "12:13 PM",
+      "task": "Training",
+      "keyboardActivityAvg": 100,
+      "endTime": "2026-10-01T04:13:27.102Z",
+      "geoLocalStartTime": "9:59 PM",
+      "notes": "Logged via LLC Time Tracker desktop client (Trainer)",
+      "userName": "Pia",
+      "mouseActivityAvg": 100
     }
   ],
   "users": [
@@ -3503,6 +5895,50 @@
       "activityMonitored": false,
       "status": "active",
       "avatar": "https://images.unsplash.com/photo-1534528771775?auto=format&fit=crop&q=80&w=250",
+      "geoTimezone": "Asia/Manila",
+      "geoCity": "Manila, Philippines",
+      "joinDate": "2020-01-01",
+      "department": "Operations",
+      "password": "Password123!",
+      "mustChangePassword": true
+    },
+    {
+      "id": "usr-llc-0032",
+      "employeeCode": "LLC-0032",
+      "username": "mcarmel",
+      "name": "Miko Carmel",
+      "email": "Miko@llc.com",
+      "role": "agent",
+      "designation": "Agent",
+      "monthlyRate": 0,
+      "hourlyRate": 0,
+      "teamLeaderId": "Pia (Trainer)",
+      "screenshotMonitored": false,
+      "activityMonitored": false,
+      "status": "active",
+      "avatar": "https://images.unsplash.com/photo-1534528772775?auto=format&fit=crop&q=80&w=250",
+      "geoTimezone": "Asia/Manila",
+      "geoCity": "Manila, Philippines",
+      "joinDate": "2020-01-01",
+      "department": "Operations",
+      "password": "Password123!",
+      "mustChangePassword": true
+    },
+    {
+      "id": "usr-llc-0033",
+      "employeeCode": "LLC-0033",
+      "username": "jenriquez",
+      "name": "Jocelyn Enriquez",
+      "email": "jocelyn@llc.com",
+      "role": "agent",
+      "designation": "Agent",
+      "monthlyRate": 0,
+      "hourlyRate": 0,
+      "teamLeaderId": "Pia (Trainer)",
+      "screenshotMonitored": false,
+      "activityMonitored": false,
+      "status": "active",
+      "avatar": "https://images.unsplash.com/photo-1534528773775?auto=format&fit=crop&q=80&w=250",
       "geoTimezone": "Asia/Manila",
       "geoCity": "Manila, Philippines",
       "joinDate": "2020-01-01",

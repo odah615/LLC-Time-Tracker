@@ -576,7 +576,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const resolvedName = canon?.name || p.userName;
             const lastMs = p.lastHeartbeat ? new Date(p.lastHeartbeat).getTime() : 0;
             // Clean up stale inactive sessions (> 10 mins) on initial load
-            if (p.isOnline && now - lastMs > 10 * 60 * 1000) {
+            if (p.isOnline && now - lastMs > 45 * 1000) {
               return {
                 ...p,
                 userName: resolvedName,
@@ -1250,9 +1250,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return merged;
       });
 
-      setSaveToast(`✓ Two-Way Sync: Extracted ${res.presenceList.length} presence records from Google Sheets!`);
-      setTimeout(() => setSaveToast(null), 7000);
-      return { success: true, count: res.presenceList.length, message: res.message };
+          return {
+      success: true,
+      count: res.presenceList.length,
+      message: res.message,
+    };
     } else {
       setSaveToast(`⚠️ Google Sheets Presence: ${res.message}`);
       setTimeout(() => setSaveToast(null), 7000);
@@ -1261,7 +1263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Live dashboard refresh from Google Sheets
-useEffect(() => {
+/*useEffect(() => {
   if (!isAuthenticated) return;
 
   const refreshLivePresence = async () => {
@@ -1277,7 +1279,7 @@ useEffect(() => {
   const interval = setInterval(refreshLivePresence, 15000);
 
   return () => clearInterval(interval);
-}, [isAuthenticated, users]);
+}, [isAuthenticated, users]); */
 
   // Comprehensive One-Click Two-Way Sync for All Tabs from Google Sheets
   const syncAllFromGoogleSheets = async (overrideUrl?: string): Promise<{ success: boolean; message: string }> => {
@@ -1699,25 +1701,57 @@ useEffect(() => {
       }, (err) => handleSnapshotError('attendance', err));
 
       // Real-time live presence is synchronized via Firestore collection user_presence & system_state/presence
-      unsubPresence = onSnapshot(collection(db, 'user_presence'), (snapshot) => {
-        if (!snapshot.empty) {
-          const remotePresenceList: UserPresence[] = snapshot.docs.map((d) => d.data() as UserPresence);
-          if (Array.isArray(remotePresenceList) && remotePresenceList.length > 0) {
-            setUserPresenceList((prev) => {
-              const map = new Map<string, UserPresence>(prev.map((p) => [p.userId, p]));
-              remotePresenceList.forEach((p) => {
-                if (p && p.userId) {
-                  const existing = map.get(p.userId);
-                  map.set(p.userId, { ...(existing || p), ...p });
-                }
-              });
-              const merged = Array.from(map.values());
-              localStorage.setItem('trackpulse_presence', JSON.stringify(merged));
-              return merged;
+            unsubPresence = onSnapshot(
+        collection(db, 'user_presence'),
+        (snapshot) => {
+          if (snapshot.empty) return;
+
+          const remotePresenceList: UserPresence[] = snapshot.docs.map(
+            (d) => d.data() as UserPresence
+          );
+
+          setUserPresenceList((prev) => {
+            const map = new Map<string, UserPresence>(
+              prev.map((p) => [p.userId, p])
+            );
+
+            remotePresenceList.forEach((remote) => {
+              if (!remote?.userId) return;
+
+              const existing = map.get(remote.userId);
+
+              // Always accept a presence record if we don't have one locally yet.
+              if (!existing) {
+                map.set(remote.userId, remote);
+                return;
+              }
+
+              const remoteMs = remote.lastHeartbeat
+                ? new Date(remote.lastHeartbeat).getTime()
+                : 0;
+
+              const existingMs = existing.lastHeartbeat
+                ? new Date(existing.lastHeartbeat).getTime()
+                : 0;
+
+              // Only allow Firestore to replace local presence when
+              // the Firestore heartbeat is newer.
+              if (remoteMs >= existingMs) {
+                map.set(remote.userId, {
+                  ...existing,
+                  ...remote,
+                });
+              }
             });
-          }
-        }
-      }, (err) => handleSnapshotError('presence', err));
+
+            const merged = Array.from(map.values());
+            localStorage.setItem('trackpulse_presence', JSON.stringify(merged));
+
+            return merged;
+          });
+        },
+        (err) => handleSnapshotError('presence', err)
+      );
 
       unsubLeave = onSnapshot(doc(db, 'system_state', 'leaverequests'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -1869,7 +1903,7 @@ localStorage.setItem(
         .catch(() => {});
 
       // 2c. Central Sync Bridge Presence Polling (100% Firestore quota-free live status)
-      fetch('/api/presence')
+      /*fetch('/api/presence')
         .then((res) => (res.ok ? res.json() : null))
         .then((remotePresence: UserPresence[]) => {
           if (Array.isArray(remotePresence) && remotePresence.length > 0) {
@@ -1896,7 +1930,7 @@ localStorage.setItem(
             });
           }
         })
-        .catch(() => {});
+        .catch(() => {});*/
 
       // 2d. Sync Audit Logs across sessions (login/logout/trainee activity logs)
       fetch('/api/auditlogs')
@@ -5325,6 +5359,29 @@ localStorage.setItem(
     return `${hrs.toString().padStart(2, '0')}:${mins
       .toString()
       .padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const [presenceClock, setPresenceClock] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setPresenceClock(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const getLoginDurationSeconds = (loginTime?: string) => {
+    if (!loginTime) return 0;
+
+    const loginMs = new Date(loginTime).getTime();
+
+    if (!Number.isFinite(loginMs)) return 0;
+
+    return Math.max(
+      0,
+      Math.floor((presenceClock - loginMs) / 1000)
+    );
   };
 
   return (

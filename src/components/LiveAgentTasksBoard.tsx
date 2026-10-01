@@ -97,6 +97,29 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
     currentUser,
   } = useApp();
 
+  const [, setClockTick] = useState(0);
+
+useEffect(() => {
+  const timer = window.setInterval(() => {
+    setClockTick((tick) => tick + 1);
+  }, 1000);
+
+  return () => window.clearInterval(timer);
+}, []);
+
+const getLiveLoginDurationSeconds = (loginTime?: string) => {
+  if (!loginTime) return 0;
+
+  const loginMs = new Date(loginTime).getTime();
+
+  if (!Number.isFinite(loginMs)) return 0;
+
+  return Math.max(
+    0,
+    Math.floor((Date.now() - loginMs) / 1000)
+  );
+};
+
   const todayStr = getManilaDateString();
   const manilaCurrentTime = getManilaTimeString();
 
@@ -842,7 +865,7 @@ export const LiveAgentTasksBoard: React.FC<LiveAgentTasksBoardProps> = ({
                         </span>
                         <span className="font-medium text-slate-600 bg-white px-2 py-0.5 rounded text-[10px] flex items-center gap-1 border border-slate-200/80 shadow-2xs" title="Total accumulated work hours logged today (Manila Time)">
                           <Clock className="w-3 h-3 text-blue-500" />
-                          Today: <strong className="text-slate-900 font-mono font-bold">{formatDurationHuman(agent.todayTotalSec)}</strong>
+                          Today: <strong className="text-slate-900 font-mono font-bold">{formatDurationHuman(getLiveLoginDurationSeconds(agent.loginTime))}</strong>
                         </span>
                       </div>
 
