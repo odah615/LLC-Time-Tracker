@@ -2209,38 +2209,49 @@ localStorage.setItem(
       actorName: user.name,
       actorRole: user.role,
       category: 'Login',
-      details: `User signed into LLC Time Tracker ${mode === 'software' ? 'Desktop Software App' : 'Web Portal'}. Live shift automatically activated.`,
+      details: `User signed into LLC Time Tracker ${mode === 'software' ? 'Desktop Software App. Live shift automatically activated.' : 'Web Portal. No live shift tracking started.'}`,
     };
     const updatedAudit = [loginLog, ...auditLogs];
     setAuditLogs(updatedAudit);
 
-    // Auto-activate live shift tracking immediately upon login
-    const userDesig = user.designation || 'Agent';
-    const allowedTasks = designationTasks[userDesig] || designationTasks['Agent'] || ['Email Reachout', 'Data Entry & Market Research'];
-    const initialTask = allowedTasks[0] || 'Email Reachout';
+ // Auto-activate live shift tracking ONLY for Desktop Software login
+const userDesig = user.designation || 'Agent';
+const allowedTasks =
+  designationTasks[userDesig] ||
+  designationTasks['Agent'] ||
+  ['Email Reachout', 'Data Entry & Market Research'];
 
-    setIsTracking(true);
-    setIsPaused(false);
-    setElapsedSeconds(0);
-    setStartTimeIso(nowIso);
-    setCurrentTask(initialTask as TaskCategory);
-    setCurrentDesignation(userDesig);
-    trackingSessionStartMsRef.current = nowMs;
-    lastActiveIntervalStartMsRef.current = nowMs;
-    trackingAccumulatedSecondsRef.current = 0;
-    lastMouseActiveTimestampRef.current = nowMs;
-    lastKeyboardActiveTimestampRef.current = nowMs;
-    mouseActivityHistoryRef.current = [100];
-    keyboardActivityHistoryRef.current = [100];
-    setCurrentMouseActivity(100);
-    setCurrentKeyboardActivity(100);
-    setCurrentInactivitySeconds(0);
-    setSessionIdleDeductionSeconds(0);
-    setIsIdleAlertActive(false);
-    currentTaskSegmentStartMsRef.current = nowMs;
-    currentTaskSegmentStartTimeIsoRef.current = nowIso;
+const initialTask = allowedTasks[0] || 'Email Reachout';
 
-    localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
+if (mode === 'software') {
+  setIsTracking(true);
+  setIsPaused(false);
+  setElapsedSeconds(0);
+  setStartTimeIso(nowIso);
+  setCurrentTask(initialTask as TaskCategory);
+  setCurrentDesignation(userDesig);
+
+  trackingSessionStartMsRef.current = nowMs;
+  lastActiveIntervalStartMsRef.current = nowMs;
+  trackingAccumulatedSecondsRef.current = 0;
+  lastMouseActiveTimestampRef.current = nowMs;
+  lastKeyboardActiveTimestampRef.current = nowMs;
+
+  mouseActivityHistoryRef.current = [100];
+  keyboardActivityHistoryRef.current = [100];
+
+  setCurrentMouseActivity(100);
+  setCurrentKeyboardActivity(100);
+  setCurrentInactivitySeconds(0);
+  setSessionIdleDeductionSeconds(0);
+  setIsIdleAlertActive(false);
+
+  currentTaskSegmentStartMsRef.current = nowMs;
+  currentTaskSegmentStartTimeIsoRef.current = nowIso;
+
+  localStorage.setItem(
+    'trackpulse_active_tracking',
+    JSON.stringify({
       isTracking: true,
       isPaused: false,
       startTimeIso: nowIso,
@@ -2251,7 +2262,16 @@ localStorage.setItem(
       designation: userDesig,
       currentTaskSegmentStartMs: nowMs,
       currentTaskSegmentStartTimeIso: nowIso,
-    }));
+    })
+  );
+} else {
+  // Web Portal login must NEVER inherit or start a tracking session.
+  setIsTracking(false);
+  setIsPaused(false);
+  setElapsedSeconds(0);
+  setStartTimeIso(null);
+  localStorage.removeItem('trackpulse_active_tracking');
+}
 
     // Create daily attendance record
     const today = getManilaDateString(now);
@@ -2291,7 +2311,7 @@ localStorage.setItem(
       teamLeaderId: user.teamLeaderId || '',
       isOnline: true,
       status: 'online',
-      isTracking: true,
+      isTracking: false,
       isPaused: false,
       elapsedSeconds: 0,
       mouseActivity: 100,
@@ -2328,9 +2348,9 @@ localStorage.setItem(
         designation: userDesig,
         platformMode: isDesktop ? 'Desktop Tracker' : 'Website',
         status: 'online',
-        statusLabel: '🟢 Live Tracking',
+        statusLabel: isDesktop ? '🟢 Live Tracking' : '🟢 Online',
         isOnline: true,
-        isTracking: true,
+        isTracking: isDesktop,
         isPaused: false,
         elapsedSeconds: 0,
         currentTask: initialTask,
@@ -5396,6 +5416,7 @@ localStorage.setItem(
         setLoginMode,
         login,
         logout,
+        getLoginDurationSeconds,
         webSessionRemainingSeconds,
         isSessionWarningActive,
         webSessionWarningCountdown,

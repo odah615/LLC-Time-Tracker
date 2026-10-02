@@ -125,25 +125,25 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
   const todayStr = getManilaDateString();
   const [anchorDate, setAnchorDate] = useState<string>(todayStr);
 
-  // Helper: Calculate Monday and Friday of current week for a reference date
-  const getMondayFriday = (refDateStr: string) => {
+  // Helper: Calculate Monday and Sunday of the current calendar week for a reference date
+  const getMondaySunday = (refDateStr: string) => {
     const refDate = new Date(refDateStr || todayStr);
     const dayOfWeek = refDate.getDay(); // 0 is Sunday
     const distanceToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     const monday = new Date(refDate);
     monday.setDate(refDate.getDate() + distanceToMonday);
 
-    const friday = new Date(monday);
-    friday.setDate(monday.getDate() + 4); // Mon + 4 = Friday
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6); // Mon + 6 = Sunday
 
     return {
       start: getManilaDateString(monday),
-      end: getManilaDateString(friday),
+      end: getManilaDateString(sunday),
     };
   };
 
   // Weekly View Filter: Start Date (Monday) and End Date (Friday)
-  const initialWeek = getMondayFriday(todayStr);
+  const initialWeek = getMondaySunday(todayStr);
   const [weekStartDate, setWeekStartDate] = useState<string>(initialWeek.start);
   const [weekEndDate, setWeekEndDate] = useState<string>(initialWeek.end);
 
@@ -179,106 +179,173 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     return `${h}h ${m}m`;
   };
 
-  // Helper: Normalize date strings across YYYY-MM-DD, MM/DD/YYYY, and ISO formats
+  // Helper: Normalize date strings from app logs / Google Sheets into YYYY-MM-DD.
   const normalizeDate = (rawDate?: string, startTimeIso?: string): string => {
-    const candidate = rawDate || (startTimeIso ? startTimeIso.split('T')[0] : '');
+    const candidate = String(rawDate || (startTimeIso ? startTimeIso.split('T')[0] : '')).trim();
     if (!candidate) return '';
+
     if (/^\d{4}-\d{2}-\d{2}$/.test(candidate)) return candidate;
+
     if (candidate.includes('/')) {
       const parts = candidate.split('/');
       if (parts.length === 3) {
         if (parts[2].length === 4) {
           const p0 = parseInt(parts[0], 10);
           const p1 = parseInt(parts[1], 10);
+
           if (p0 > 12) {
-            // DD/MM/YYYY
             return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-          } else if (p1 > 12) {
-            // MM/DD/YYYY
+          }
+          if (p1 > 12) {
             return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
           }
           return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
-        } else if (parts[0].length === 4) {
-          // YYYY/MM/DD
+        }
+
+        if (parts[0].length === 4) {
           return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
         }
       }
     }
-    if (candidate.includes('T')) return candidate.split('T')[0];
+
+    if (candidate.includes('T')) {
+      const isoDate = candidate.split('T')[0];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate;
+    }
+
+    // Google Sheets can surface a date as a serial number.
+    if (/^\d+(\.\d+)?$/.test(candidate)) {
+      const serial = Number(candidate);
+      if (serial >= 30000 && serial <= 60000) {
+        const serialDate = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+        return getManilaDateString(serialDate);
+      }
+    }
+
+    // Also accept readable dates such as "Thu Oct 01 2026".
+    const parsed = new Date(candidate);
+    if (!Number.isNaN(parsed.getTime()) && parsed.getFullYear() >= 2000) {
+      return getManilaDateString(parsed);
+    }
+
     return candidate;
   };
 
-  // Combine completed historical time logs with active live shifts for today
+  // Combine finalized time logs with exactly one live session per actively tracking user.
+  // Completed task/session rows remain untouched; a running row is updated from live presence.
   const allAvailableLogs = useMemo(() => {
     const list: TimeLog[] = [...timeLogs];
     const today = getManilaDateString();
 
     users.forEach((u) => {
-      // Check if user already has completed timeLogs for today
-      const hasTodayLog = list.some(
-        (l) =>
-          (l.userId === u.id || ((l as any).employeeCode && (l as any).employeeCode === u.employeeCode)) &&
-          normalizeDate(l.date, l.startTime) === today
-      );
-
       const isCurrentActiveUser = currentUser?.id === u.id && isTracking;
 
       const presence = userPresenceList.find(
         (p) =>
           p.userId === u.id ||
-          (p.employeeCode && u.employeeCode && p.employeeCode.toUpperCase() === u.employeeCode.toUpperCase()) ||
-          (p.userName && u.name && p.userName.toLowerCase().trim() === u.name.toLowerCase().trim())
+          (p.employeeCode &&
+            u.employeeCode &&
+            p.employeeCode.toUpperCase() === u.employeeCode.toUpperCase()) ||
+          (p.userName &&
+            u.name &&
+            p.userName.toLowerCase().trim() === u.name.toLowerCase().trim())
       );
 
       const attendance = dailyAttendanceLogs.find(
-        (a) => (a.userId === u.id || a.userName === u.name) && normalizeDate(a.date) === today
+        (a) =>
+          (a.userId === u.id || a.userName === u.name) &&
+          normalizeDate(a.date) === today
       );
 
       const isUserTracking =
         isCurrentActiveUser ||
-        presence?.isTracking ||
-        (presence?.isOnline && (presence?.elapsedSeconds || 0) > 0);
+        presence?.isTracking === true;
+
+      if (!isUserTracking) return;
 
       const liveElapsed = isCurrentActiveUser
-        ? Math.max(elapsedSeconds, 1)
-        : (presence?.elapsedSeconds || attendance?.totalWorkSeconds || 0);
+        ? Math.max(0, elapsedSeconds)
+        : Math.max(0, presence?.elapsedSeconds || 0);
 
-      // If user is currently tracking OR has active check-in today and no finalized log exists yet
-      if (!hasTodayLog && (isUserTracking || liveElapsed > 0 || attendance?.checkInTime)) {
-        const activeTask = isCurrentActiveUser
-          ? (currentTask || 'Active Shift')
-          : (presence?.currentTask || attendance?.currentTask || 'Active Shift');
+      const activeTask = isCurrentActiveUser
+        ? (currentTask || 'Active Shift')
+        : (presence?.currentTask || attendance?.currentTask || 'Active Shift');
 
-        const liveStartTime =
-          presence?.startTime ||
-          attendance?.checkInTime ||
-          new Date(Date.now() - Math.max(liveElapsed, 60) * 1000).toISOString();
+      const liveStartTime =
+        presence?.startTime ||
+        attendance?.checkInTime ||
+        new Date(Date.now() - liveElapsed * 1000).toISOString();
 
-        list.unshift({
-          id: `live-ongoing-${u.id}-${today}`,
-          userId: u.id,
-          userName: u.name,
-          userAvatar: u.avatar || '',
-          designation: u.designation || 'Agent',
-          task: activeTask,
-          date: today,
-          startTime: liveStartTime,
-          endTime: isUserTracking ? 'In Progress (Live)' : (attendance?.checkOutTime || 'Active Shift'),
-          durationSeconds: Math.max(liveElapsed, 60),
-          status: isUserTracking ? 'running' : 'completed',
-          geoTimezone: u.geoTimezone || 'Asia/Manila',
-          geoLocalStartTime: new Date(liveStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
-          appsUsed: [],
-          idleSeconds: presence?.idleDeductionSeconds || attendance?.idleDeductionsSeconds || 0,
-          mouseActivityAvg: presence?.mouseActivity ?? 95,
-          keyboardActivityAvg: presence?.keyboardActivity ?? 95,
-          notes: isUserTracking ? 'Live Active Shift' : 'Daily Attendance Log',
-        });
+      const runningIndex = list.findIndex(
+        (l) =>
+          (l.userId === u.id ||
+            ((l as any).employeeCode &&
+              (l as any).employeeCode === u.employeeCode)) &&
+          normalizeDate(l.date, l.startTime) === today &&
+          (l.status === 'running' ||
+            l.endTime === 'Running Live' ||
+            l.endTime === 'In Progress (Live)')
+      );
+
+      const liveLog: TimeLog = {
+        id:
+          runningIndex >= 0
+            ? list[runningIndex].id
+            : `live-ongoing-${u.id}-${today}`,
+        userId: u.id,
+        userName: u.name,
+        userAvatar: u.avatar || '',
+        designation: u.designation || 'Agent',
+        task: activeTask,
+        date: today,
+        startTime:
+          runningIndex >= 0
+            ? (list[runningIndex].startTime || liveStartTime)
+            : liveStartTime,
+        endTime: 'In Progress (Live)',
+        durationSeconds: liveElapsed,
+        status: 'running',
+        geoTimezone: u.geoTimezone || 'Asia/Manila',
+        geoLocalStartTime: new Date(
+          runningIndex >= 0
+            ? (list[runningIndex].startTime || liveStartTime)
+            : liveStartTime
+        ).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        }),
+        appsUsed: [],
+        idleSeconds:
+          presence?.idleDeductionSeconds ||
+          attendance?.idleDeductionsSeconds ||
+          0,
+        mouseActivityAvg: presence?.mouseActivity ?? 95,
+        keyboardActivityAvg: presence?.keyboardActivity ?? 95,
+        notes: 'Live Active Shift',
+      };
+
+      if (runningIndex >= 0) {
+        list[runningIndex] = {
+          ...list[runningIndex],
+          ...liveLog,
+        };
+      } else {
+        list.unshift(liveLog);
       }
     });
 
     return list;
-  }, [timeLogs, users, userPresenceList, dailyAttendanceLogs, currentUser, isTracking, currentTask, elapsedSeconds]);
+  }, [
+    timeLogs,
+    users,
+    userPresenceList,
+    dailyAttendanceLogs,
+    currentUser,
+    isTracking,
+    currentTask,
+    elapsedSeconds,
+  ]);
 
   // Helper: Determine date matching based on view tab
   const isLogInPeriod = (logDateStr: string, mode: ViewTabMode, startTimeIso?: string) => {
@@ -321,7 +388,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
   const handleTabSwitch = (newMode: ViewTabMode) => {
     setViewTab(newMode);
     if (newMode === 'weekly' && (!weekStartDate || !weekEndDate)) {
-      const w = getMondayFriday(anchorDate || todayStr);
+      const w = getMondaySunday(anchorDate || todayStr);
       setWeekStartDate(w.start);
       setWeekEndDate(w.end);
     }
@@ -564,14 +631,8 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
         idleHours: Number(item.idleHours.toFixed(1)),
       }));
     } else {
-      return [
-        { name: 'Mon', trackedHours: 7.5, idleHours: 0.5 },
-        { name: 'Tue', trackedHours: 8.0, idleHours: 0.3 },
-        { name: 'Wed', trackedHours: 7.8, idleHours: 0.4 },
-        { name: 'Thu', trackedHours: 8.2, idleHours: 0.2 },
-        { name: 'Fri', trackedHours: 7.0, idleHours: 0.6 },
-      ];
-    }
+  return [];
+}
   }, [filteredLogs, isPersonalOnly]);
 
   // CSV Export Handler
@@ -1043,7 +1104,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                     d.setDate(d.getDate() - 1);
                     const prev = getManilaDateString(d);
                     setAnchorDate(prev);
-                    const w = getMondayFriday(prev);
+                    const w = getMondaySunday(prev);
                     setWeekStartDate(w.start);
                     setWeekEndDate(w.end);
                   }}
@@ -1064,7 +1125,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                     value={anchorDate}
                     onChange={(e) => {
                       setAnchorDate(e.target.value);
-                      const w = getMondayFriday(e.target.value);
+                      const w = getMondaySunday(e.target.value);
                       setWeekStartDate(w.start);
                       setWeekEndDate(w.end);
                       const d = new Date(e.target.value);
@@ -1089,7 +1150,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                     d.setDate(d.getDate() + 1);
                     const next = getManilaDateString(d);
                     setAnchorDate(next);
-                    const w = getMondayFriday(next);
+                    const w = getMondaySunday(next);
                     setWeekStartDate(w.start);
                     setWeekEndDate(w.end);
                   }}
@@ -1104,7 +1165,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                     type="button"
                     onClick={() => {
                       setAnchorDate(todayStr);
-                      const w = getMondayFriday(todayStr);
+                      const w = getMondaySunday(todayStr);
                       setWeekStartDate(w.start);
                       setWeekEndDate(w.end);
                     }}
@@ -1443,6 +1504,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                   {!isPersonalOnly && <th className="py-3 px-4">Agent</th>}
                   <th className="py-3 px-4">Task Category</th>
                   <th className="py-3 px-4">Date & Start Time</th>
+                  <th className="py-3 px-4">End Time</th>
                   <th className="py-3 px-4">Duration (s)</th>
                   <th className="py-3 px-4 text-slate-800">Total Time</th>
                   <th className="py-3 px-4">Activity Score</th>
@@ -1465,6 +1527,11 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                     </td>
                     <td className="py-3 px-4 font-mono">
                       {log.date} • {log.geoLocalStartTime}
+                    </td>
+                    <td className="py-3 px-4 font-mono text-slate-600">
+                      {log.endTime === 'Running Live' || log.endTime === 'In Progress (Live)'
+                        ? 'Running Live'
+                        : (log.geoLocalEndTime || log.endTime || '—')}
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-500">
                       {log.durationSeconds}s
