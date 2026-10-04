@@ -1859,6 +1859,170 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }).catch(() => {});
     }
 
+    // 1.5. Read-only Google Sheets Time Logs hydration
+// Google Sheets is used here only to recover records that are missing
+// from the current browser/server cache. No Firestore/API write-back.
+const hydrateTimeLogsFromSheets = async () => {
+  try {
+    const targetUrl =
+      googleSheetsWebhookUrl ||
+      localStorage.getItem('trackpulse_sheets_webhook') ||
+      '';
+
+    const result = await fetchTimeLogsFromGoogleSheets(
+      targetUrl,
+      DEFAULT_SPREADSHEET_ID
+    );
+
+    if (
+      !result.success ||
+      !Array.isArray(result.timeLogs) ||
+      result.timeLogs.length === 0
+    ) {
+      return;
+    }
+
+    setTimeLogs((prev) => {
+      const map = new Map<string, TimeLog>();
+
+      // Keep everything already available locally.
+      prev.forEach((log) => {
+        if (log?.id) {
+          map.set(log.id, log);
+        }
+      });
+
+      // Add/update records coming from Google Sheets.
+      for (const log of result.timeLogs) {
+        if (!log?.id) continue;
+
+        const existing = map.get(log.id);
+
+        const matchedUser = users.find(
+          (u) =>
+            u.name?.toLowerCase() ===
+            (log.userName || '').toLowerCase()
+        );
+
+        map.set(log.id, {
+          ...(existing || {}),
+          ...log,
+
+          id: log.id,
+
+          userId:
+            log.userId ||
+            existing?.userId ||
+            matchedUser?.id ||
+            'usr-imported',
+
+          userName:
+            log.userName ||
+            existing?.userName ||
+            'Employee',
+
+          userAvatar:
+            log.userAvatar ||
+            existing?.userAvatar ||
+            matchedUser?.avatar ||
+            '',
+
+          designation:
+            log.designation ||
+            existing?.designation ||
+            'Agent',
+
+          task:
+            log.task ||
+            existing?.task ||
+            'General',
+
+          startTime:
+            log.startTime ||
+            existing?.startTime ||
+            '',
+
+          endTime:
+            log.endTime ||
+            existing?.endTime ||
+            '',
+
+          durationSeconds:
+            log.durationSeconds ??
+            existing?.durationSeconds ??
+            0,
+
+          status:
+            log.status ||
+            existing?.status ||
+            'completed',
+
+          geoTimezone:
+            log.geoTimezone ||
+            existing?.geoTimezone ||
+            'Asia/Manila',
+
+          geoLocalStartTime:
+            log.geoLocalStartTime ||
+            existing?.geoLocalStartTime ||
+            '',
+
+          geoLocalEndTime:
+            log.geoLocalEndTime ||
+            existing?.geoLocalEndTime ||
+            '',
+
+          mouseActivityAvg:
+            log.mouseActivityAvg ??
+            existing?.mouseActivityAvg ??
+            100,
+
+          keyboardActivityAvg:
+            log.keyboardActivityAvg ??
+            existing?.keyboardActivityAvg ??
+            100,
+
+          idleSeconds:
+            log.idleSeconds ??
+            existing?.idleSeconds ??
+            0,
+
+          date:
+            log.date ||
+            existing?.date ||
+            '',
+
+          notes:
+            log.notes ||
+            existing?.notes ||
+            'Imported from Google Sheets Time_Logs',
+
+          appsUsed:
+            log.appsUsed ||
+            existing?.appsUsed ||
+            [],
+        } as TimeLog);
+      }
+
+      const merged = Array.from(map.values());
+
+      localStorage.setItem(
+        'trackpulse_timelogs',
+        JSON.stringify(merged)
+      );
+
+      return merged;
+    });
+  } catch (err) {
+    console.warn(
+      '[Sheets] Time log hydration failed:',
+      err
+    );
+  }
+};
+
+hydrateTimeLogsFromSheets();
+
     // 2. Continuous Central Sync Bridge (timelogs, users, presence across desktop & web)
     const fetchCentralSync = () => {
       // 2a. Sync timelogs across desktop software and web portal
