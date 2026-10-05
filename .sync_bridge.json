@@ -10,16 +10,16 @@
       "teamLeaderId": "None / Direct Executive",
       "isOnline": true,
       "status": "online",
-      "isTracking": true,
+      "isTracking": false,
       "isPaused": false,
-      "elapsedSeconds": 1008,
-      "mouseActivity": 100,
-      "keyboardActivity": 100,
-      "currentTask": "System Ops Review",
-      "currentApp": "Google Chrome / External Application",
-      "lastHeartbeat": "2026-10-01T08:04:33.007Z",
-      "loginTime": "2026-10-01T07:46:44.013Z",
-      "loginPlatform": "software"
+      "elapsedSeconds": 0,
+      "mouseActivity": 0,
+      "keyboardActivity": 0,
+      "currentTask": "Web Portal Active",
+      "currentApp": "LLC Time Tracker Desktop Software",
+      "lastHeartbeat": "2026-10-02T05:46:04.437Z",
+      "loginTime": "2026-10-02T05:43:49.298Z",
+      "loginPlatform": "webapp"
     },
     "usr-llc-0023": {
       "userId": "usr-llc-0023",
@@ -38,9 +38,9 @@
       "keyboardActivity": 0,
       "currentTask": "Shift Concluded",
       "currentApp": "LLC Time Tracker Desktop Software",
-      "lastHeartbeat": "2026-09-28T04:24:05.505Z",
-      "loginTime": "2026-09-29T16:33:24.916Z",
-      "loginPlatform": "software"
+      "lastHeartbeat": "2026-10-02T05:43:08.667Z",
+      "loginTime": "2026-10-02T05:42:36.958Z",
+      "loginPlatform": "webapp"
     },
     "usr-llc-0003": {
       "userId": "usr-llc-0003",
@@ -481,7 +481,7 @@
       "userName": "Team_Leader1",
       "employeeCode": "LLC-0002",
       "role": "team_lead",
-      "designation": "Team Leader",
+      "designation": "Agent",
       "department": "Operations",
       "teamLeaderId": "None / Direct Executive",
       "isOnline": false,
@@ -492,9 +492,10 @@
       "mouseActivity": 0,
       "keyboardActivity": 0,
       "currentTask": "Shift Concluded",
-      "currentApp": "Web Browser",
-      "loginPlatform": "software",
-      "lastHeartbeat": "2026-09-09T03:02:16.176Z"
+      "currentApp": "LLC Time Tracker Desktop Software",
+      "loginPlatform": "webapp",
+      "lastHeartbeat": "2026-10-02T05:43:43.007Z",
+      "loginTime": "2026-10-02T05:43:32.345Z"
     },
     "usr-llc-0026": {
       "loginPlatform": "software",
@@ -579,7 +580,7 @@
       "userName": "Bryan"
     },
     "usr-llc-0028": {
-      "loginPlatform": "software",
+      "loginPlatform": "webapp",
       "isOnline": false,
       "department": "Operations",
       "isPaused": false,
@@ -588,15 +589,16 @@
       "isTracking": false,
       "userName": "Test Agent",
       "keyboardActivity": 0,
-      "currentApp": "None",
+      "currentApp": "LLC Time Tracker Desktop Software",
       "userId": "usr-llc-0028",
       "status": "offline",
       "employeeCode": "LLC-0028",
       "mouseActivity": 0,
-      "lastHeartbeat": "1970-01-01T00:00:00.000Z",
-      "designation": "Agent",
+      "lastHeartbeat": "2026-10-02T05:42:22.512Z",
+      "designation": "Admin",
       "teamLeaderId": "Allen (Team Leader)",
-      "currentTask": "Shift Concluded"
+      "currentTask": "Shift Concluded",
+      "loginTime": "2026-10-02T05:42:15.822Z"
     },
     "usr-llc-0029": {
       "lastHeartbeat": "1970-01-01T00:00:00.000Z",
@@ -763,10 +765,10 @@
       "mouseActivityAvg": 92,
       "appsUsed": [
         {
-          "category": "productive",
           "durationSeconds": 255,
-          "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software"
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
+          "icon": "Globe"
         }
       ],
       "userId": "usr-superadmin-red",
@@ -794,10 +796,10 @@
       "keyboardActivityAvg": 100,
       "appsUsed": [
         {
-          "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 14,
           "category": "productive",
-          "durationSeconds": 14
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "notes": "Logged via LLC Time Tracker desktop client (Admin)",
@@ -813,9 +815,9 @@
       "appsUsed": [
         {
           "durationSeconds": 95,
-          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "category": "productive",
+          "icon": "Globe"
         }
       ],
       "designation": "Agent",
@@ -852,10 +854,10 @@
       "designation": "Agent",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe",
           "category": "productive",
-          "durationSeconds": 602
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 602,
+          "icon": "Globe"
         }
       ],
       "geoLocalStartTime": "7:06 AM",
@@ -881,9 +883,9 @@
       "designation": "Agent",
       "appsUsed": [
         {
+          "durationSeconds": 70,
           "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 70,
           "icon": "Globe"
         }
       ],
@@ -894,9 +896,9 @@
       "geoLocalStartTime": "11:25 AM",
       "appsUsed": [
         {
-          "durationSeconds": 669,
           "icon": "Globe",
           "category": "productive",
+          "durationSeconds": 669,
           "appName": "LLC Time Tracker Desktop Software"
         }
       ],
@@ -922,10 +924,10 @@
       "startTime": "2026-09-07T06:12:13.551Z",
       "appsUsed": [
         {
-          "durationSeconds": 7862,
+          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
-          "category": "productive"
+          "durationSeconds": 7862
         }
       ],
       "designation": "Agent",
@@ -954,9 +956,9 @@
       "designation": "Agent",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 8235,
           "category": "productive",
+          "durationSeconds": 8235,
+          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe"
         }
       ],
@@ -984,9 +986,9 @@
       "notes": "Logged via LLC Time Tracker desktop client (Agent) (Subtracted 24m idle inactivity; shift extended by +24m)",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
           "durationSeconds": 2165,
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe"
         }
       ],
@@ -1004,10 +1006,10 @@
       "status": "completed",
       "appsUsed": [
         {
-          "durationSeconds": 4,
-          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
           "category": "productive",
-          "icon": "Globe"
+          "durationSeconds": 4,
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "endTime": "2026-09-07T23:52:21.985Z",
@@ -1046,10 +1048,10 @@
       "durationSeconds": 453,
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe",
+          "category": "productive",
           "durationSeconds": 453,
-          "category": "productive"
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
         }
       ]
     },
@@ -1060,9 +1062,9 @@
       "appsUsed": [
         {
           "durationSeconds": 7106,
-          "category": "productive",
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software"
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
         }
       ],
       "id": "log-1788768407248",
@@ -1092,9 +1094,9 @@
       "durationSeconds": 2837,
       "appsUsed": [
         {
-          "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 2837,
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
           "category": "productive"
         }
       ],
@@ -1121,10 +1123,10 @@
       "geoTimezone": "Asia/Manila",
       "appsUsed": [
         {
-          "durationSeconds": 7656,
-          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe"
+          "durationSeconds": 7656,
+          "icon": "Globe",
+          "category": "productive"
         }
       ],
       "id": "log-1788768442356",
@@ -1148,10 +1150,10 @@
       "userId": "usr-1788394014525",
       "appsUsed": [
         {
-          "category": "productive",
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 14,
-          "icon": "Globe"
+          "category": "productive"
         }
       ],
       "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
@@ -1167,10 +1169,10 @@
       "status": "completed",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "durationSeconds": 166,
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "category": "productive",
+          "durationSeconds": 166,
+          "icon": "Globe"
         }
       ],
       "id": "log-1788744204283",
@@ -1197,10 +1199,10 @@
       "keyboardActivityAvg": 100,
       "appsUsed": [
         {
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 52,
-          "category": "productive",
-          "icon": "Globe"
+          "category": "productive"
         }
       ],
       "date": "2026-09-08",
@@ -1227,10 +1229,10 @@
       "date": "2026-09-08",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
+          "icon": "Globe",
           "durationSeconds": 5102,
-          "icon": "Globe"
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "userId": "usr-1788394014525",
@@ -1259,9 +1261,9 @@
       "appsUsed": [
         {
           "durationSeconds": 7970,
-          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe"
+          "icon": "Globe",
+          "category": "productive"
         }
       ],
       "status": "completed",
@@ -1286,10 +1288,10 @@
       "startTime": "2026-09-08T04:09:12.865Z",
       "appsUsed": [
         {
-          "durationSeconds": 5836,
-          "icon": "Globe",
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software"
+          "durationSeconds": 5836,
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
         }
       ],
       "userId": "usr-1788394014525",
@@ -1319,9 +1321,9 @@
       "appsUsed": [
         {
           "category": "productive",
-          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 6077
+          "durationSeconds": 6077,
+          "icon": "Globe"
         }
       ],
       "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
@@ -1345,10 +1347,10 @@
       "userId": "usr-superadmin-red",
       "appsUsed": [
         {
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
           "durationSeconds": 27529,
-          "icon": "Globe"
+          "category": "productive"
         }
       ],
       "idleSeconds": 0,
@@ -1362,10 +1364,10 @@
       "designation": "Agent",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
+          "icon": "Globe",
           "durationSeconds": 29010,
-          "icon": "Globe"
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
         }
       ],
       "task": "Email Reachout",
@@ -1399,10 +1401,10 @@
       "startTime": "2026-09-07T23:51:36.031Z",
       "appsUsed": [
         {
-          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 29479,
-          "icon": "Globe"
+          "category": "productive",
+          "icon": "Globe",
+          "durationSeconds": 29479
         }
       ],
       "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
@@ -1424,10 +1426,10 @@
       "status": "completed",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
+          "durationSeconds": 29298,
           "icon": "Globe",
-          "durationSeconds": 29298
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "designation": "Agent",
@@ -1450,10 +1452,10 @@
       "keyboardActivityAvg": 100,
       "appsUsed": [
         {
-          "category": "productive",
+          "durationSeconds": 2147,
           "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
-          "durationSeconds": 2147
+          "category": "productive"
         }
       ],
       "geoLocalEndTime": "4:05 PM",
@@ -1472,10 +1474,10 @@
     {
       "appsUsed": [
         {
-          "icon": "Globe",
           "category": "productive",
-          "durationSeconds": 2248,
-          "appName": "LLC Time Tracker Desktop Software"
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 2248
         }
       ],
       "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
@@ -1502,8 +1504,8 @@
       "appsUsed": [
         {
           "durationSeconds": 25922,
-          "icon": "Globe",
           "category": "productive",
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software"
         }
       ],
@@ -1529,8 +1531,8 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
           "icon": "Globe",
+          "category": "productive",
           "durationSeconds": 29582
         }
       ],
@@ -1597,10 +1599,10 @@
       "geoLocalStartTime": "7:58 AM",
       "appsUsed": [
         {
-          "durationSeconds": 32758,
           "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software"
+          "durationSeconds": 32758
         }
       ],
       "userAvatar": "https://images.unsplash.com/photo-1534528757775?auto=format&fit=crop&q=80&w=250",
@@ -1628,8 +1630,8 @@
         {
           "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
-          "durationSeconds": 32695,
-          "category": "productive"
+          "category": "productive",
+          "durationSeconds": 32695
         }
       ],
       "endTime": "2026-09-08T09:14:58.606Z",
@@ -1681,10 +1683,10 @@
       "userId": "usr-1788394152923",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
           "icon": "Globe",
-          "durationSeconds": 2175
+          "category": "productive",
+          "durationSeconds": 2175,
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "idleSeconds": 2160,
@@ -1698,8 +1700,8 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
           "durationSeconds": 56,
+          "category": "productive",
           "icon": "Globe"
         }
       ],
@@ -1737,9 +1739,9 @@
       "userId": "usr-superadmin-red",
       "appsUsed": [
         {
+          "appName": "Google Chrome / External Application",
           "icon": "Globe",
           "durationSeconds": 82229,
-          "appName": "Google Chrome / External Application",
           "category": "productive"
         }
       ],
@@ -1768,10 +1770,10 @@
       "idleSeconds": 0,
       "appsUsed": [
         {
-          "icon": "Globe",
+          "durationSeconds": 86243,
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 86243
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ]
     },
@@ -1781,10 +1783,10 @@
       "idleSeconds": 0,
       "appsUsed": [
         {
-          "icon": "Globe",
+          "durationSeconds": 138,
           "appName": "Google Chrome / External Application",
           "category": "productive",
-          "durationSeconds": 138
+          "icon": "Globe"
         }
       ],
       "status": "completed",
@@ -1836,8 +1838,8 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
           "durationSeconds": 3892,
+          "category": "productive",
           "icon": "Globe"
         }
       ],
@@ -1865,9 +1867,9 @@
       "appsUsed": [
         {
           "category": "productive",
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 3875,
-          "icon": "Globe"
+          "durationSeconds": 3875
         }
       ],
       "date": "2026-09-09",
@@ -1897,9 +1899,9 @@
       "task": "Email Reachout",
       "appsUsed": [
         {
-          "durationSeconds": 11321,
           "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
+          "durationSeconds": 11321,
           "icon": "Globe"
         }
       ],
@@ -1922,8 +1924,8 @@
         {
           "icon": "Globe",
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 226
+          "durationSeconds": 226,
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "geoLocalStartTime": "11:12 AM",
@@ -1946,10 +1948,10 @@
     {
       "appsUsed": [
         {
-          "durationSeconds": 490,
           "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software"
+          "durationSeconds": 490
         }
       ],
       "geoLocalEndTime": "11:12 AM",
@@ -1991,10 +1993,10 @@
       "startTime": "2026-09-09T02:58:07.053Z",
       "appsUsed": [
         {
-          "durationSeconds": 328,
+          "category": "productive",
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "durationSeconds": 328,
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "status": "completed"
@@ -2015,9 +2017,9 @@
       "endTime": "2026-09-09T03:02:14.111Z",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
           "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 11590
         }
       ],
@@ -2047,10 +2049,10 @@
       "endTime": "2026-09-09T03:04:58.562Z",
       "appsUsed": [
         {
+          "icon": "Globe",
           "durationSeconds": 27,
-          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
-          "icon": "Globe"
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "status": "completed"
@@ -2062,9 +2064,9 @@
       "appsUsed": [
         {
           "category": "productive",
+          "durationSeconds": 17335,
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 17335
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "endTime": "2026-09-09T06:53:31.623Z",
@@ -2096,10 +2098,10 @@
       "userAvatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
           "durationSeconds": 29199,
           "category": "productive",
-          "icon": "Globe"
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "keyboardActivityAvg": 82,
@@ -2255,10 +2257,10 @@
       "geoLocalStartTime": "7:52 AM",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
           "category": "productive",
           "durationSeconds": 29513,
-          "icon": "Globe"
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "endTime": "2026-09-09T08:04:26.157Z",
@@ -2314,10 +2316,10 @@
       "idleSeconds": 0,
       "appsUsed": [
         {
-          "icon": "Globe",
-          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 4265,
-          "appName": "LLC Time Tracker Desktop Software"
+          "icon": "Globe",
+          "category": "productive"
         }
       ],
       "notes": "Logged via LLC Time Tracker desktop client (Agent)",
@@ -2347,10 +2349,10 @@
       "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
       "appsUsed": [
         {
-          "category": "productive",
-          "durationSeconds": 17949,
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe"
+          "durationSeconds": 17949,
+          "category": "productive"
         }
       ],
       "userId": "usr-llc-0012",
@@ -2374,10 +2376,10 @@
       "keyboardActivityAvg": 20,
       "appsUsed": [
         {
+          "icon": "Globe",
           "durationSeconds": 27916,
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe"
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "userId": "usr-1788394257822",
@@ -2406,20 +2408,20 @@
       "geoLocalStartTime": "7:56 AM",
       "appsUsed": [
         {
-          "category": "productive",
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 29507
+          "category": "productive",
+          "durationSeconds": 29507,
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ]
     },
     {
       "appsUsed": [
         {
-          "icon": "Globe",
-          "durationSeconds": 5418,
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software"
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 5418,
+          "icon": "Globe"
         }
       ],
       "date": "2026-09-07",
@@ -2459,10 +2461,10 @@
       "userId": "usr-superadmin-red",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "category": "productive",
           "durationSeconds": 30826,
-          "appName": "LLC Time Tracker Desktop Software"
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
+          "category": "productive"
         }
       ],
       "date": "2026-09-09",
@@ -2475,10 +2477,10 @@
       "startTime": "2026-09-07T06:10:50.978Z",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
-          "category": "productive",
-          "durationSeconds": 6963
+          "durationSeconds": 6963,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
         }
       ],
       "idleSeconds": 1860,
@@ -2511,10 +2513,10 @@
       "status": "completed",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe",
           "category": "productive",
-          "durationSeconds": 31148
+          "durationSeconds": 31148,
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
         }
       ],
       "userAvatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250",
@@ -2541,9 +2543,9 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 30811,
           "category": "productive",
-          "icon": "Globe"
+          "icon": "Globe",
+          "durationSeconds": 30811
         }
       ],
       "task": "Email Reachout",
@@ -2565,10 +2567,10 @@
       "startTime": "2026-09-07T06:11:23.146Z",
       "appsUsed": [
         {
-          "icon": "Globe",
           "durationSeconds": 6926,
-          "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software"
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
+          "category": "productive"
         }
       ],
       "id": "log-1788768409692",
@@ -2585,9 +2587,9 @@
       "appsUsed": [
         {
           "category": "productive",
-          "icon": "Globe",
           "durationSeconds": 28869,
-          "appName": "LLC Time Tracker Desktop Software"
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
         }
       ],
       "userId": "usr-superadmin-red",
@@ -2610,10 +2612,10 @@
       "id": "log-1788944286269",
       "appsUsed": [
         {
-          "durationSeconds": 32247,
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
-          "icon": "Globe"
+          "durationSeconds": 32247,
+          "category": "productive"
         }
       ],
       "userId": "usr-superadmin-red",
@@ -2669,10 +2671,10 @@
       "idleSeconds": 0,
       "appsUsed": [
         {
-          "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 93,
-          "icon": "Globe"
+          "category": "productive",
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "geoLocalEndTime": "4:59 PM",
@@ -2705,10 +2707,10 @@
       "notes": "Logged via LLC Time Tracker desktop client (Agent)",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 38083
+          "icon": "Globe",
+          "durationSeconds": 38083,
+          "category": "productive"
         }
       ],
       "date": "2026-09-09",
@@ -2730,10 +2732,10 @@
       "task": "Email Reachout",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
-          "durationSeconds": 84980
+          "durationSeconds": 84980,
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "geoLocalStartTime": "7:51 AM",
@@ -2766,10 +2768,10 @@
       "idleSeconds": 0,
       "appsUsed": [
         {
-          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 55900,
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software"
+          "category": "productive"
         }
       ]
     },
@@ -2787,10 +2789,10 @@
       "geoTimezone": "Asia/Manila",
       "appsUsed": [
         {
-          "durationSeconds": 86194,
           "appName": "Google Chrome / External Application",
-          "category": "productive",
-          "icon": "Globe"
+          "durationSeconds": 86194,
+          "icon": "Globe",
+          "category": "productive"
         }
       ],
       "designation": "Agent",
@@ -2814,9 +2816,9 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe",
           "category": "productive",
-          "durationSeconds": 1068
+          "durationSeconds": 1068,
+          "icon": "Globe"
         }
       ],
       "mouseActivityAvg": 100,
@@ -2834,10 +2836,10 @@
       "date": "2026-09-10",
       "appsUsed": [
         {
+          "durationSeconds": 1,
           "category": "productive",
-          "appName": "Google Chrome / External Application",
           "icon": "Globe",
-          "durationSeconds": 1
+          "appName": "Google Chrome / External Application"
         }
       ],
       "idleSeconds": 0,
@@ -2861,10 +2863,10 @@
       "status": "completed",
       "appsUsed": [
         {
-          "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
           "durationSeconds": 86472,
-          "icon": "Globe"
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "userAvatar": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250",
@@ -2903,10 +2905,10 @@
       "keyboardActivityAvg": 20,
       "appsUsed": [
         {
-          "category": "productive",
           "durationSeconds": 2228,
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software"
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
         }
       ],
       "date": "2026-09-10",
@@ -2925,8 +2927,8 @@
       "keyboardActivityAvg": 100,
       "appsUsed": [
         {
-          "durationSeconds": 78541,
           "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 78541,
           "category": "productive",
           "icon": "Globe"
         }
@@ -2959,10 +2961,10 @@
       "geoTimezone": "Asia/Manila",
       "appsUsed": [
         {
-          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 6,
-          "icon": "Globe"
+          "icon": "Globe",
+          "category": "productive",
+          "durationSeconds": 6
         }
       ],
       "mouseActivityAvg": 53,
@@ -2975,8 +2977,8 @@
         {
           "durationSeconds": 324,
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe",
-          "category": "productive"
+          "category": "productive",
+          "icon": "Globe"
         }
       ],
       "designation": "Admin",
@@ -3015,10 +3017,10 @@
       "task": "Data Entry & Market Research",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
+          "category": "productive",
           "durationSeconds": 6720,
-          "category": "productive"
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "idleSeconds": 4260
@@ -3041,10 +3043,10 @@
       "keyboardActivityAvg": 100,
       "appsUsed": [
         {
-          "icon": "Globe",
           "durationSeconds": 4985,
-          "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software"
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
+          "category": "productive"
         }
       ],
       "idleSeconds": 0,
@@ -3060,9 +3062,9 @@
       "userId": "usr-1788394130787",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "durationSeconds": 7629,
           "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 7629,
+          "icon": "Globe",
           "category": "productive"
         }
       ],
@@ -3151,9 +3153,9 @@
       "geoLocalStartTime": "9:25 PM",
       "appsUsed": [
         {
+          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
           "durationSeconds": 4193,
-          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe"
         }
       ],
@@ -3166,10 +3168,10 @@
     {
       "appsUsed": [
         {
-          "category": "productive",
-          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 3
+          "category": "productive",
+          "durationSeconds": 3,
+          "icon": "Globe"
         }
       ],
       "mouseActivityAvg": 100,
@@ -3199,10 +3201,10 @@
       "date": "2026-09-30",
       "appsUsed": [
         {
-          "durationSeconds": 2,
-          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software"
+          "category": "productive",
+          "durationSeconds": 2
         }
       ],
       "geoLocalStartTime": "2:32 PM",
@@ -3233,10 +3235,10 @@
       "date": "2026-09-30",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 3,
           "icon": "Globe",
           "category": "productive",
-          "durationSeconds": 3
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "status": "completed",
@@ -3251,10 +3253,10 @@
       "task": "Email Reachout",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 19729,
           "category": "productive",
-          "icon": "Globe",
-          "durationSeconds": 19729
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
         }
       ],
       "designation": "Agent",
@@ -3281,9 +3283,9 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 3,
           "icon": "Globe",
-          "category": "productive",
-          "durationSeconds": 3
+          "category": "productive"
         }
       ],
       "id": "log-1790664667241",
@@ -3311,9 +3313,9 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
+          "durationSeconds": 11675,
           "icon": "Globe",
-          "durationSeconds": 11675
+          "category": "productive"
         }
       ],
       "id": "log-1790654691228",
@@ -3351,9 +3353,9 @@
       "keyboardActivityAvg": 100,
       "appsUsed": [
         {
-          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 5,
+          "category": "productive",
           "icon": "Globe"
         }
       ],
@@ -3380,9 +3382,9 @@
       "appsUsed": [
         {
           "durationSeconds": 18309,
-          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "category": "productive",
+          "icon": "Globe"
         }
       ],
       "keyboardActivityAvg": 100
@@ -3402,9 +3404,9 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
           "durationSeconds": 11236,
-          "category": "productive",
-          "icon": "Globe"
+          "category": "productive"
         }
       ],
       "status": "completed",
@@ -3430,9 +3432,9 @@
       "appsUsed": [
         {
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
+          "icon": "Globe",
           "durationSeconds": 3,
-          "icon": "Globe"
+          "category": "productive"
         }
       ],
       "geoLocalEndTime": "8:56 PM",
@@ -3451,9 +3453,9 @@
       "appsUsed": [
         {
           "category": "productive",
+          "durationSeconds": 3,
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 3
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "mouseActivityAvg": 100,
@@ -3477,10 +3479,10 @@
       "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
-          "durationSeconds": 3
+          "durationSeconds": 3,
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
         }
       ],
       "mouseActivityAvg": 100,
@@ -3520,10 +3522,10 @@
       "task": "Data Entry & Market Research",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 3,
           "icon": "Globe",
           "category": "productive",
-          "durationSeconds": 3
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ]
     },
@@ -3537,10 +3539,10 @@
       "id": "log-1790137105666",
       "appsUsed": [
         {
+          "category": "productive",
           "icon": "Globe",
           "durationSeconds": 10877,
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "startTime": "2026-09-23T01:17:08.447Z",
@@ -3573,9 +3575,9 @@
       "status": "completed",
       "appsUsed": [
         {
-          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 4,
+          "category": "productive",
           "icon": "Globe"
         }
       ],
@@ -3586,8 +3588,8 @@
     {
       "appsUsed": [
         {
-          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
           "durationSeconds": 2,
           "category": "productive"
         }
@@ -3621,10 +3623,10 @@
       "date": "2026-09-23",
       "appsUsed": [
         {
+          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 2,
-          "icon": "Globe",
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software"
+          "icon": "Globe"
         }
       ],
       "geoLocalStartTime": "2:50 AM",
@@ -3654,10 +3656,10 @@
       "endTime": "2026-09-22T18:49:21.165Z",
       "appsUsed": [
         {
-          "durationSeconds": 9,
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
-          "icon": "Globe"
+          "durationSeconds": 9,
+          "category": "productive"
         }
       ],
       "status": "completed",
@@ -3677,10 +3679,10 @@
       "endTime": "2026-09-22T03:58:18.110Z",
       "appsUsed": [
         {
-          "durationSeconds": 11647,
-          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe"
+          "icon": "Globe",
+          "category": "productive",
+          "durationSeconds": 11647
         }
       ],
       "userId": "usr-1788394075900",
@@ -3703,10 +3705,10 @@
       "endTime": "2026-09-22T00:44:10.897Z",
       "appsUsed": [
         {
+          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
           "durationSeconds": 3,
-          "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software"
+          "icon": "Globe"
         }
       ],
       "userId": "usr-1788394075900",
@@ -3735,10 +3737,10 @@
       "id": "log-1789977339856",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
-          "durationSeconds": 23
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 23,
+          "icon": "Globe"
         }
       ],
       "geoLocalEndTime": "3:55 PM",
@@ -3759,9 +3761,9 @@
       "notes": "Logged via LLC Time Tracker desktop client (Agent)",
       "appsUsed": [
         {
-          "durationSeconds": 29791,
-          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 29791,
           "icon": "Globe"
         }
       ],
@@ -3794,10 +3796,10 @@
       "date": "2026-09-18",
       "appsUsed": [
         {
-          "durationSeconds": 29362,
-          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "category": "productive",
+          "icon": "Globe",
+          "durationSeconds": 29362
         }
       ],
       "status": "completed",
@@ -3817,10 +3819,10 @@
       "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
-          "category": "productive",
-          "durationSeconds": 4
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 4,
+          "category": "productive"
         }
       ],
       "status": "completed",
@@ -3851,10 +3853,10 @@
       "task": "Email Reachout",
       "appsUsed": [
         {
-          "durationSeconds": 29643,
           "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe"
+          "icon": "Globe",
+          "durationSeconds": 29643
         }
       ],
       "idleSeconds": 0,
@@ -3875,9 +3877,9 @@
       "userId": "usr-1788394075900",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "durationSeconds": 5,
           "category": "productive",
+          "durationSeconds": 5,
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software"
         }
       ],
@@ -3907,10 +3909,10 @@
       "geoLocalEndTime": "4:06 PM",
       "appsUsed": [
         {
-          "icon": "Globe",
+          "category": "productive",
           "durationSeconds": 30054,
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "icon": "Globe"
         }
       ],
       "durationSeconds": 30054,
@@ -3940,9 +3942,9 @@
       "id": "log-1789515970426",
       "appsUsed": [
         {
+          "durationSeconds": 5,
           "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
-          "durationSeconds": 5,
           "category": "productive"
         }
       ]
@@ -3964,8 +3966,8 @@
       "appsUsed": [
         {
           "durationSeconds": 29610,
-          "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe"
         }
       ],
@@ -3992,10 +3994,10 @@
       "geoLocalStartTime": "7:48 AM",
       "appsUsed": [
         {
-          "durationSeconds": 29766,
           "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "category": "productive",
+          "durationSeconds": 29766
         }
       ],
       "geoTimezone": "Asia/Manila",
@@ -4019,10 +4021,10 @@
       "userId": "usr-1788394075900",
       "appsUsed": [
         {
+          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 22665,
           "icon": "Globe",
-          "category": "productive"
+          "durationSeconds": 22665
         }
       ],
       "endTime": "2026-09-11T06:01:20.369Z",
@@ -4045,10 +4047,10 @@
       "status": "completed",
       "appsUsed": [
         {
-          "durationSeconds": 30150,
-          "icon": "Globe",
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software"
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
+          "durationSeconds": 30150
         }
       ],
       "userId": "usr-1788394075900",
@@ -4075,10 +4077,10 @@
       "id": "log-1790569527865",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "durationSeconds": 29,
+          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "durationSeconds": 29,
+          "icon": "Globe"
         }
       ],
       "designation": "Team Leader",
@@ -4096,10 +4098,10 @@
       "keyboardActivityAvg": 100,
       "appsUsed": [
         {
-          "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
           "durationSeconds": 54,
-          "icon": "Globe"
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive"
         }
       ],
       "task": "Data Entry & Market Research",
@@ -4118,9 +4120,9 @@
     {
       "appsUsed": [
         {
-          "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 1955,
+          "appName": "LLC Time Tracker Desktop Software",
+          "category": "productive",
           "icon": "Globe"
         }
       ],
@@ -4164,10 +4166,10 @@
       "startTime": "2026-09-28T03:48:11.406Z",
       "appsUsed": [
         {
-          "category": "productive",
-          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 100,
-          "appName": "LLC Time Tracker Desktop Software"
+          "category": "productive",
+          "icon": "Globe"
         }
       ]
     },
@@ -4188,10 +4190,10 @@
       "geoLocalStartTime": "7:56 AM",
       "appsUsed": [
         {
-          "category": "productive",
-          "icon": "Globe",
+          "appName": "Google Chrome / External Application",
           "durationSeconds": 86259,
-          "appName": "Google Chrome / External Application"
+          "icon": "Globe",
+          "category": "productive"
         }
       ],
       "geoTimezone": "Asia/Manila",
@@ -4217,10 +4219,10 @@
       "notes": "Logged via LLC Time Tracker desktop client (Agent)",
       "appsUsed": [
         {
-          "durationSeconds": 23,
           "category": "productive",
-          "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software"
+          "durationSeconds": 23,
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe"
         }
       ],
       "designation": "Agent",
@@ -4245,10 +4247,10 @@
       "geoLocalStartTime": "7:33 AM",
       "appsUsed": [
         {
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 10157,
           "category": "productive",
-          "icon": "Globe"
+          "durationSeconds": 10157
         }
       ],
       "id": "log-1790562143089",
@@ -4265,10 +4267,10 @@
       "userId": "usr-1788394130787",
       "appsUsed": [
         {
-          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 538,
-          "category": "productive"
+          "category": "productive",
+          "icon": "Globe"
         }
       ],
       "status": "completed",
@@ -4293,8 +4295,8 @@
       "id": "log-1790331559833",
       "appsUsed": [
         {
-          "icon": "Globe",
           "durationSeconds": 2,
+          "icon": "Globe",
           "category": "productive",
           "appName": "LLC Time Tracker Desktop Software"
         }
@@ -4331,9 +4333,9 @@
       "appsUsed": [
         {
           "durationSeconds": 136,
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
-          "icon": "Globe"
+          "category": "productive"
         }
       ],
       "designation": "Agent",
@@ -4356,10 +4358,10 @@
       "notes": "Task segment for Data Entry & Market Research (Switched to Email Reachout)",
       "appsUsed": [
         {
-          "durationSeconds": 6,
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
-          "icon": "Globe"
+          "durationSeconds": 6
         }
       ],
       "idleSeconds": 0,
@@ -4412,10 +4414,10 @@
       "idleSeconds": 0,
       "appsUsed": [
         {
-          "durationSeconds": 12702,
           "category": "productive",
-          "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe"
+          "durationSeconds": 12702,
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "startTime": "2026-09-24T11:38:58.039Z",
@@ -4443,10 +4445,10 @@
       "userId": "usr-1788394130787",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive",
           "durationSeconds": 18410,
-          "icon": "Globe"
+          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
+          "category": "productive"
         }
       ],
       "status": "completed"
@@ -4498,9 +4500,9 @@
       "keyboardActivityAvg": 100,
       "appsUsed": [
         {
-          "icon": "Globe",
-          "category": "productive",
           "durationSeconds": 6,
+          "category": "productive",
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software"
         }
       ],
@@ -4519,10 +4521,10 @@
       "geoTimezone": "Asia/Manila",
       "appsUsed": [
         {
-          "durationSeconds": 38128,
+          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe",
-          "category": "productive"
+          "durationSeconds": 38128,
+          "icon": "Globe"
         }
       ],
       "startTime": "2026-09-22T23:49:19.488Z",
@@ -4543,9 +4545,9 @@
       "appsUsed": [
         {
           "icon": "Globe",
-          "durationSeconds": 31414,
           "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "category": "productive",
+          "durationSeconds": 31414
         }
       ],
       "geoLocalEndTime": "4:32 PM",
@@ -4574,10 +4576,10 @@
       "designation": "Agent",
       "appsUsed": [
         {
-          "durationSeconds": 30240,
+          "icon": "Globe",
           "appName": "LLC Time Tracker Desktop Software",
           "category": "productive",
-          "icon": "Globe"
+          "durationSeconds": 30240
         }
       ],
       "idleSeconds": 0,
@@ -4610,8 +4612,8 @@
       "notes": "Logged via LLC Time Tracker desktop client (Agent)",
       "appsUsed": [
         {
-          "durationSeconds": 31839,
           "icon": "Globe",
+          "durationSeconds": 31839,
           "appName": "LLC Time Tracker Desktop Software",
           "category": "productive"
         }
@@ -4639,10 +4641,10 @@
       "task": "Email Reachout",
       "appsUsed": [
         {
+          "icon": "Globe",
           "category": "productive",
           "durationSeconds": 11780,
-          "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe"
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "designation": "Agent"
@@ -4659,10 +4661,10 @@
       "date": "2026-09-17",
       "appsUsed": [
         {
-          "durationSeconds": 18761,
           "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe"
+          "icon": "Globe",
+          "durationSeconds": 18761
         }
       ],
       "userAvatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
@@ -4688,9 +4690,9 @@
       "appsUsed": [
         {
           "durationSeconds": 49958,
-          "appName": "LLC Time Tracker Desktop Software",
+          "icon": "Globe",
           "category": "productive",
-          "icon": "Globe"
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "endTime": "2026-09-16T13:31:18.104Z",
@@ -4710,10 +4712,10 @@
       "designation": "Agent",
       "appsUsed": [
         {
-          "appName": "LLC Time Tracker Desktop Software",
           "icon": "Globe",
+          "category": "productive",
           "durationSeconds": 31269,
-          "category": "productive"
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "mouseActivityAvg": 100,
@@ -4737,8 +4739,8 @@
         {
           "durationSeconds": 30049,
           "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
-          "category": "productive"
+          "category": "productive",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "designation": "Agent",
@@ -4776,10 +4778,10 @@
       "keyboardActivityAvg": 100,
       "appsUsed": [
         {
-          "icon": "Globe",
-          "appName": "LLC Time Tracker Desktop Software",
           "durationSeconds": 20338,
-          "category": "productive"
+          "category": "productive",
+          "icon": "Globe",
+          "appName": "LLC Time Tracker Desktop Software"
         }
       ],
       "userId": "usr-1788394130787",
@@ -4806,10 +4808,10 @@
       "date": "2026-09-10",
       "appsUsed": [
         {
-          "icon": "Globe",
-          "category": "productive",
           "appName": "LLC Time Tracker Desktop Software",
-          "durationSeconds": 24072
+          "durationSeconds": 24072,
+          "category": "productive",
+          "icon": "Globe"
         }
       ],
       "endTime": "2026-09-10T09:11:09.748Z",
@@ -4826,9 +4828,9 @@
       "date": "2026-10-01",
       "appsUsed": [
         {
+          "icon": "Globe",
           "durationSeconds": 137613,
           "appName": "LLC Time Tracker Desktop Software",
-          "icon": "Globe",
           "category": "productive"
         }
       ],
@@ -4897,7 +4899,7 @@
       "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250",
       "role": "team_lead",
       "teamLeaderId": "None / Direct Executive",
-      "mustChangePassword": true,
+      "mustChangePassword": false,
       "geoTimezone": "Asia/Manila",
       "department": "Operations",
       "employeeCode": "LLC-0002",
@@ -4907,7 +4909,7 @@
       "designation": "Team Leader",
       "username": "teamlead",
       "geoCity": "Manila, Philippines",
-      "password": "Password123!",
+      "password": "Password1234",
       "name": "Team_Leader1",
       "joinDate": "2020-01-01",
       "id": "usr-1787281086796"
@@ -5833,8 +5835,8 @@
       "geoCity": "Manila, Philippines",
       "joinDate": "2020-01-01",
       "department": "Operations",
-      "password": "Password123!",
-      "mustChangePassword": true
+      "password": "Password1234",
+      "mustChangePassword": false
     },
     {
       "id": "usr-llc-0029",
@@ -5949,6 +5951,30 @@
   ],
   "attendance": [],
   "auditlogs": [
+    {
+      "actorId": "usr-1787281086796",
+      "actorName": "Team_Leader1",
+      "actorRole": "team_lead",
+      "category": "Security",
+      "targetEmployeeId": "usr-1787281086796",
+      "targetEmployeeName": "Team_Leader1",
+      "details": "Employee Team_Leader1 (#LLC-0002) set their initial unique password upon first login. Masked in database & Google Sheets (Pass********).",
+      "id": "audit-1790844384323-737",
+      "timestamp": "2026-10-01T08:46:24.322Z",
+      "dateFormatted": "Oct 01, 2026 04:46:24 PM"
+    },
+    {
+      "actorId": "usr-llc-0028",
+      "actorName": "Test Agent",
+      "actorRole": "agent",
+      "category": "Security",
+      "targetEmployeeId": "usr-llc-0028",
+      "targetEmployeeName": "Test Agent",
+      "details": "Employee Test Agent (#LLC-0028) set their initial unique password upon first login. Masked in database & Google Sheets (Pass********).",
+      "id": "audit-1790844327523-524",
+      "timestamp": "2026-10-01T08:45:27.522Z",
+      "dateFormatted": "Oct 01, 2026 04:45:27 PM"
+    },
     {
       "actorId": "usr-llc-0023",
       "actorName": "Juan David",

@@ -30,7 +30,15 @@ import {
 } from 'lucide-react';
 
 export const LoginView: React.FC = () => {
-  const { users, login, updateUser, addAuditLog, sessionExpiredReason, clearSessionExpiredReason } = useApp();
+  const {
+  users,
+  login,
+  updateUser,
+  addAuditLog,
+  sessionExpiredReason,
+  clearSessionExpiredReason,
+  isFirestoreLoaded,
+} = useApp();
 
   // Detect if running inside the Standalone Software App (.exe / Electron) vs Web Browser
   const isSoftwareEnv = typeof window !== 'undefined' && (
@@ -66,9 +74,35 @@ export const LoginView: React.FC = () => {
   const [firstTimeError, setFirstTimeError] = useState<string>('');
   const [isSavingPassword, setIsSavingPassword] = useState<boolean>(false);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  /*const handleLoginSubmit = (e: React.FormEvent) => { */
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
+if (!isFirestoreLoaded) {
+  setErrorMsg('Loading employee accounts. Please wait a moment and try again.');
+  return;
+}
+    // Always get the latest shared user credentials before authentication.
+// This prevents stale Electron/localStorage credentials from being used.
+try {
+  const remoteResponse = await fetch('/api/users', {
+    method: 'GET',
+    cache: 'no-store',
+  });
+
+  if (remoteResponse.ok) {
+    const remoteUsers = await remoteResponse.json();
+
+    if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
+      // Refresh the local roster with the central roster.
+      // IMPORTANT: do this BEFORE searching for the employee/password.
+      setUsers(remoteUsers);
+      localStorage.setItem('trackpulse_users', JSON.stringify(remoteUsers));
+    }
+  }
+} catch (syncError) {
+  console.warn('Central user credential refresh failed:', syncError);
+}
 
     const cleanCode = employeeCodeInput.trim();
     if (!cleanCode) {
@@ -87,7 +121,20 @@ export const LoginView: React.FC = () => {
     const digitsOnlyQuery = query.replace(/\D/g, '');
 
     // Search user by username, employee code, role, or email flexibly
-    let foundUser = users.find((u) => {
+    /*let foundUser = users.find((u) => { */
+
+      const authUsers =
+  (() => {
+    try {
+      const cached = localStorage.getItem('trackpulse_users');
+      const parsed = cached ? JSON.parse(cached) : null;
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : users;
+    } catch {
+      return users;
+    }
+  })();
+
+let foundUser = authUsers.find((u) => {
       // 0. Primary username match (e.g. "trainer", "trainer1", "jdavid", "admin")
       if (u.username && u.username.toLowerCase() === cleanUsernameQuery) return true;
       if (cleanUsernameQuery === 'trainer' && (u.role === 'trainer' || u.username === 'trainer1' || u.employeeCode === 'LLC-0003')) return true;
@@ -173,7 +220,7 @@ export const LoginView: React.FC = () => {
       foundUser.email === 'admin@llc.com';
     const inputPass = password.trim();
 
-    let isValidPassword = false;
+    /*let isValidPassword = false;
     if (isRootAdmin) {
       const expectedPass = foundUser.password || 'AdminpassW0rd123!';
       isValidPassword =
@@ -186,7 +233,17 @@ export const LoginView: React.FC = () => {
         inputPass === expectedPass ||
         inputPass === 'Password123!' ||
         inputPass === 'SUPERADMIN2026';
-    }
+    }*/
+
+        let isValidPassword = false;
+
+        if (isRootAdmin) {
+          const expectedPass = (foundUser.password || 'AdminpassWord123!').trim();
+          isValidPassword = inputPass === expectedPass;
+        } else {
+          const expectedPass = (foundUser.password || 'Password123!').trim();
+          isValidPassword = inputPass === expectedPass;
+        }
 
     if (!isValidPassword) {
       if (isRootAdmin) {

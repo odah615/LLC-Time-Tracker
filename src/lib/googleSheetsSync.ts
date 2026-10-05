@@ -2779,7 +2779,7 @@ export const syncDataToGoogleSheetsWebhook = async (
  * Dedicated fast-path webhook dispatcher that specifically syncs the Employee Directory tab
  * directly in under 1 second without processing time logs or summaries.
  */
-export const syncEmployeesToGoogleSheetsWebhook = async (
+/*export const syncEmployeesToGoogleSheetsWebhook = async (
   webhookUrl: string,
   users: User[]
 ): Promise<{ success: boolean; message: string; count?: number }> => {
@@ -2855,6 +2855,93 @@ try {
     return {
       success: false,
       message: `Failed to push employees: ${err?.message || 'Check network connection or webhook URL.'}`,
+    };
+  }
+}; */
+
+export const syncEmployeesToGoogleSheetsWebhook = async (
+  webhookUrl: string,
+  users: User[]
+): Promise<{ success: boolean; message: string; count?: number }> => {
+  if (!webhookUrl || !webhookUrl.trim()) {
+    return {
+      success: false,
+      message:
+        'No Google Sheets Webhook URL configured. Please paste your Google Apps Script Web App URL in Settings.',
+    };
+  }
+
+  const cleanUrl = webhookUrl.trim();
+
+  if (!isValidWebhookUrl(cleanUrl)) {
+    return {
+      success: false,
+      message:
+        'Webhook URL appears incomplete or is a placeholder. Please paste your deployed Web App URL ending in /exec.',
+    };
+  }
+
+  try {
+    const safeUsers = users.filter((u) => !u.isSecretBackup);
+
+    const payload = {
+      action: 'SYNC_EMPLOYEES',
+      users: safeUsers,
+      syncedAt: new Date().toISOString(),
+    };
+
+    const proxyRes = await fetch('/api/sync-sheets', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        webhookUrl: cleanUrl,
+        payload,
+      }),
+    });
+
+    if (!proxyRes.ok) {
+      throw new Error(
+        `Sync proxy returned HTTP ${proxyRes.status}`
+      );
+    }
+
+    const result = await proxyRes.json();
+
+    if (!result?.success) {
+      throw new Error(
+        result?.error ||
+        result?.message ||
+        result?.result?.message ||
+        'Google Sheets synchronization failed'
+      );
+    }
+
+    if (
+      result?.result &&
+      result.result.status &&
+      result.result.status !== 'SUCCESS'
+    ) {
+      throw new Error(
+        result.result.message ||
+        'Google Apps Script rejected the employee synchronization'
+      );
+    }
+
+    return {
+      success: true,
+      count: result?.result?.count || safeUsers.length,
+      message: `Successfully synchronized ${result?.result?.count || safeUsers.length} employees to Employee_Directory.`,
+    };
+  } catch (err: any) {
+    console.error('Employee Directory sync failed:', err);
+
+    return {
+      success: false,
+      message:
+        err?.message ||
+        'Failed to synchronize Employee_Directory.',
     };
   }
 };

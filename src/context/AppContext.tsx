@@ -260,6 +260,8 @@ interface AppContextType {
   startAgentLiveShift: (userId: string, task?: TaskCategory) => void;
   stopAgentLiveShift: (userId: string) => void;
   simulateActiveTraineesShift: () => void;
+  // Firestore loading state
+  isFirestoreLoaded: boolean;
   // Desktop dock view toggle
   isDesktopDockView: boolean;
   setIsDesktopDockView: (val: boolean) => void;
@@ -1843,21 +1845,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setUsers(cleanRoster);
       localStorage.setItem('trackpulse_users', JSON.stringify(cleanRoster));
     }
-    if (cleanRoster.length > 0) {
-      fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cleanRoster),
-      }).catch(() => {});
-      safeSetDoc(doc(db, 'system_state', 'users'), { data: cleanRoster }).catch(() => {});
-    }
-    if (timeLogs.length > 0) {
-      fetch('/api/timelogs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(timeLogs),
-      }).catch(() => {});
-    }
 
     // 1.5. Read-only Google Sheets Time Logs hydration
 // Google Sheets is used here only to recover records that are missing
@@ -2050,52 +2037,7 @@ hydrateTimeLogsFromSheets();
         })
         .catch(() => {});
 
-      // 2b. Sync shared users across desktop software and web portal
-      fetch('/api/users')
-        .then((res) => (res.ok ? res.json() : null))
-        .then((remoteUsers) => {
-          if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-            const sanitizedRemoteUsers = ensureUsernames(remoteUsers);
-
-setUsers(sanitizedRemoteUsers);
-localStorage.setItem(
-  'trackpulse_users',
-  JSON.stringify(sanitizedRemoteUsers)
-);
-          }
-        })
-        .catch(() => {});
-
-      // 2c. Central Sync Bridge Presence Polling (100% Firestore quota-free live status)
-      /*fetch('/api/presence')
-        .then((res) => (res.ok ? res.json() : null))
-        .then((remotePresence: UserPresence[]) => {
-          if (Array.isArray(remotePresence) && remotePresence.length > 0) {
-            setUserPresenceList((prev) => {
-              const map = new Map<string, UserPresence>(prev.map((p) => [p.userId, p]));
-              for (const p of remotePresence) {
-                if (p && p.userId) {
-                  const canon = resolveCanonicalEmployee({
-                    employeeCode: p.employeeCode,
-                    username: p.userName,
-                    name: p.userName,
-                    id: p.userId,
-                  });
-                  const sanitizedPresence = {
-                    ...p,
-                    userName: canon?.name || (p.userName && p.userName !== p.userId ? p.userName : 'Agent'),
-                    employeeCode: canon?.code || p.employeeCode || '',
-                  };
-                  const existing = map.get(p.userId);
-                  map.set(p.userId, { ...(existing || sanitizedPresence), ...sanitizedPresence });
-                }
-              }
-              return Array.from(map.values());
-            });
-          }
-        })
-        .catch(() => {});*/
-
+ 
       // 2d. Sync Audit Logs across sessions (login/logout/trainee activity logs)
       fetch('/api/auditlogs')
         .then((res) => (res.ok ? res.json() : null))
@@ -2163,11 +2105,6 @@ localStorage.setItem(
             const merged = deduplicateUsers([...prev, ...res.employees]);
             localStorage.setItem('trackpulse_users', JSON.stringify(merged));
             // Push merged Google Sheets employees to central server so desktop software gets them instantly!
-            fetch('/api/users', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(merged),
-            }).catch(() => {});
             return merged;
           });
         }
@@ -2183,6 +2120,21 @@ localStorage.setItem(
   useEffect(() => {
     localStorage.setItem('trackpulse_users', JSON.stringify(users));
   }, [users]);
+
+    // Firestore is authoritative for the shared employee roster.
+  // Only publish the roster to the Central Bridge after Firestore has loaded,
+  // preventing a newly-installed/stale client from overwriting the central roster.
+  useEffect(() => {
+    if (!isFirestoreLoaded || users.length === 0) return;
+
+    fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(users),
+    }).catch((err) => {
+      console.warn('Central user roster sync warning:', err);
+    });
+  }, [isFirestoreLoaded, users]);
 
   useEffect(() => {
     localStorage.setItem('trackpulse_timelogs', JSON.stringify(timeLogs));
@@ -5588,6 +5540,7 @@ if (mode === 'software') {
         sessionExpiredReason,
         clearSessionExpiredReason,
         isOffline,
+        isFirestoreLoaded,
         offlineSinceTimestamp,
         offlineSecondsRemaining,
         offlineStatusStage,

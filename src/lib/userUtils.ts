@@ -272,26 +272,98 @@ export const deduplicateUsers = (rawUsers: User[]): User[] => {
       const chosenUsername = canonical?.username || existingCanon?.username || effectiveUser.username || existing.username;
       const chosenCode = canonical?.code || existingCanon?.code || effectiveUser.employeeCode || existing.employeeCode;
 
-      // Merge records cleanly into one authoritative user
-      const merged: User = {
-        ...existing,
-        ...effectiveUser,
-        name: chosenName,
-        employeeCode: chosenCode,
-        username: chosenUsername,
-        email: canonical?.email || existing.email || effectiveUser.email,
-        role: existing.role && existing.role !== 'agent' ? existing.role : (effectiveUser.role || 'agent'),
-        designation: existing.designation || effectiveUser.designation || 'Agent',
-        department: existing.department || effectiveUser.department || 'Operations',
-        teamLeaderId: existing.teamLeaderId || effectiveUser.teamLeaderId || 'usr-llc-0003',
-        password:
-          existing.password && existing.password !== 'Password123!'
-            ? existing.password
-            : effectiveUser.password || existing.password || 'Password123!',
-        customPermissions: existing.customPermissions || effectiveUser.customPermissions,
-        avatar: existing.avatar || effectiveUser.avatar,
-      };
+      // Preserve the authoritative credential state when merging duplicates.
+// A real existing password must never be replaced by Password123!,
+// and an existing mustChangePassword=false must never be turned back on
+// just because a duplicate/imported record has the default state.
+const existingHasRealPassword =
+  !!existing.password &&
+  existing.password.trim() !== '' &&
+  existing.password !== 'Password123!';
+
+const incomingHasRealPassword =
+  !!effectiveUser.password &&
+  effectiveUser.password.trim() !== '' &&
+  effectiveUser.password !== 'Password123!';
+
+const merged: User = {
+  ...existing,
+  ...effectiveUser,
+
+  // Canonical identity
+  name: chosenName,
+  employeeCode: chosenCode,
+  username: chosenUsername,
+  email: canonical?.email || existing.email || effectiveUser.email,
+
+  // Preserve authoritative role/profile information
+  role:
+    existing.role && existing.role !== 'agent'
+      ? existing.role
+      : (effectiveUser.role || 'agent'),
+
+  designation:
+    existing.designation || effectiveUser.designation || 'Agent',
+
+  department:
+    existing.department || effectiveUser.department || 'Operations',
+
+  teamLeaderId:
+    existing.teamLeaderId ||
+    effectiveUser.teamLeaderId ||
+    'usr-llc-0003',
+
+  // NEVER replace a real password with the default password
+  password:
+    existingHasRealPassword
+      ? existing.password
+      : incomingHasRealPassword
+        ? effectiveUser.password
+        : 'Password123!',
+
+  // Preserve an existing explicit password-change state.
+  // Only use the incoming value when the existing record has no value.
+mustChangePassword:
+  existingHasRealPassword
+    ? false
+    : effectiveUser.mustChangePassword !== undefined
+      ? effectiveUser.mustChangePassword
+      : (existing.mustChangePassword ?? true),
+
+  customPermissions:
+    existing.customPermissions || effectiveUser.customPermissions,
+
+  avatar:
+    existing.avatar || effectiveUser.avatar,
+};
+
       result[existingIndex] = merged;
+
+      // Refresh all identity maps so subsequent duplicate records
+// resolve to this same canonical user.
+const mergedName = (merged.name || '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]/g, '')
+  .trim();
+
+const mergedCode = (merged.employeeCode || '')
+  .toUpperCase()
+  .replace(/[^A-Z0-9]/g, '')
+  .trim();
+
+const mergedNumCode = mergedCode.replace(/^[A-Z]+/, '');
+
+const mergedEmail = (merged.email || '').toLowerCase().trim();
+const mergedUsername = (merged.username || '').toLowerCase().trim();
+const mergedId = (merged.id || '').trim();
+
+if (mergedName) nameMap.set(mergedName, existingIndex);
+if (mergedCode) codeMap.set(mergedCode, existingIndex);
+if (mergedNumCode) numCodeMap.set(mergedNumCode, existingIndex);
+if (mergedEmail) emailMap.set(mergedEmail, existingIndex);
+if (mergedUsername) userMap.set(mergedUsername, existingIndex);
+if (mergedId) idMap.set(mergedId, existingIndex);
+
     } else {
       const newIndex = result.length;
       result.push(effectiveUser);
