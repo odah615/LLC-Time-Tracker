@@ -8,7 +8,6 @@ import {
   Clock,
   Plus,
   FileSpreadsheet,
-  Lock,
   Layers,
   BarChart3,
   CheckCircle2,
@@ -71,6 +70,11 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     setGoogleSheetsWebhookUrl,
     triggerGoogleSheetsSync,
   } = useApp();
+
+  const isPersonalView =
+    isPersonalOnly ||
+    currentUser.role === 'agent' ||
+    currentUser.role === 'team_lead';
 
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
@@ -394,13 +398,13 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     }
   };
 
-  // General Filtered logs based on mode (isPersonalOnly or team view), period, task filter, and agent search query
+  // General Filtered logs based on mode (isPersonalView or team view), period, task filter, and agent search query
   // Chronologically sorted from newest to oldest
   const filteredLogs = useMemo(() => {
     return allAvailableLogs
       .filter((log) => {
         // If personal view mode OR agent role, match flexibly across userId, employeeCode, and userName
-        if (isPersonalOnly || currentUser.role === 'agent') {
+        if (isPersonalView || currentUser.role === 'agent') {
           const uId = (currentUser.id || '').trim().toLowerCase();
           const uCode = (currentUser.employeeCode || '').trim().toLowerCase();
           const uName = (currentUser.name || '').trim().toLowerCase();
@@ -427,7 +431,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
         // Search query filter (Agent Name / Designation / Employee Code)
         const query = agentSearch.trim().toLowerCase();
         const matchesSearch =
-          isPersonalOnly ||
+          isPersonalView ||
           !query ||
           log.userName.toLowerCase().includes(query) ||
           log.designation.toLowerCase().includes(query) ||
@@ -447,7 +451,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
   }, [
     allAvailableLogs,
     currentUser,
-    isPersonalOnly,
+    isPersonalView,
     viewTab,
     anchorDate,
     weekStartDate,
@@ -617,7 +621,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     if (filteredLogs.length > 0) {
       const map: Record<string, { name: string; trackedHours: number; idleHours: number }> = {};
       filteredLogs.forEach((log) => {
-        const rawKey = isPersonalOnly ? formatDateDDMMYYYY(log.date) : log.task;
+        const rawKey = isPersonalView ? formatDateDDMMYYYY(log.date) : log.task;
         const shortKey = rawKey.length > 18 ? rawKey.substring(0, 18) + '...' : rawKey;
         if (!map[shortKey]) {
           map[shortKey] = { name: shortKey, trackedHours: 0, idleHours: 0 };
@@ -633,7 +637,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     } else {
   return [];
 }
-  }, [filteredLogs, isPersonalOnly]);
+  }, [filteredLogs, isPersonalView]);
 
   // CSV Export Handler
   const handleExportCSV = () => {
@@ -676,7 +680,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     link.setAttribute('href', encodedUri);
     link.setAttribute(
       'download',
-      `LLC_Time_Tracker_${isPersonalOnly ? 'My_Personal' : 'Team'}_Timesheet_${getPeriodLabel().replace(/[^a-zA-Z0-9]/g, '_')}.csv`
+      `LLC_Time_Tracker_${isPersonalView ? 'My_Personal' : 'Team'}_Timesheet_${getPeriodLabel().replace(/[^a-zA-Z0-9]/g, '_')}.csv`
     );
     document.body.appendChild(link);
     link.click();
@@ -692,7 +696,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              {isPersonalOnly ? (
+              {isPersonalView ? (
                 <>
                   <User className="w-6 h-6 text-emerald-600" /> My Personal Timesheet
                 </>
@@ -703,26 +707,14 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
               )}
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              {isPersonalOnly
+              {isPersonalView
                 ? `View and manage your personal time logs, tracked work sessions, and task history for ${currentUser.name}.`
                 : 'Monitor, review, and export employee shift logs, task activities, and time tracking data across Daily, Weekly, and Monthly periods.'}
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {/* Force Push to Google Sheets Button */}
-            <button
-              onClick={handleManualSheetsSync}
-              disabled={isSyncingSheets}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-2 transition-all shadow-sm disabled:opacity-50"
-              title="Force sync all timesheets, shift records, and daily summaries to Google Sheets"
-            >
-              <RefreshCw className={`w-4 h-4 ${isSyncingSheets ? 'animate-spin' : ''}`} />
-              <span>{isSyncingSheets ? 'Syncing Sheets...' : '⚡ Push to Google Sheets'}</span>
-            </button>
-
-            {/* Add / Request Time Button (Restricted from Agents unless in Personal view) */}
-            {(currentUser.role !== 'agent' || isPersonalOnly) && (
+            {currentUser.role === 'team_lead' && (
               <button
                 onClick={onOpenManualModal}
                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs flex items-center gap-2 transition-all shadow-sm"
@@ -731,22 +723,25 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
               </button>
             )}
 
-            {/* Export CSV Button */}
-            {currentUser.role === 'agent' && !isPersonalOnly ? (
-              <button
-                disabled
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-400 font-semibold text-xs flex items-center gap-2 border border-slate-200 cursor-not-allowed opacity-75"
-                title="Exporting CSV is restricted for Agent accounts"
-              >
-                <Lock className="w-4 h-4 text-slate-400" /> Export CSV (Restricted)
-              </button>
-            ) : (
-              <button
-                onClick={handleExportCSV}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs flex items-center gap-2 transition-all shadow-sm"
-              >
-                <FileSpreadsheet className="w-4 h-4" /> Export CSV / Spreadsheet
-              </button>
+            {currentUser.role !== 'agent' && currentUser.role !== 'team_lead' && !isPersonalView && (
+              <>
+                <button
+                  onClick={handleManualSheetsSync}
+                  disabled={isSyncingSheets}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center gap-2 transition-all shadow-sm disabled:opacity-50"
+                  title="Force sync all timesheets, shift records, and daily summaries to Google Sheets"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncingSheets ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingSheets ? 'Syncing Sheets...' : '⚡ Push to Google Sheets'}</span>
+                </button>
+
+                <button
+                  onClick={handleExportCSV}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs flex items-center gap-2 transition-all shadow-sm"
+                >
+                  <FileSpreadsheet className="w-4 h-4" /> Export CSV / Spreadsheet
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -782,22 +777,26 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                 <AlertTriangle className="w-3 h-3 text-amber-600" /> WEBHOOK URL REQUIRED FOR SPREADSHEET WRITES
               </span>
             )}
-            <a
-              href={DEFAULT_SPREADSHEET_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="text-emerald-700 hover:text-emerald-800 font-bold underline flex items-center gap-1 ml-1"
-            >
-              Open Sheet <ExternalLink className="w-3 h-3" />
-            </a>
+            {currentUser.role !== 'agent' && currentUser.role !== 'team_lead' && (
+              <a
+                href={DEFAULT_SPREADSHEET_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="text-emerald-700 hover:text-emerald-800 font-bold underline flex items-center gap-1 ml-1"
+              >
+                Open Sheet <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
           </div>
 
-          <button
-            onClick={() => setShowWebhookSetup(!showWebhookSetup)}
-            className="text-blue-600 hover:text-blue-800 font-bold underline flex items-center gap-1 shrink-0"
-          >
-            {showWebhookSetup ? 'Hide Webhook Setup ▲' : (googleSheetsWebhookUrl ? '⚙️ Webhook Settings ▼' : '📋 Connect Google Spreadsheet Webhook ▼')}
-          </button>
+          {currentUser.role !== 'agent' && currentUser.role !== 'team_lead' && (
+            <button
+              onClick={() => setShowWebhookSetup(!showWebhookSetup)}
+              className="text-blue-600 hover:text-blue-800 font-bold underline flex items-center gap-1 shrink-0"
+            >
+              {showWebhookSetup ? 'Hide Webhook Setup ▲' : (googleSheetsWebhookUrl ? '⚙️ Webhook Settings ▼' : '📋 Connect Google Spreadsheet Webhook ▼')}
+            </button>
+          )}
         </div>
 
         {/* Expandable Webhook Setup Box */}
@@ -855,7 +854,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
       </div>
 
       {/* MY PERSONAL TIMESHEET HERO BANNER (When in Personal Mode OR for TL in Team view) */}
-      {isPersonalOnly ? (
+      {isPersonalView ? (
         <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 border border-slate-700 rounded-2xl p-6 text-white shadow-lg space-y-5">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-700/80">
             <div>
@@ -986,10 +985,10 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
           <div>
             <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-blue-600" />
-              {isPersonalOnly ? 'Section 1: Personal Work Volume & Productivity Chart' : 'Section 1: Team Timesheet Hours & Activity Breakdown'}
+              {isPersonalView ? 'Section 1: Personal Work Volume & Productivity Chart' : 'Section 1: Team Timesheet Hours & Activity Breakdown'}
             </h3>
             <p className="text-xs text-slate-500">
-              {isPersonalOnly
+              {isPersonalView
                 ? `Visual breakdown of active tracked work hours vs idle pauses for ${currentUser.name}`
                 : 'Tracked work volume and idle time distribution across logged tasks for the active period'}
             </p>
@@ -1007,7 +1006,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
               <YAxis stroke="#64748b" fontSize={11} unit="h" />
               <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderColor: '#cbd5e1', color: '#0f172a' }} />
               <Legend wrapperStyle={{ fontSize: '12px' }} />
-              <Bar dataKey="trackedHours" name="Tracked Active Hours" fill={isPersonalOnly ? '#10b981' : '#2563eb'} radius={[6, 6, 0, 0]} />
+              <Bar dataKey="trackedHours" name="Tracked Active Hours" fill={isPersonalView ? '#10b981' : '#2563eb'} radius={[6, 6, 0, 0]} />
               <Bar dataKey="idleHours" name="Idle / Break Hours" fill="#f59e0b" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -1054,7 +1053,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
           {/* Streamlined Filter Bar: Search Agent Name (Only in Team View) | Filter for task | Date Controls */}
           <div className="flex flex-wrap items-center gap-2.5">
             {/* AGENT SEARCH INPUT (Only when NOT in personal mode & for Team Lead / Admin / Trainer / HR / Payroll) */}
-            {!isPersonalOnly && canSearchAgents && (
+            {!isPersonalView && canSearchAgents && (
               <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 w-36 sm:w-44 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all shadow-sm">
                 <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <input
@@ -1260,7 +1259,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
       </div>
 
       {/* TABLE 1: Whole Period / Day Shift Summary Record (Only in Team View Mode) */}
-      {!isPersonalOnly && (
+      {!isPersonalView && (
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm space-y-0">
           <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-50">
             <div>
@@ -1412,7 +1411,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
           <div>
             <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
               <PieIcon className="w-4 h-4 text-emerald-600" />
-              {isPersonalOnly ? 'Personal Task Category Breakdown' : '2. Task Details Log Breakdown'} ({viewTab.toUpperCase()})
+              {isPersonalView ? 'Personal Task Category Breakdown' : '2. Task Details Log Breakdown'} ({viewTab.toUpperCase()})
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
               Specific hours and percentage spent on each task category during this period.
@@ -1488,7 +1487,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
         <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
           <h4 className="font-bold text-xs text-slate-700 uppercase tracking-wider">
-            {isPersonalOnly ? 'My Detailed Session Logs' : 'Detailed Itemized Session Logs'} ({filteredLogs.length} Entries)
+            {isPersonalView ? 'My Detailed Session Logs' : 'Detailed Itemized Session Logs'} ({filteredLogs.length} Entries)
           </h4>
         </div>
 
@@ -1501,7 +1500,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-100/50 text-slate-500 font-bold uppercase tracking-wider">
                 <tr>
-                  {!isPersonalOnly && <th className="py-3 px-4">Agent</th>}
+                  {!isPersonalView && <th className="py-3 px-4">Agent</th>}
                   <th className="py-3 px-4">Task Category</th>
                   <th className="py-3 px-4">Date & Start Time</th>
                   <th className="py-3 px-4">End Time</th>
@@ -1509,7 +1508,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                   <th className="py-3 px-4 text-slate-800">Total Time</th>
                   <th className="py-3 px-4">Activity Score</th>
                   <th className="py-3 px-4">Notes</th>
-                  {!isPersonalOnly && currentUser.role === 'admin' && (
+                  {!isPersonalView && currentUser.role === 'admin' && (
                     <th className="py-3 px-4 text-right">Action</th>
                   )}
                 </tr>
@@ -1517,7 +1516,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
               <tbody className="divide-y divide-slate-100 text-slate-800">
                 {paginatedLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
-                    {!isPersonalOnly && (
+                    {!isPersonalView && (
                       <td className="py-3 px-4 font-medium text-slate-900">
                         {log.userName}
                       </td>
@@ -1526,12 +1525,14 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                       {log.task}
                     </td>
                     <td className="py-3 px-4 font-mono">
-                      {log.date} • {log.geoLocalStartTime}
+                      {log.date} • {log.geoLocalStartTime || '—'}
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-600">
-                      {log.endTime === 'Running Live' || log.endTime === 'In Progress (Live)'
+                      {log.endTime === 'Running Live' ||
+                      log.endTime === 'In Progress (Live)' ||
+                      log.status === 'running'
                         ? 'Running Live'
-                        : (log.geoLocalEndTime || log.endTime || '—')}
+                        : (log.geoLocalEndTime || '—')}
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-500">
                       {log.durationSeconds}s
@@ -1547,7 +1548,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                     <td className="py-3 px-4 text-slate-500 max-w-xs truncate" title={log.notes}>
                       {log.notes || 'Automated session log'}
                     </td>
-                    {!isPersonalOnly && currentUser.role === 'admin' && (
+                    {!isPersonalView && currentUser.role === 'admin' && (
                       <td className="py-3 px-4 text-right">
                         <button
                           onClick={() => deleteTimeLog(log.id)}

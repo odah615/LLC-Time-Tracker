@@ -1081,11 +1081,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     console.warn('Users save err:', err)
   );
 
-  fetch('/api/users', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(finalUsers),
-  }).catch(() => {});
+      // Firestore remains the authoritative user-record store.
+      // Do not push roster imports into the Central Bridge from a client import.
 
       // Rebuild and update Presence List
       const updatedPresence = res.employees.map((u) => {
@@ -2019,14 +2016,22 @@ hydrateTimeLogsFromSheets();
           if (Array.isArray(remoteLogs) && remoteLogs.length > 0) {
             setTimeLogs((prev) => {
               const map = new Map(prev.map((l) => [l.id, l]));
-              let hasNew = false;
+              let hasChanges = false;
               for (const item of remoteLogs) {
-                if (item && item.id && !map.has(item.id)) {
+                if (!item || !item.id) continue;
+                const existing = map.get(item.id);
+                if (!existing) {
                   map.set(item.id, item);
-                  hasNew = true;
+                  hasChanges = true;
+                  continue;
+                }
+                const mergedItem = { ...existing, ...item };
+                if (JSON.stringify(existing) !== JSON.stringify(mergedItem)) {
+                  map.set(item.id, mergedItem);
+                  hasChanges = true;
                 }
               }
-              if (hasNew) {
+              if (hasChanges) {
                 const merged = Array.from(map.values());
                 localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
                 return merged;
@@ -2116,25 +2121,56 @@ hydrateTimeLogsFromSheets();
     };
   }, []);
 
+  // Read-only Central Bridge presence polling so the web portal can see Desktop Tracker live status.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const syncRemotePresence = async () => {
+      try {
+        const res = await fetch('/api/presence', { cache: 'no-store' });
+        if (!res.ok) return;
+        const payload = await res.json();
+        const remotePresence: UserPresence[] = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload?.presence)
+            ? payload.presence
+            : [];
+        if (!Array.isArray(remotePresence)) return;
+
+        setUserPresenceList((prev) => {
+          const map = new Map<string, UserPresence>(prev.map((p) => [p.userId, p]));
+          for (const p of remotePresence) {
+            if (!p?.userId) continue;
+            const canon = resolveCanonicalEmployee({
+              employeeCode: p.employeeCode,
+              username: p.userName,
+              name: p.userName,
+              id: p.userId,
+            });
+            const sanitizedPresence: UserPresence = {
+              ...p,
+              userName:
+                canon?.name ||
+                (p.userName && p.userName !== p.userId ? p.userName : 'Agent'),
+              employeeCode: canon?.code || p.employeeCode || '',
+            };
+            const existing = map.get(p.userId);
+            map.set(p.userId, { ...(existing || {}), ...sanitizedPresence });
+          }
+          return Array.from(map.values());
+        });
+      } catch {}
+    };
+
+    syncRemotePresence();
+    const interval = setInterval(syncRemotePresence, 15000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
   // Save changes to localStorage
   useEffect(() => {
     localStorage.setItem('trackpulse_users', JSON.stringify(users));
   }, [users]);
-
-    // Firestore is authoritative for the shared employee roster.
-  // Only publish the roster to the Central Bridge after Firestore has loaded,
-  // preventing a newly-installed/stale client from overwriting the central roster.
-  useEffect(() => {
-    if (!isFirestoreLoaded || users.length === 0) return;
-
-    fetch('/api/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(users),
-    }).catch((err) => {
-      console.warn('Central user roster sync warning:', err);
-    });
-  }, [isFirestoreLoaded, users]);
 
   useEffect(() => {
     localStorage.setItem('trackpulse_timelogs', JSON.stringify(timeLogs));
@@ -3786,10 +3822,17 @@ if (mode === 'software') {
     const todayStr = getManilaDateString();
 
     // Calculate duration for the final task segment
-    const finalSegmentSec = Math.max(
-      1,
-      Math.floor((Date.now() - (currentTaskSegmentStartMsRef.current || trackingSessionStartMsRef.current || Date.now())) / 1000)
-    );
+    const segmentStartMs =
+      currentTaskSegmentStartMsRef.current ||
+      trackingSessionStartMsRef.current;
+    const calculatedFinalSegmentSec =
+      segmentStartMs > 0
+        ? Math.floor((Date.now() - segmentStartMs) / 1000)
+        : 0;
+    const finalSegmentSec =
+      calculatedFinalSegmentSec > 0
+        ? calculatedFinalSegmentSec
+        : trackedSecs;
     const finalStartIso = currentTaskSegmentStartTimeIsoRef.current || startTimeIso || new Date(Date.now() - finalSegmentSec * 1000).toISOString();
     const finalStartDate = new Date(finalStartIso);
     const finalLocalStartTimeFormatted = getManilaTimeString(finalStartDate, userTz);
