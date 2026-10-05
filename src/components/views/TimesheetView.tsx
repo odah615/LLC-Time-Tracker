@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+﻿import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getManilaDateString, formatTotalTime } from '../../lib/dateUtils';
 import { DEFAULT_SPREADSHEET_ID, DEFAULT_SPREADSHEET_URL, generateAppsScriptCode } from '../../lib/googleSheetsSync';
@@ -92,10 +92,10 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     const res = await triggerGoogleSheetsSync(webhookInputVal.trim() || googleSheetsWebhookUrl);
     setIsSyncingSheets(false);
     if (res && res.success) {
-      setSyncStatusMsg(`✓ ${res.message || 'Successfully recorded timesheets into Google Sheets (Time_Logs, Timesheets & Daily_Summary)!'}`);
+      setSyncStatusMsg(`âœ“ ${res.message || 'Successfully recorded timesheets into Google Sheets (Time_Logs, Timesheets & Daily_Summary)!'}`);
       setTimeout(() => setSyncStatusMsg(null), 8000);
     } else {
-      setSyncStatusMsg(`⚠️ Sync notice: ${res?.message || 'Check Apps Script Webhook URL'}`);
+      setSyncStatusMsg(`âš ï¸ Sync notice: ${res?.message || 'Check Apps Script Webhook URL'}`);
     }
   };
 
@@ -110,7 +110,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     const res = await triggerGoogleSheetsSync(webhookInputVal.trim());
     setIsSyncingSheets(false);
     if (res && res.success) {
-      setSyncStatusMsg('✓ Connected! Timesheets are now actively streaming to Google Sheets.');
+      setSyncStatusMsg('âœ“ Connected! Timesheets are now actively streaming to Google Sheets.');
       setShowWebhookSetup(false);
       setTimeout(() => setSyncStatusMsg(null), 8000);
     } else {
@@ -462,19 +462,135 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     agentSearch,
   ]);
 
-  // Overall Period Calculations (Whole Shift Summary across filtered logs)
-  const totalGrossSeconds = filteredLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
-  const totalIdleSeconds = filteredLogs.reduce((acc, l) => acc + (l.idleSeconds || 0), 0);
+  // Period Summary:
+  // - Daily = selected day
+  // - Weekly = selected week
+  // - Monthly = selected month
+  // Finalized logs are summed normally. Running/live rows are excluded from the
+  // finalized total and the current live session is added separately so it is
+  // counted exactly once and continues increasing while the Desktop Tracker runs.
+  const periodFinalizedLogs = useMemo(
+    () =>
+      filteredLogs.filter(
+        (log) =>
+          log.status !== 'running' &&
+          log.endTime !== 'Running Live' &&
+          log.endTime !== 'In Progress (Live)'
+      ),
+    [filteredLogs]
+  );
+
+  const livePeriodSession = useMemo(() => {
+    const today = getManilaDateString();
+    if (!isLogInPeriod(today, viewTab)) {
+      return {
+        durationSeconds: 0,
+        idleSeconds: 0,
+        activity: 0,
+      };
+    }
+
+    const currentUserId = (currentUser.id || '').trim().toLowerCase();
+    const currentEmployeeCode = (currentUser.employeeCode || '').trim().toLowerCase();
+
+    const presence = userPresenceList.find((p) => {
+      const pUserId = String(p.userId || '').trim().toLowerCase();
+      const pCode = String(p.employeeCode || '').trim().toLowerCase();
+      return (
+        (currentUserId && pUserId === currentUserId) ||
+        (currentEmployeeCode && pCode === currentEmployeeCode)
+      );
+    });
+
+    const liveLog = filteredLogs.find(
+      (log) =>
+        (log.status === 'running' ||
+          log.endTime === 'Running Live' ||
+          log.endTime === 'In Progress (Live)') &&
+        (
+          String(log.userId || '').trim().toLowerCase() === currentUserId ||
+          (currentEmployeeCode &&
+            String((log as any).employeeCode || '').trim().toLowerCase() === currentEmployeeCode)
+        )
+    );
+
+    const runningSeconds = isTracking
+      ? Math.max(0, elapsedSeconds || 0)
+      : Math.max(0, Number(presence?.elapsedSeconds || liveLog?.durationSeconds || 0));
+
+    const idleSeconds = Math.max(
+      0,
+      Number(
+        presence?.idleDeductionSeconds ||
+          (liveLog as any)?.idleSeconds ||
+          0
+      )
+    );
+
+    const activity = Math.round(
+      (
+        Number(presence?.mouseActivity ?? liveLog?.mouseActivityAvg ?? 0) +
+        Number(presence?.keyboardActivity ?? liveLog?.keyboardActivityAvg ?? 0)
+      ) / 2
+    );
+
+    return {
+      durationSeconds: runningSeconds,
+      idleSeconds,
+      activity,
+    };
+  }, [
+    filteredLogs,
+    userPresenceList,
+    currentUser,
+    isTracking,
+    elapsedSeconds,
+    viewTab,
+    anchorDate,
+    weekStartDate,
+    weekEndDate,
+    selectedMonth,
+    selectedYear,
+  ]);
+
+  const totalGrossSeconds = useMemo(
+    () =>
+      periodFinalizedLogs.reduce(
+        (acc, l) => acc + Math.max(0, Number(l.durationSeconds) || 0),
+        0
+      ) + livePeriodSession.durationSeconds,
+    [periodFinalizedLogs, livePeriodSession.durationSeconds]
+  );
+
+  const totalIdleSeconds = useMemo(
+    () =>
+      periodFinalizedLogs.reduce(
+        (acc, l) => acc + Math.max(0, Number(l.idleSeconds) || 0),
+        0
+      ) + livePeriodSession.idleSeconds,
+    [periodFinalizedLogs, livePeriodSession.idleSeconds]
+  );
+
   const totalNetSeconds = Math.max(0, totalGrossSeconds - totalIdleSeconds);
 
   const avgActivityScore = useMemo(() => {
-    if (filteredLogs.length === 0) return 0;
-    const totalScore = filteredLogs.reduce(
-      (acc, l) => acc + (l.mouseActivityAvg + l.keyboardActivityAvg) / 2,
-      0
-    );
-    return Math.round(totalScore / filteredLogs.length);
-  }, [filteredLogs]);
+    const finalizedCount = periodFinalizedLogs.length;
+    const finalizedScore =
+      periodFinalizedLogs.reduce(
+        (acc, l) => acc + (Number(l.mouseActivityAvg) + Number(l.keyboardActivityAvg)) / 2,
+        0
+      );
+
+    const totalScore =
+      finalizedScore +
+      (livePeriodSession.durationSeconds > 0 ? livePeriodSession.activity : 0);
+
+    const count =
+      finalizedCount +
+      (livePeriodSession.durationSeconds > 0 ? 1 : 0);
+
+    return count > 0 ? Math.round(totalScore / count) : 0;
+  }, [periodFinalizedLogs, livePeriodSession]);
 
   // Grouping by User for Table 1 (Whole Period Summary)
   const userSummaryList = useMemo(() => {
@@ -732,7 +848,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                   title="Force sync all timesheets, shift records, and daily summaries to Google Sheets"
                 >
                   <RefreshCw className={`w-4 h-4 ${isSyncingSheets ? 'animate-spin' : ''}`} />
-                  <span>{isSyncingSheets ? 'Syncing Sheets...' : '⚡ Push to Google Sheets'}</span>
+                  <span>{isSyncingSheets ? 'Syncing Sheets...' : 'âš¡ Push to Google Sheets'}</span>
                 </button>
 
                 <button
@@ -757,7 +873,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
               onClick={() => setSyncStatusMsg(null)}
               className="text-blue-500 hover:text-blue-700 text-xs font-bold"
             >
-              ✕
+              âœ•
             </button>
           </div>
         )}
@@ -794,7 +910,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
               onClick={() => setShowWebhookSetup(!showWebhookSetup)}
               className="text-blue-600 hover:text-blue-800 font-bold underline flex items-center gap-1 shrink-0"
             >
-              {showWebhookSetup ? 'Hide Webhook Setup ▲' : (googleSheetsWebhookUrl ? '⚙️ Webhook Settings ▼' : '📋 Connect Google Spreadsheet Webhook ▼')}
+              {showWebhookSetup ? 'Hide Webhook Setup â–²' : (googleSheetsWebhookUrl ? 'âš™ï¸ Webhook Settings â–¼' : 'ðŸ“‹ Connect Google Spreadsheet Webhook â–¼')}
             </button>
           )}
         </div>
@@ -816,18 +932,18 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                 className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[11px] flex items-center gap-1.5 shadow-sm transition-all"
               >
                 {copiedScript ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedScript ? '✓ Copied Script Code!' : 'Copy Apps Script Code'}</span>
+                <span>{copiedScript ? 'âœ“ Copied Script Code!' : 'Copy Apps Script Code'}</span>
               </button>
             </div>
 
             <p className="text-slate-600 text-[11px] leading-relaxed">
               To automatically record employee timesheets and live sessions directly into your Google Sheet (Spreadsheet ID: <code>{DEFAULT_SPREADSHEET_ID}</code>):
               <br />
-              1. Open your Google Sheet → Click <b>Extensions</b> → <b>Apps Script</b>.
+              1. Open your Google Sheet â†’ Click <b>Extensions</b> â†’ <b>Apps Script</b>.
               <br />
-              2. Paste the copied code and click <b>Save</b> (💾).
+              2. Paste the copied code and click <b>Save</b> (ðŸ’¾).
               <br />
-              3. Click <b>Deploy</b> → <b>New deployment</b> → Select <b>Web app</b> (Execute as: <b>Me</b>, Who has access: <b>Anyone</b>) → <b>Deploy</b>.
+              3. Click <b>Deploy</b> â†’ <b>New deployment</b> â†’ Select <b>Web app</b> (Execute as: <b>Me</b>, Who has access: <b>Anyone</b>) â†’ <b>Deploy</b>.
               <br />
               4. Paste the resulting Web App URL below and click <b>Save & Test Connection</b>.
             </p>
@@ -860,14 +976,14 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-lg text-white">
-                  {currentUser.name} — Personal Timesheet
+                  {currentUser.name} â€” Personal Timesheet
                 </h3>
                 <span className="bg-emerald-500 text-slate-950 text-[10px] px-2.5 py-0.5 rounded-full font-extrabold flex items-center gap-1 uppercase">
                   <ShieldCheck className="w-3 h-3" /> {currentUser.role.replace('_', ' ')}
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                {currentUser.employeeCode || 'LLC-0001'} • {currentUser.designation} • {currentUser.department || 'Operations'}
+                {currentUser.employeeCode || 'LLC-0001'} â€¢ {currentUser.designation} â€¢ {currentUser.department || 'Operations'}
               </p>
             </div>
 
@@ -1280,7 +1396,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
               {agentSearch && (
                 <span className="text-xs bg-amber-100 text-amber-800 border border-amber-300 font-semibold px-2.5 py-1 rounded-full flex items-center gap-1">
                   Search: {agentSearch}
-                  <button onClick={() => setAgentSearch('')} className="hover:text-slate-900 ml-0.5">✕</button>
+                  <button onClick={() => setAgentSearch('')} className="hover:text-slate-900 ml-0.5">âœ•</button>
                 </span>
               )}
               <span className="text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200 px-2.5 py-1 rounded-full">
@@ -1525,14 +1641,14 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                       {log.task}
                     </td>
                     <td className="py-3 px-4 font-mono">
-                      {log.date} • {log.geoLocalStartTime || '—'}
+                      {log.date} â€¢ {log.geoLocalStartTime || 'â€”'}
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-600">
                       {log.endTime === 'Running Live' ||
                       log.endTime === 'In Progress (Live)' ||
                       log.status === 'running'
                         ? 'Running Live'
-                        : (log.geoLocalEndTime || '—')}
+                        : (log.geoLocalEndTime || 'â€”')}
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-500">
                       {log.durationSeconds}s
@@ -1616,3 +1732,4 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     </div>
   );
 };
+
