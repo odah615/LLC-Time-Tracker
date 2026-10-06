@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { User } from '../../types';
 import { maskPassword } from '../../lib/googleSheetsSync';
@@ -82,193 +82,91 @@ if (!isFirestoreLoaded) {
   setErrorMsg('Loading employee accounts. Please wait a moment and try again.');
   return;
 }
-    // Always get the latest shared user credentials before authentication.
-// This prevents stale Electron/localStorage credentials from being used.
-try {
-  const remoteResponse = await fetch('/api/users', {
-    method: 'GET',
-    cache: 'no-store',
-  });
-
-  if (remoteResponse.ok) {
-    const remoteUsers = await remoteResponse.json();
-
-    if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-      // Refresh the local roster with the central roster.
-      // IMPORTANT: do this BEFORE searching for the employee/password.
-      setUsers(remoteUsers);
-      localStorage.setItem('trackpulse_users', JSON.stringify(remoteUsers));
-    }
-  }
-} catch (syncError) {
-  console.warn('Central user credential refresh failed:', syncError);
-}
-
     const cleanCode = employeeCodeInput.trim();
     if (!cleanCode) {
-      setErrorMsg('Please enter your Employee Code.');
+      setErrorMsg('Please enter your Username or Employee Code.');
       return;
     }
 
-    if (!password) {
-      setErrorMsg('Please enter your account password.');
-      return;
-    }
-
-    const query = cleanCode.toLowerCase();
-    const cleanUsernameQuery = query.replace(/^@/, '').trim();
-    const alphaNumericQuery = query.replace(/[^a-z0-9]/g, '');
-    const digitsOnlyQuery = query.replace(/\D/g, '');
-
-    // Search user by username, employee code, role, or email flexibly
-    /*let foundUser = users.find((u) => { */
-
-      const authUsers =
-  (() => {
+    // Production authentication uses Employee_Auth through the Cloudflare proxy.
     try {
-      const cached = localStorage.getItem('trackpulse_users');
-      const parsed = cached ? JSON.parse(cached) : null;
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : users;
-    } catch {
-      return users;
-    }
-  })();
+      const authResponse = await fetch('/api/sync-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'AUTH_LOGIN',
+          identifier: cleanCode,
+          password: password.trim(),
+        }),
+      });
 
-let foundUser = authUsers.find((u) => {
-      // 0. Primary username match (e.g. "trainer", "trainer1", "jdavid", "admin")
-      if (u.username && u.username.toLowerCase() === cleanUsernameQuery) return true;
-      if (cleanUsernameQuery === 'trainer' && (u.role === 'trainer' || u.username === 'trainer1' || u.employeeCode === 'LLC-0003')) return true;
-      if (cleanUsernameQuery === 'trainer1' && (u.role === 'trainer' || u.employeeCode === 'LLC-0003')) return true;
+      const authResult = await authResponse.json().catch(() => null);
 
-      // Match by role if unique/standard (e.g. typing "trainer", "teamlead", "payroll", "hr")
-      if (u.role && u.role.toLowerCase() === cleanUsernameQuery) return true;
-
-      const uCode = (u.employeeCode || '').toLowerCase();
-      const uAlphaNumeric = uCode.replace(/[^a-z0-9]/g, '');
-      const uDigits = uCode.replace(/\D/g, '');
-
-      // 1. Direct exact match
-      if (uCode === query) return true;
-      // 2. Alphanumeric match (ignoring dashes, spaces, underscores, e.g. "LLC-0001" vs "llc0001" vs "LLC0001")
-      if (alphaNumericQuery && uAlphaNumeric === alphaNumericQuery) return true;
-      // 3. Digits match (e.g. typing "0001" or "1" to match "LLC0001" or "LLC-0001" or "9999" for "LLC-9999")
-      if (
-        digitsOnlyQuery &&
-        uDigits &&
-        (uDigits === digitsOnlyQuery ||
-          parseInt(uDigits, 10) === parseInt(digitsOnlyQuery, 10))
-      ) {
-        return true;
+      if (!authResponse.ok || !authResult?.success || !authResult?.user) {
+        setErrorMsg(authResult?.error || 'Invalid username/employee code or password.');
+        return;
       }
-      // 4. Fallback matches for direct ID, email, or first name
-      const firstName = (u.name || '').toLowerCase().split(/\s+/)[0];
-      if (
-        (u.id && u.id.toLowerCase() === query) ||
-        (u.email && u.email.toLowerCase() === query) ||
-        (u.name && u.name.toLowerCase() === query) ||
-        (firstName && firstName === cleanUsernameQuery)
-      ) {
-        return true;
-      }
-      return false;
-    });
 
-    // Failsafe root admin fallback (SuperAdmin)
-    if (!foundUser) {
-      if (
-        cleanUsernameQuery === 'admin' ||
-        cleanUsernameQuery === 'superadmin' ||
-        alphaNumericQuery === 'superadmin' ||
-        query === 'superadmin' ||
-        query === 'admin' ||
-        query === 'admin@llc.com' ||
-        query === 'admin@llctimetracker.com'
-      ) {
-        foundUser = {
-          id: 'usr-superadmin-red',
-          name: 'Admin',
-          email: 'admin@llc.com',
-          role: 'admin',
-          designation: 'Admin',
-          username: 'admin',
-          avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250',
-          monthlyRate: 0,
-          hourlyRate: 0,
-          geoTimezone: 'Asia/Manila',
-          geoCity: 'Manila, Philippines',
-          teamId: 'management',
-          status: 'active',
-          joinDate: '2024-01-01',
-          employeeCode: 'SuperAdmin',
-          department: 'Executive Management',
-          password: 'AdminpassW0rd123!',
-          mustChangePassword: false,
-          screenshotMonitored: false,
-          activityMonitored: false,
-        };
-      }
-    }
+      const authenticatedUser = {
+        ...authResult.user,
+        mustChangePassword: authResult.user.mustChangePassword === true,
+      };
 
-    if (!foundUser) {
-      setErrorMsg(`No employee account found matching "${cleanCode}". Please enter your assigned Username (e.g. jdavid) or Employee Code.`);
+      setUsers((prev) => {
+        const exists = prev.some(
+          (u) =>
+            u.id === authenticatedUser.id ||
+            u.employeeCode?.toLowerCase() === authenticatedUser.employeeCode?.toLowerCase() ||
+            u.username?.toLowerCase() === authenticatedUser.username?.toLowerCase()
+        );
+
+        const updated = exists
+          ? prev.map((u) =>
+              u.id === authenticatedUser.id ||
+              u.employeeCode?.toLowerCase() === authenticatedUser.employeeCode?.toLowerCase() ||
+              u.username?.toLowerCase() === authenticatedUser.username?.toLowerCase()
+                ? { ...u, ...authenticatedUser }
+                : u
+            )
+          : [...prev, authenticatedUser];
+
+        localStorage.setItem('trackpulse_users', JSON.stringify(updated));
+        return updated;
+      });
+
+      const isRootAdmin =
+        authenticatedUser.employeeCode?.toLowerCase() === 'superadmin' ||
+        authenticatedUser.id === 'usr-superadmin-red' ||
+        authenticatedUser.email === 'admin@llc.com';
+
+      const isDefaultPasswordUsed = password.trim() === 'Password123!';
+      const forceChangeRequired =
+        !isRootAdmin &&
+        (
+          authenticatedUser.mustChangePassword === true ||
+          (authenticatedUser.mustChangePassword !== false && isDefaultPasswordUsed)
+        );
+
+      if (forceChangeRequired) {
+        setPendingPasswordChangeUser(authenticatedUser);
+        setNewUniquePassword('');
+        setConfirmUniquePassword('');
+        setFirstTimeError('');
+        return;
+      }
+
+      const resolvedMode: 'webapp' | 'software' =
+        isSoftwareEnv ? 'software' : 'webapp';
+
+      login(authenticatedUser, resolvedMode);
+      return;
+    } catch (authError) {
+      console.error('Production authentication error:', authError);
+      setErrorMsg('Unable to contact the authentication server. Please try again.');
       return;
     }
-
-    const isRootAdmin =
-      foundUser.employeeCode.toLowerCase() === 'superadmin' ||
-      foundUser.id === 'usr-superadmin-red' ||
-      foundUser.email === 'admin@llc.com';
-    const inputPass = password.trim();
-
-    /*let isValidPassword = false;
-    if (isRootAdmin) {
-      const expectedPass = foundUser.password || 'AdminpassW0rd123!';
-      isValidPassword =
-        inputPass === expectedPass ||
-        inputPass === 'AdminpassW0rd123!' ||
-        inputPass === 'SUPERADMIN2026';
-    } else {
-      const expectedPass = foundUser.password || 'Password123!';
-      isValidPassword =
-        inputPass === expectedPass ||
-        inputPass === 'Password123!' ||
-        inputPass === 'SUPERADMIN2026';
-    }*/
-
-        let isValidPassword = false;
-
-        if (isRootAdmin) {
-          const expectedPass = (foundUser.password || 'AdminpassWord123!').trim();
-          isValidPassword = inputPass === expectedPass;
-        } else {
-          const expectedPass = (foundUser.password || 'Password123!').trim();
-          isValidPassword = inputPass === expectedPass;
-        }
-
-    if (!isValidPassword) {
-      if (isRootAdmin) {
-        setErrorMsg('Incorrect password. Please enter the Root Admin password.');
-      } else {
-        setErrorMsg('Incorrect password. Default password for new accounts is "Password123!". If you forgot your password, contact your Team Lead.');
-      }
-      return;
-    }
-
-    // Check if user is logging in with default password or must change password
-    const isDefaultPasswordUsed = inputPass === 'Password123!' || (foundUser.password || '').trim() === 'Password123!';
-    const forceChangeRequired = !isRootAdmin && (foundUser.mustChangePassword === true || (foundUser.mustChangePassword !== false && isDefaultPasswordUsed));
-
-    if (forceChangeRequired) {
-      setPendingPasswordChangeUser(foundUser);
-      setNewUniquePassword('');
-      setConfirmUniquePassword('');
-      setFirstTimeError('');
-      return;
-    }
-
-    const resolvedMode: 'webapp' | 'software' = isSoftwareEnv ? 'software' : 'webapp';
-    login(foundUser, resolvedMode);
   };
+
 
   const handleSaveUniquePassword = (e: React.FormEvent) => {
     e.preventDefault();
@@ -608,7 +506,7 @@ let foundUser = authUsers.find((u) => {
                 onClick={() => setShowDownloadModal(false)}
                 className="text-slate-400 hover:text-slate-600 text-sm font-bold"
               >
-                ✕
+                âœ•
               </button>
             </div>
 
@@ -622,7 +520,7 @@ let foundUser = authUsers.find((u) => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                🖥️ Windows OS (.exe / .bat)
+                ðŸ–¥ï¸ Windows OS (.exe / .bat)
               </button>
               <button
                 onClick={() => setDownloadOS('mac')}
@@ -632,7 +530,7 @@ let foundUser = authUsers.find((u) => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                🍎 macOS (Apple)
+                ðŸŽ macOS (Apple)
               </button>
               <button
                 onClick={() => setDownloadOS('linux')}
@@ -642,7 +540,7 @@ let foundUser = authUsers.find((u) => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                🐧 Linux OS
+                ðŸ§ Linux OS
               </button>
             </div>
 
@@ -655,7 +553,7 @@ let foundUser = authUsers.find((u) => {
                     <Download className="w-4 h-4 text-emerald-700" /> Option 1: Instant Native Desktop Launcher (100% Safe)
                   </span>
                   <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full">
-                    RECOMMENDED • 0-INSTALL
+                    RECOMMENDED â€¢ 0-INSTALL
                   </span>
                 </div>
                 <p className="text-[11px] text-emerald-900 leading-relaxed">
@@ -705,7 +603,7 @@ let foundUser = authUsers.find((u) => {
                     <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" /> Getting "Application Control policy has blocked this file"?
                   </div>
                   <p className="leading-relaxed text-amber-900">
-                    Windows 11 Smart App Control blocks unsigned shortcuts. <strong>Solution:</strong> Use <strong>Option 1 (Instant Launcher)</strong> above, or right-click the blocked file → click <strong>Properties</strong> → check the <strong>"Unblock"</strong> checkbox at the bottom → click <strong>Apply</strong>.
+                    Windows 11 Smart App Control blocks unsigned shortcuts. <strong>Solution:</strong> Use <strong>Option 1 (Instant Launcher)</strong> above, or right-click the blocked file â†’ click <strong>Properties</strong> â†’ check the <strong>"Unblock"</strong> checkbox at the bottom â†’ click <strong>Apply</strong>.
                   </p>
                 </div>
               )}
@@ -953,3 +851,4 @@ let foundUser = authUsers.find((u) => {
     </div>
   );
 };
+

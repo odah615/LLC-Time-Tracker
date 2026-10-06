@@ -1556,7 +1556,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubAll = () => {
       try { unsubTimeLogs(); } catch (e) {}
       try { unsubLiveTimeLogs(); } catch (e) {}
-      try { unsubUsers(); } catch (e) {}
       try { unsubAudit(); } catch (e) {}
       try { unsubScreenshots(); } catch (e) {}
       try { unsubPayroll(); } catch (e) {}
@@ -1781,7 +1780,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return () => {
       unsubTimeLogs();
-      unsubUsers();
       unsubAudit();
       unsubScreenshots();
       unsubPayroll();
@@ -5662,3 +5660,4 @@ export const useApp = () => {
   }
   return context;
 };
+
