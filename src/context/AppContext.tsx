@@ -2077,19 +2077,8 @@ hydrateTimeLogsFromSheets();
     fetchCentralSync();
     const centralSyncInterval = setInterval(fetchCentralSync, 60000);
 
-    // 3. Background auto-import from Google Sheets CSV (100% quota-free)
-    fetchEmployeesFromGoogleSheets('', DEFAULT_SPREADSHEET_ID, users)
-      .then((res) => {
-        if (res.success && res.employees.length > 0) {
-          setUsers((prev) => {
-            const merged = deduplicateUsers([...prev, ...res.employees]);
-            localStorage.setItem('trackpulse_users', JSON.stringify(merged));
-            // READ/MERGE ONLY: never publish this client roster back to the central server.
-            return merged;
-          });
-        }
-      })
-      .catch(() => {});
+    // Google Sheets Employee_Directory is NOT used as an automatic roster source.
+    // The Central Bridge/Admin roster is authoritative. Sheets remains a sync/reporting destination.
 
     return () => {
       clearInterval(centralSyncInterval);
