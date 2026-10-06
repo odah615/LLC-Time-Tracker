@@ -1075,11 +1075,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     JSON.stringify(finalUsers)
   );
 
-  safeSetDoc(doc(db, 'system_state', 'users'), {
-    data: finalUsers,
-  }).catch((err) =>
-    console.warn('Users save err:', err)
-  );
+  // Google Sheets employee import is READ-ONLY.
+  // Do NOT publish imported Sheet data back into Firestore.
+  // The admin roster is the authoritative user source.
 
       // Firestore remains the authoritative user-record store.
       // Do not push roster imports into the Central Bridge from a client import.
