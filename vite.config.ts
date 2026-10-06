@@ -372,7 +372,32 @@ function centralSyncBridge(): Plugin {
               try {
                 const payload = JSON.parse(body);
                 const usersToMerge = Array.isArray(payload) ? payload : [payload];
-                syncState.users = deduplicateUsersHelper([...syncState.users, ...usersToMerge]);
+                const userMap = new Map(syncState.users.map((u: any) => [u.id, u]));
+
+                for (const incomingUser of usersToMerge) {
+                  if (!incomingUser || !incomingUser.id) continue;
+
+                  const existing = userMap.get(incomingUser.id) || {};
+                  const incomingPassword = String(incomingUser.password || '').trim();
+                  const existingPassword = String(existing.password || '').trim();
+                  const mergedUser = { ...existing, ...incomingUser };
+
+                  const incomingPasswordIsUnsafe =
+                    !incomingPassword ||
+                    incomingPassword === 'Password123!' ||
+                    incomingPassword.includes('*');
+
+                  if (existingPassword && existingPassword !== 'Password123!' && incomingPasswordIsUnsafe) {
+                    mergedUser.password = existing.password;
+                    if (existing.mustChangePassword !== undefined) {
+                      mergedUser.mustChangePassword = existing.mustChangePassword;
+                    }
+                  }
+
+                  userMap.set(incomingUser.id, mergedUser);
+                }
+
+                syncState.users = deduplicateUsersHelper(Array.from(userMap.values()));
                 saveSyncState();
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ success: true, count: syncState.users.length }));

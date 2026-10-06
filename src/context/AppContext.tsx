@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+﻿import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   User,
   TimeLog,
@@ -911,7 +911,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (!targetUrl || !targetUrl.trim()) {
-      setSaveToast(`✓ Saved to Central Database! (Tip: Paste Google Apps Script Webhook URL in Header to auto-sync directly to Google Sheets)`);
+      setSaveToast(`âœ“ Saved to Central Database! (Tip: Paste Google Apps Script Webhook URL in Header to auto-sync directly to Google Sheets)`);
       setTimeout(() => setSaveToast(null), 8000);
       return { success: false, message: 'No webhook URL provided' };
     }
@@ -1004,9 +1004,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       userPresenceList
     );
     if (res.success) {
-      setSaveToast(`✓ Synced all Database Tabs (including Time Logs & Active Sessions) to Google Sheets!`);
+      setSaveToast(`âœ“ Synced all Database Tabs (including Time Logs & Active Sessions) to Google Sheets!`);
     } else {
-      setSaveToast(`⚠️ Google Sheets Sync: ${res.message}`);
+      setSaveToast(`âš ï¸ Google Sheets Sync: ${res.message}`);
     }
     setTimeout(() => setSaveToast(null), 8000);
     return res;
@@ -1062,7 +1062,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
       }
     } else {
-      // New employee found in Sheets → add them.
+      // New employee found in Sheets â†’ add them.
       mergedUsers.push(sheetUser);
     }
   }
@@ -1156,12 +1156,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         details: `Two-Way Sync: Imported ${res.count} employee profiles directly from Google Spreadsheet Employee_Directory tab.`,
       });
 
-      setSaveToast(`✓ Two-Way Sync: Imported ${res.count} employees from Google Sheets!`);
+      setSaveToast(`âœ“ Two-Way Sync: Imported ${res.count} employees from Google Sheets!`);
       setTimeout(() => setSaveToast(null), 7000);
 
       return { success: true, count: res.count, message: res.message };
     } else {
-      setSaveToast(`⚠️ Google Sheets Import: ${res.message}`);
+      setSaveToast(`âš ï¸ Google Sheets Import: ${res.message}`);
       setTimeout(() => setSaveToast(null), 7000);
       return { success: false, count: 0, message: res.message };
     }
@@ -1210,11 +1210,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn('Time logs save err:', err)
       );
 
-      setSaveToast(`✓ Two-Way Sync: Extracted ${res.timeLogs.length} time logs from Google Sheets!`);
+      setSaveToast(`âœ“ Two-Way Sync: Extracted ${res.timeLogs.length} time logs from Google Sheets!`);
       setTimeout(() => setSaveToast(null), 7000);
       return { success: true, count: res.timeLogs.length, message: res.message };
     } else {
-      setSaveToast(`⚠️ Google Sheets Time Logs: ${res.message}`);
+      setSaveToast(`âš ï¸ Google Sheets Time Logs: ${res.message}`);
       setTimeout(() => setSaveToast(null), 7000);
       return { success: false, count: 0, message: res.message };
     }
@@ -1255,7 +1255,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       message: res.message,
     };
     } else {
-      setSaveToast(`⚠️ Google Sheets Presence: ${res.message}`);
+      setSaveToast(`âš ï¸ Google Sheets Presence: ${res.message}`);
       setTimeout(() => setSaveToast(null), 7000);
       return { success: false, count: 0, message: res.message };
     }
@@ -1283,7 +1283,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Comprehensive One-Click Two-Way Sync for All Tabs from Google Sheets
   const syncAllFromGoogleSheets = async (overrideUrl?: string): Promise<{ success: boolean; message: string }> => {
     const targetUrl = overrideUrl || googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
-    setSaveToast('⏳ Connecting to Google Sheets and pulling latest tables...');
+    setSaveToast('â³ Connecting to Google Sheets and pulling latest tables...');
     try {
       const [empRes, timeRes, presRes] = await Promise.all([
         importEmployeesFromGoogleSheets(targetUrl),
@@ -1292,11 +1292,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ]);
       const success = empRes.success || timeRes.success || presRes.success;
       const msg = `Synced from Google Sheets: ${empRes.count} employees, ${timeRes.count} time logs, ${presRes.count} presence records.`;
-      setSaveToast(success ? `✓ ${msg}` : `⚠️ Sync Notice: ${empRes.message || timeRes.message || presRes.message}`);
+      setSaveToast(success ? `âœ“ ${msg}` : `âš ï¸ Sync Notice: ${empRes.message || timeRes.message || presRes.message}`);
       setTimeout(() => setSaveToast(null), 8000);
       return { success, message: msg };
     } catch (err: any) {
-      setSaveToast(`⚠️ Google Sheets Sync Failed: ${err?.message || 'Network error'}`);
+      setSaveToast(`âš ï¸ Google Sheets Sync Failed: ${err?.message || 'Network error'}`);
       setTimeout(() => setSaveToast(null), 7000);
       return { success: false, message: err?.message || 'Sync failed' };
     }
@@ -1428,7 +1428,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       details: `Started Desktop Live Tracker session for ${targetUser.name} on task "${taskName}". Synced to Google Sheets & Database.`,
     });
 
-    setSaveToast(`✓ Connected ${targetUser.name} to Desktop Tracker (${taskName})! Synced to Google Sheets.`);
+    setSaveToast(`âœ“ Connected ${targetUser.name} to Desktop Tracker (${taskName})! Synced to Google Sheets.`);
     setTimeout(() => setSaveToast(null), 8000);
 
     triggerAutoSync();
@@ -1512,7 +1512,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       details: `Concluded Desktop Tracker shift for ${targetUser.name}. Timesheet saved & synced to Google Sheets.`,
     });
 
-    setSaveToast(`✓ Concluded shift for ${targetUser.name}. Timesheet saved & synced to Google Sheets!`);
+    setSaveToast(`âœ“ Concluded shift for ${targetUser.name}. Timesheet saved & synced to Google Sheets!`);
     setTimeout(() => setSaveToast(null), 8000);
 
     triggerAutoSync();
@@ -1526,7 +1526,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     trainees.forEach((t, idx) => {
       startAgentLiveShift(t.id, sampleTasks[idx % sampleTasks.length]);
     });
-    setSaveToast(`✓ Activated live tracking simulation for ${trainees.length} trainees! Synced to Google Sheets.`);
+    setSaveToast(`âœ“ Activated live tracking simulation for ${trainees.length} trainees! Synced to Google Sheets.`);
     setTimeout(() => setSaveToast(null), 8000);
   };
 
@@ -1620,31 +1620,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsFirestoreLoaded(true);
       }, (err) => handleSnapshotError('timelogs', err));
 
-      unsubUsers = onSnapshot(doc(db, 'system_state', 'users'), (snapshot) => {
-  if (snapshot.exists() && snapshot.data()?.data !== undefined) {
-    const remoteUsers: User[] = snapshot.data().data;
-
-    if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-      const sanitizedUsers = ensureUsernames(remoteUsers);
-
-      // FIRESTORE IS AUTHORITATIVE FOR USER RECORDS/PASSWORDS
-      setUsers(sanitizedUsers);
-      localStorage.setItem('trackpulse_users', JSON.stringify(sanitizedUsers));
-
-      // Keep currently selected user updated too
-      setCurrentUser((current) => {
-        const updated = sanitizedUsers.find(
-          (u) =>
-            u.id === current?.id ||
-            u.employeeCode?.toLowerCase() === current?.employeeCode?.toLowerCase() ||
-            u.username?.toLowerCase() === current?.username?.toLowerCase()
-        );
-
-        return updated || current;
-      });
-    }
-  }
-}, (err) => handleSnapshotError('users', err));
 
       unsubAudit = onSnapshot(doc(db, 'system_state', 'auditlogs'), (snapshot) => {
         if (snapshot.exists() && snapshot.data()?.data !== undefined) {
@@ -2100,7 +2075,7 @@ hydrateTimeLogsFromSheets();
     };
 
     fetchCentralSync();
-    const centralSyncInterval = setInterval(fetchCentralSync, 3000);
+    const centralSyncInterval = setInterval(fetchCentralSync, 60000);
 
     // 3. Background auto-import from Google Sheets CSV (100% quota-free)
     fetchEmployeesFromGoogleSheets('', DEFAULT_SPREADSHEET_ID, users)
@@ -2109,7 +2084,7 @@ hydrateTimeLogsFromSheets();
           setUsers((prev) => {
             const merged = deduplicateUsers([...prev, ...res.employees]);
             localStorage.setItem('trackpulse_users', JSON.stringify(merged));
-            // Push merged Google Sheets employees to central server so desktop software gets them instantly!
+            // READ/MERGE ONLY: never publish this client roster back to the central server.
             return merged;
           });
         }
@@ -2500,7 +2475,7 @@ if (mode === 'software') {
         designation: userDesig,
         platformMode: isDesktop ? 'Desktop Tracker' : 'Website',
         status: 'online',
-        statusLabel: isDesktop ? '🟢 Live Tracking' : '🟢 Online',
+        statusLabel: isDesktop ? 'ðŸŸ¢ Live Tracking' : 'ðŸŸ¢ Online',
         isOnline: true,
         isTracking: isDesktop,
         isPaused: false,
@@ -2571,7 +2546,7 @@ if (mode === 'software') {
           designation: currentUser.designation || 'Agent',
           platformMode: 'None / Offline',
           status: 'offline',
-          statusLabel: '⚪ Offline',
+          statusLabel: 'âšª Offline',
           isOnline: false,
           isTracking: false,
           isPaused: false,
@@ -2794,7 +2769,7 @@ if (mode === 'software') {
       try {
         disableNetwork(db).catch(() => {});
       } catch {}
-      setSaveToast('⚡ Unlimited High-Capacity Server Bridge Active (Zero Quota Limits for 100+ Agents)');
+      setSaveToast('âš¡ Unlimited High-Capacity Server Bridge Active (Zero Quota Limits for 100+ Agents)');
     } else {
       localStorage.removeItem('trackpulse_quota_exhausted_date');
       sessionStorage.removeItem('trackpulse_quota_exhausted');
@@ -2833,7 +2808,7 @@ if (mode === 'software') {
     setIsDualMonitorMode((prev) => {
       const next = !prev;
       localStorage.setItem('trackpulse_dual_monitor', String(next));
-      setSaveToast(next ? '🖥️ Dual Monitor Mode ON: False hardware inactivity prevented' : 'Single Monitor Mode active');
+      setSaveToast(next ? 'ðŸ–¥ï¸ Dual Monitor Mode ON: False hardware inactivity prevented' : 'Single Monitor Mode active');
       setTimeout(() => setSaveToast(null), 3500);
       return next;
     });
@@ -2865,13 +2840,13 @@ if (mode === 'software') {
       setCurrentInactivitySeconds(0);
       setInactivityAlertState({ isOpen: false, idleMinutes: 10, remainingSeconds: 300 });
       setIsIdleAlertActive(false);
-      setSaveToast("✓ Confirmed active — Timer continuing smoothly with 0 deductions!");
+      setSaveToast("âœ“ Confirmed active â€” Timer continuing smoothly with 0 deductions!");
       setTimeout(() => setSaveToast(null), 3500);
     } else {
       pauseTracking();
       setInactivityAlertState({ isOpen: false, idleMinutes: 10, remainingSeconds: 300 });
       setIsIdleAlertActive(false);
-      setSaveToast("⏸️ Tracker paused for break/inactivity.");
+      setSaveToast("â¸ï¸ Tracker paused for break/inactivity.");
       setTimeout(() => setSaveToast(null), 3500);
     }
   };
@@ -2926,7 +2901,7 @@ if (mode === 'software') {
       resumeTracking();
     }
 
-    setSaveToast(`✓ ${minutesToRestore}m Productive Work Restored! Inactivity deduction cancelled.`);
+    setSaveToast(`âœ“ ${minutesToRestore}m Productive Work Restored! Inactivity deduction cancelled.`);
     setTimeout(() => setSaveToast(null), 4000);
   };
 
@@ -3218,12 +3193,12 @@ if (mode === 'software') {
       const isEffTracking = isDesktop && isTracking && !isPaused;
 
       const statusLabel = isEffTracking
-        ? '🟢 Live Tracking'
+        ? 'ðŸŸ¢ Live Tracking'
         : isDesktop && isPaused
-        ? '🟡 Idle / Break'
+        ? 'ðŸŸ¡ Idle / Break'
         : isDesktop
-        ? '🔵 Desktop Online'
-        : '🟢 Website Online';
+        ? 'ðŸ”µ Desktop Online'
+        : 'ðŸŸ¢ Website Online';
 
       const startFormatted =
         isDesktop && snap.startTimeIso
@@ -3390,7 +3365,7 @@ if (mode === 'software') {
     const updatedAudit = [auditEntry, ...auditLogs];
     setAuditLogs(updatedAudit);
 
-    setSaveToast(`⚠️ Inactivity Alert: ${idleMinutes}m idle tagged & deducted from daily timesheet. Shift extended by ${idleMinutes}m. Synced to Google Sheets!`);
+    setSaveToast(`âš ï¸ Inactivity Alert: ${idleMinutes}m idle tagged & deducted from daily timesheet. Shift extended by ${idleMinutes}m. Synced to Google Sheets!`);
     setTimeout(() => setSaveToast(null), 8000);
 
     // Auto Sync to Google Sheets
@@ -3613,7 +3588,7 @@ if (mode === 'software') {
     return () => clearInterval(idleInterval);
   }, [isTracking, isPaused, currentUser, currentTask, dailyAttendanceLogs, idleLogs, auditLogs, payrollRecords, users, timeLogs, leaveRequests, loginMode]);
 
-  // Periodic Random Screenshot Generator Simulator (Randomized 10–15 min intervals)
+  // Periodic Random Screenshot Generator Simulator (Randomized 10â€“15 min intervals)
   useEffect(() => {
     if (isTracking && !isPaused && elapsedSeconds > 0 && elapsedSeconds % 90 === 0) {
       const sampleImages = [
@@ -3987,7 +3962,7 @@ if (mode === 'software') {
       details: `Clocked out session (${formatDuration(trackedSecs)} total; final segment ${formatDuration(finalSegmentSec)} on ${currentTask}). Saved to Timesheets, Database & Google Sheets.`,
     });
 
-    setSaveToast(`✓ Saved to Database & Synced to Timesheets! (${currentUser.name} - ${formatDuration(trackedSecs)} on ${currentTask})`);
+    setSaveToast(`âœ“ Saved to Database & Synced to Timesheets! (${currentUser.name} - ${formatDuration(trackedSecs)} on ${currentTask})`);
     setTimeout(() => setSaveToast(null), 7000);
 
     triggerAutoSync(users, updatedLogs, auditLogs, updatedPayroll, updatedAttendance, idleLogs, leaveRequests);
@@ -4054,7 +4029,7 @@ if (mode === 'software') {
       setOfflineSinceTimestamp(null);
       setOfflineSecondsRemaining(TOTAL_OFFLINE_LIMIT_SECONDS);
       setOfflineStatusStage('online');
-      setSaveToast('✓ Internet Connection Restored! Live sync active.');
+      setSaveToast('âœ“ Internet Connection Restored! Live sync active.');
       triggerAutoSync(users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
       return true;
     }
@@ -4064,7 +4039,7 @@ if (mode === 'software') {
       setOfflineSinceTimestamp(null);
       setOfflineSecondsRemaining(TOTAL_OFFLINE_LIMIT_SECONDS);
       setOfflineStatusStage('online');
-      setSaveToast('✓ Internet Connection Restored! Live sync active.');
+      setSaveToast('âœ“ Internet Connection Restored! Live sync active.');
       triggerAutoSync(users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
       return true;
     } catch {
@@ -4084,7 +4059,7 @@ if (mode === 'software') {
         setOfflineSinceTimestamp(null);
         setOfflineSecondsRemaining(TOTAL_OFFLINE_LIMIT_SECONDS);
         setOfflineStatusStage('online');
-        setSaveToast('✓ Internet Connection Restored (Simulated)');
+        setSaveToast('âœ“ Internet Connection Restored (Simulated)');
       }
       return next;
     });
@@ -4097,7 +4072,7 @@ if (mode === 'software') {
       setOfflineSinceTimestamp(null);
       setOfflineSecondsRemaining(TOTAL_OFFLINE_LIMIT_SECONDS);
       setOfflineStatusStage('online');
-      setSaveToast('✓ Internet Connection Restored! Live sync active.');
+      setSaveToast('âœ“ Internet Connection Restored! Live sync active.');
       triggerAutoSync(users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
     };
 
@@ -4346,7 +4321,7 @@ if (mode === 'software') {
       body: JSON.stringify(switchPresence),
     }).catch(() => {});
 
-    setSaveToast(`✓ Switched to "${targetTask}"! Recorded "${prevTask}" (${formatDuration(segmentDurationSec)}) to database & spreadsheet.`);
+    setSaveToast(`âœ“ Switched to "${targetTask}"! Recorded "${prevTask}" (${formatDuration(segmentDurationSec)}) to database & spreadsheet.`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 
@@ -4433,7 +4408,7 @@ if (mode === 'software') {
     fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedUsers),
+      body: JSON.stringify(newUser),
     }).catch(() => {});
     safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
       console.warn('Users save err:', err)
@@ -4447,7 +4422,7 @@ if (mode === 'software') {
       });
     }
 
-    setSaveToast(`✓ Saved new employee "${newUser.name}" to Database & Google Sheets!`);
+    setSaveToast(`âœ“ Saved new employee "${newUser.name}" to Database & Google Sheets!`);
     setTimeout(() => setSaveToast(null), 6000);
 
     triggerAutoSync(
@@ -4474,7 +4449,7 @@ if (mode === 'software') {
     fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedUsers),
+      body: JSON.stringify(updatedUsers.find((u) => u.id === id)),
     }).catch(() => {});
 
     // Fast-path immediate sync to Google Sheets Employee_Directory
@@ -4510,7 +4485,7 @@ if (mode === 'software') {
     // Create audit log of what changed
     const changes = Object.keys(data)
       .filter((k) => k !== 'id' && (data as any)[k] !== (targetUser as any)?.[k])
-      .map((k) => `${k}: "${(targetUser as any)?.[k]}" → "${(data as any)[k]}"`)
+      .map((k) => `${k}: "${(targetUser as any)?.[k]}" â†’ "${(data as any)[k]}"`)
       .join(', ');
 
     const now = new Date();
@@ -4533,7 +4508,7 @@ if (mode === 'software') {
     const updatedAudit = [auditEntry, ...auditLogs];
     setAuditLogs(updatedAudit);
 
-    setSaveToast(`✓ Saved edits for "${targetUser?.name || 'Employee'}" to Database & Google Sheets!`);
+    setSaveToast(`âœ“ Saved edits for "${targetUser?.name || 'Employee'}" to Database & Google Sheets!`);
     setTimeout(() => setSaveToast(null), 6000);
 
     triggerAutoSync(
@@ -4581,7 +4556,7 @@ if (mode === 'software') {
     const updatedAudit = [auditEntry, ...auditLogs];
     setAuditLogs(updatedAudit);
 
-    setSaveToast(`✓ Deleted employee "${targetUser?.name || id}" and synchronized Database!`);
+    setSaveToast(`âœ“ Deleted employee "${targetUser?.name || id}" and synchronized Database!`);
     setTimeout(() => setSaveToast(null), 6000);
 
     triggerAutoSync(
@@ -4620,7 +4595,7 @@ if (mode === 'software') {
     // Check if there is already a pending request for this user
     const existingPending = passwordResetRequests.find((r) => r.targetUserId === targetUserId && r.status === 'pending');
     if (existingPending) {
-      setSaveToast(`ⓘ A password reset request for ${targetUser.name} is already pending Super Admin approval.`);
+      setSaveToast(`â“˜ A password reset request for ${targetUser.name} is already pending Super Admin approval.`);
       setTimeout(() => setSaveToast(null), 5000);
       return;
     }
@@ -4656,7 +4631,7 @@ if (mode === 'software') {
       details: `${currentUser.name} (${currentUser.role}) submitted a Password Reset Request for ${targetUser.name} (#${targetUser.employeeCode}). Waiting for Super Admin (Red) approval.`,
     });
 
-    setSaveToast(`✓ Password reset request for ${targetUser.name} submitted! Super Admin (Red) has been notified for approval.`);
+    setSaveToast(`âœ“ Password reset request for ${targetUser.name} submitted! Super Admin (Red) has been notified for approval.`);
     setTimeout(() => setSaveToast(null), 6000);
   };
 
@@ -4695,7 +4670,7 @@ if (mode === 'software') {
       details: `Admin ${currentUser.name} approved password reset request for ${targetReq.targetUserName} (#${targetReq.targetUserCode}). Account reset to default "Password123!" with mandatory first-login password creation.`,
     });
 
-    setSaveToast(`✓ Approved password reset for ${targetReq.targetUserName}! Credentials reset to "Password123!".`);
+    setSaveToast(`âœ“ Approved password reset for ${targetReq.targetUserName}! Credentials reset to "Password123!".`);
     setTimeout(() => setSaveToast(null), 6000);
   };
 
@@ -4731,7 +4706,7 @@ if (mode === 'software') {
       details: `Admin ${currentUser.name} rejected password reset request for ${targetReq.targetUserName} (#${targetReq.targetUserCode}). ${notes ? `Note: ${notes}` : ''}`,
     });
 
-    setSaveToast(`ⓘ Rejected password reset request for ${targetReq.targetUserName}.`);
+    setSaveToast(`â“˜ Rejected password reset request for ${targetReq.targetUserName}.`);
     setTimeout(() => setSaveToast(null), 6000);
   };
 
@@ -4766,7 +4741,7 @@ if (mode === 'software') {
       details: `Added time entry for ${newLog.userName} (${newLog.task}, ${formatDuration(newLog.durationSeconds)}). Saved to Database & Google Sheets.`,
     });
 
-    setSaveToast(`✓ Saved time log to Database & Google Sheets!`);
+    setSaveToast(`âœ“ Saved time log to Database & Google Sheets!`);
     setTimeout(() => setSaveToast(null), 6000);
 
     triggerAutoSync(users, updatedLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
@@ -4791,7 +4766,7 @@ if (mode === 'software') {
       details: `Updated time log (${targetLog?.task || id}): ${data.task ? `Task changed to ${data.task}` : 'Notes/Duration modified'}. Saved to Database & Google Sheets.`,
     });
 
-    setSaveToast(`✓ Saved time log edits to Database & Google Sheets!`);
+    setSaveToast(`âœ“ Saved time log edits to Database & Google Sheets!`);
     setTimeout(() => setSaveToast(null), 6000);
 
     triggerAutoSync(users, updatedLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
@@ -4817,7 +4792,7 @@ if (mode === 'software') {
       details: `Deleted time log entry for ${targetLog?.userName || id} (${targetLog?.task || 'Task'}). Saved to Database & Google Sheets.`,
     });
 
-    setSaveToast(`✓ Removed time log and synchronized Database!`);
+    setSaveToast(`âœ“ Removed time log and synchronized Database!`);
     setTimeout(() => setSaveToast(null), 6000);
 
     triggerAutoSync(users, updatedLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
@@ -4874,7 +4849,7 @@ if (mode === 'software') {
       details: `Approved manual time request for ${req.userName} on ${req.date} (${req.task}, ${req.startTime}-${req.endTime}). Saved to Database & Google Sheets.`,
     });
 
-    setSaveToast(`✓ Approved manual time request and added to Database & Google Sheets!`);
+    setSaveToast(`âœ“ Approved manual time request and added to Database & Google Sheets!`);
     setTimeout(() => setSaveToast(null), 6000);
 
     triggerAutoSync(users, updatedLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
@@ -4901,7 +4876,7 @@ if (mode === 'software') {
       });
     }
 
-    setSaveToast(`✓ Rejected manual time request and synchronized Database!`);
+    setSaveToast(`âœ“ Rejected manual time request and synchronized Database!`);
     setTimeout(() => setSaveToast(null), 6000);
   };
 
@@ -4928,7 +4903,7 @@ if (mode === 'software') {
       details: `Submitted manual time request for ${reqData.date} (${reqData.task}, ${reqData.startTime}-${reqData.endTime}): ${reqData.reason}. Saved to Database & Google Sheets.`,
     });
 
-    setSaveToast(`✓ Submitted manual time request to Database & Supervisors!`);
+    setSaveToast(`âœ“ Submitted manual time request to Database & Supervisors!`);
     setTimeout(() => setSaveToast(null), 6000);
   };
 
@@ -4954,7 +4929,7 @@ if (mode === 'software') {
       });
     }
 
-    setSaveToast(`✓ Approved leave request and updated Database & Google Sheets!`);
+    setSaveToast(`âœ“ Approved leave request and updated Database & Google Sheets!`);
     setTimeout(() => setSaveToast(null), 6000);
 
     triggerAutoSync(users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, updatedLeaves);
@@ -4981,7 +4956,7 @@ if (mode === 'software') {
       });
     }
 
-    setSaveToast(`✓ Rejected leave request and synchronized Database!`);
+    setSaveToast(`âœ“ Rejected leave request and synchronized Database!`);
     setTimeout(() => setSaveToast(null), 6000);
 
     triggerAutoSync(users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, updatedLeaves);
@@ -5011,7 +4986,7 @@ if (mode === 'software') {
       details: `Submitted ${reqData.type} leave request (${reqData.startDate} to ${reqData.endDate}): ${reqData.reason}. Saved to Database & Google Sheets.`,
     });
 
-    setSaveToast(`✓ Submitted leave request to Database & Google Sheets!`);
+    setSaveToast(`âœ“ Submitted leave request to Database & Google Sheets!`);
     setTimeout(() => setSaveToast(null), 6000);
 
     triggerAutoSync(users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, updatedLeaves);
@@ -5065,7 +5040,7 @@ if (mode === 'software') {
       details: `Updated payroll status for ${targetRecord?.userName || id} (${targetRecord?.payPeriod}) to "${status.toUpperCase()}". Saved to Database & Google Sheets.`,
     });
 
-    setSaveToast(`✓ Updated payroll status to ${status.toUpperCase()} and synced Database & Google Sheets!`);
+    setSaveToast(`âœ“ Updated payroll status to ${status.toUpperCase()} and synced Database & Google Sheets!`);
     setTimeout(() => setSaveToast(null), 6000);
 
     triggerAutoSync(users, timeLogs, auditLogs, updatedPayroll, dailyAttendanceLogs, idleLogs, leaveRequests);
@@ -5156,10 +5131,10 @@ if (mode === 'software') {
         safeSetDoc(doc(db, 'system_state', 'attendance'), { data: [] }),
         safeSetDoc(doc(db, 'system_state', 'auditlogs'), { data: INITIAL_AUDIT_LOGS }),
       ]);
-      setSaveToast('✓ Complete System Reset! All time logs, tasks, sessions, and database tables have been reset to clean state.');
+      setSaveToast('âœ“ Complete System Reset! All time logs, tasks, sessions, and database tables have been reset to clean state.');
     } catch (err) {
       console.warn('Reset database error:', err);
-      setSaveToast('✓ Local system & cache reset to clean state! (Firestore update queued)');
+      setSaveToast('âœ“ Local system & cache reset to clean state! (Firestore update queued)');
     }
     setTimeout(() => setSaveToast(null), 7000);
   };
@@ -5221,7 +5196,7 @@ if (mode === 'software') {
       targetEmployeeName: trimmed,
       details: `Created new designation "${trimmed}" with ${updated[trimmed].length} default tasks.`,
     });
-    setSaveToast(`✓ Created designation "${trimmed}"!`);
+    setSaveToast(`âœ“ Created designation "${trimmed}"!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 
@@ -5241,7 +5216,7 @@ if (mode === 'software') {
       targetEmployeeName: name,
       details: `Deleted designation "${name}" and its associated tasks.`,
     });
-    setSaveToast(`✓ Deleted designation "${name}"!`);
+    setSaveToast(`âœ“ Deleted designation "${name}"!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 
@@ -5267,7 +5242,7 @@ if (mode === 'software') {
       targetEmployeeName: designation,
       details: `Added task "${trimmed}" to designation "${designation}".`,
     });
-    setSaveToast(`✓ Added task "${trimmed}" to ${designation}!`);
+    setSaveToast(`âœ“ Added task "${trimmed}" to ${designation}!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 
@@ -5290,7 +5265,7 @@ if (mode === 'software') {
       targetEmployeeName: designation,
       details: `Removed task "${taskName}" from designation "${designation}".`,
     });
-    setSaveToast(`✓ Removed task "${taskName}" from ${designation}!`);
+    setSaveToast(`âœ“ Removed task "${taskName}" from ${designation}!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 
@@ -5336,7 +5311,7 @@ if (mode === 'software') {
     const updatedAudit = [auditEntry, ...auditLogs];
     setAuditLogs(updatedAudit);
     triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, updated);
-    setSaveToast(`✓ Updated permission [${permissionKey}] for "${roleKey}" and synced Database!`);
+    setSaveToast(`âœ“ Updated permission [${permissionKey}] for "${roleKey}" and synced Database!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 
@@ -5377,7 +5352,7 @@ if (mode === 'software') {
     const updatedAudit = [auditEntry, ...auditLogs];
     setAuditLogs(updatedAudit);
     triggerAutoSync(updatedUsers, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions);
-    setSaveToast(`✓ Updated custom permission for ${target?.name || 'user'} and synced Database!`);
+    setSaveToast(`âœ“ Updated custom permission for ${target?.name || 'user'} and synced Database!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 
@@ -5414,7 +5389,7 @@ if (mode === 'software') {
     const updatedAudit = [auditEntry, ...auditLogs];
     setAuditLogs(updatedAudit);
     triggerAutoSync(updatedUsers, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions);
-    setSaveToast(`✓ Reset permissions for ${target?.name || 'user'} to standard designation defaults and synced Database!`);
+    setSaveToast(`âœ“ Reset permissions for ${target?.name || 'user'} to standard designation defaults and synced Database!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 
@@ -5459,7 +5434,7 @@ if (mode === 'software') {
     const updatedAudit = [auditEntry, ...auditLogs];
     setAuditLogs(updatedAudit);
     triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, updated);
-    setSaveToast(`✓ Created Role / Category "${trimmedKey}" and synced to Database!`);
+    setSaveToast(`âœ“ Created Role / Category "${trimmedKey}" and synced to Database!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 
@@ -5488,7 +5463,7 @@ if (mode === 'software') {
     const updatedAudit = [auditEntry, ...auditLogs];
     setAuditLogs(updatedAudit);
     triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, updated);
-    setSaveToast(`✓ Removed custom category "${roleKey}" and synced Database!`);
+    setSaveToast(`âœ“ Removed custom category "${roleKey}" and synced Database!`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 

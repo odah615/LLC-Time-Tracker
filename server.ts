@@ -283,7 +283,17 @@ app.post('/api/timelogs', (req, res) => {
     return res.json({ success: true, count: bridgeState.timelogs.length });
   } else if (incoming && incoming.id) {
     const map = new Map<string, any>(bridgeState.timelogs.map((l) => [l.id, l]));
-    map.set(incoming.id, { ...(map.get(incoming.id) || {}), ...incoming });
+    const existing = map.get(incoming.id) || {};
+    const mergedLog = { ...existing, ...incoming };
+    if (Number(existing.durationSeconds || 0) > Number(incoming.durationSeconds || 0)) {
+      mergedLog.durationSeconds = existing.durationSeconds;
+    }
+    if (existing.status === 'completed' && incoming.status !== 'completed') {
+      mergedLog.status = existing.status;
+      mergedLog.endTime = existing.endTime || mergedLog.endTime;
+      mergedLog.geoLocalEndTime = existing.geoLocalEndTime || mergedLog.geoLocalEndTime;
+    }
+    map.set(incoming.id, mergedLog);
     bridgeState.timelogs = Array.from(map.values());
     persistBridgeState();
     return res.json({ success: true, log: incoming });
@@ -306,7 +316,23 @@ app.post('/api/users', (req, res) => {
           ...u,
           name: resolveStaffName(u.employeeCode, u.username, u.name, u.id),
         };
-        map.set(u.id, { ...(map.get(u.id) || {}), ...sanitized });
+        const existing = map.get(u.id) || {};
+        const incomingPassword = String(sanitized.password || '').trim();
+        const existingPassword = String(existing.password || '').trim();
+        const mergedUser = { ...existing, ...sanitized };
+        const incomingPasswordIsUnsafe =
+          !incomingPassword ||
+          incomingPassword === 'Password123!' ||
+          incomingPassword.includes('*');
+
+        if (existingPassword && existingPassword !== 'Password123!' && incomingPasswordIsUnsafe) {
+          mergedUser.password = existing.password;
+          if (existing.mustChangePassword !== undefined) {
+            mergedUser.mustChangePassword = existing.mustChangePassword;
+          }
+        }
+
+        map.set(u.id, mergedUser);
       }
     }
     bridgeState.users = Array.from(map.values());
@@ -318,7 +344,23 @@ app.post('/api/users', (req, res) => {
       ...incoming,
       name: resolveStaffName(incoming.employeeCode, incoming.username, incoming.name, incoming.id),
     };
-    map.set(incoming.id, { ...(map.get(incoming.id) || {}), ...sanitized });
+    const existing = map.get(incoming.id) || {};
+    const incomingPassword = String(sanitized.password || '').trim();
+    const existingPassword = String(existing.password || '').trim();
+    const mergedUser = { ...existing, ...sanitized };
+    const incomingPasswordIsUnsafe =
+      !incomingPassword ||
+      incomingPassword === 'Password123!' ||
+      incomingPassword.includes('*');
+
+    if (existingPassword && existingPassword !== 'Password123!' && incomingPasswordIsUnsafe) {
+      mergedUser.password = existing.password;
+      if (existing.mustChangePassword !== undefined) {
+        mergedUser.mustChangePassword = existing.mustChangePassword;
+      }
+    }
+
+    map.set(incoming.id, mergedUser);
     bridgeState.users = Array.from(map.values());
     persistBridgeState();
     return res.json({ success: true, user: sanitized });
