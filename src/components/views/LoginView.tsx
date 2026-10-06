@@ -99,8 +99,8 @@ if (!isFirestoreLoaded) {
           password: password.trim(),
         }),
       });
-
-      const authResult = await authResponse.json().catch(() => null);
+      const proxyResult = await authResponse.json().catch(() => null);
+      const authResult = proxyResult?.result ?? proxyResult;
 
       if (!authResponse.ok || !authResult?.success || !authResult?.user) {
         setErrorMsg(authResult?.error || 'Invalid username/employee code or password.');
@@ -851,4 +851,5 @@ if (!isFirestoreLoaded) {
     </div>
   );
 };
+
 
