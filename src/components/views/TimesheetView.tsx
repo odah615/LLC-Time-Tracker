@@ -70,6 +70,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     googleSheetsWebhookUrl,
     setGoogleSheetsWebhookUrl,
     triggerGoogleSheetsSync,
+    importTimeLogsFromGoogleSheets,
   } = useApp();
 
   const isPersonalView =
@@ -86,6 +87,41 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
   useEffect(() => {
     setWebhookInputVal(googleSheetsWebhookUrl || '');
   }, [googleSheetsWebhookUrl]);
+
+  // Periodic 60-second Google Sheets Time Logs refresh while My Timesheet portal is open
+  useEffect(() => {
+    let isMounted = true;
+    let isRefreshing = false;
+
+    const performRefresh = async () => {
+      if (isRefreshing) return;
+      isRefreshing = true;
+      try {
+        await importTimeLogsFromGoogleSheets();
+      } catch (err) {
+        console.warn('[TimesheetView] Google Sheets 60s background refresh notice:', err);
+      } finally {
+        if (isMounted) {
+          isRefreshing = false;
+        }
+      }
+    };
+
+    // Initial load when TimesheetView mounts
+    performRefresh();
+
+    // 60-second non-overlapping periodic refresh interval
+    const interval = setInterval(() => {
+      if (isMounted && !isRefreshing) {
+        performRefresh();
+      }
+    }, 60000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [importTimeLogsFromGoogleSheets]);
 
   const handleManualSheetsSync = async () => {
     setIsSyncingSheets(true);
@@ -404,25 +440,37 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
   const filteredLogs = useMemo(() => {
     return allAvailableLogs
       .filter((log) => {
-        // If personal view mode OR agent role, match flexibly across userId, employeeCode, and userName
+        // If personal view mode OR agent role, match primarily by authoritative Employee Code
         if (isPersonalView || currentUser.role === 'agent') {
+          const uCode = (currentUser.employeeCode || '').trim().toUpperCase();
           const uId = (currentUser.id || '').trim().toLowerCase();
-          const uCode = (currentUser.employeeCode || '').trim().toLowerCase();
           const uName = (currentUser.name || '').trim().toLowerCase();
           const uUsername = ((currentUser as any).username || '').trim().toLowerCase();
 
+          const logEmpCode = ((log as any).employeeCode || '').trim().toUpperCase();
           const logUId = (log.userId || '').trim().toLowerCase();
-          const logEmpCode = ((log as any).employeeCode || '').trim().toLowerCase();
           const logUName = (log.userName || '').trim().toLowerCase();
+
+          // Authoritative Employee Code matching
+          const matchesByCode = Boolean(uCode && logEmpCode && uCode === logEmpCode);
+
+          // Fallbacks for legacy/local user ID or Name
+          const matchesById = Boolean(
+            (uId && logUId && uId === logUId) ||
+            (uCode && logUId && (logUId === uCode.toLowerCase() || logUId === `usr-${uCode.toLowerCase()}`)) ||
+            (uUsername && logUId && logUId.includes(uUsername))
+          );
+          const matchesByName = Boolean(
+            uName && logUName && (uName === logUName || logUName.includes(uName) || uName.includes(logUName))
+          );
 
           const canonicalLogUser = resolveCanonicalEmployee(logEmpCode || logUName || logUId);
           const canonicalCurrent = resolveCanonicalEmployee(uCode || uName || uId);
+          const matchesCanonical = Boolean(
+            canonicalLogUser && canonicalCurrent && canonicalLogUser.code === canonicalCurrent.code
+          );
 
-          const matchesUser =
-            (canonicalLogUser && canonicalCurrent && canonicalLogUser.code === canonicalCurrent.code) ||
-            (logUId && (logUId === uId || (uCode && logUId === uCode) || (uUsername && logUId === uUsername))) ||
-            (logEmpCode && (logEmpCode === uCode || logEmpCode === uId)) ||
-            (logUName && uName && (logUName === uName || logUName.includes(uName) || uName.includes(logUName)));
+          const matchesUser = matchesByCode || matchesById || matchesByName || matchesCanonical;
 
           if (!matchesUser) return false;
         }

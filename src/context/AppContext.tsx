@@ -1141,51 +1141,103 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const importTimeLogsFromGoogleSheets = async (
     overrideUrl?: string
   ): Promise<{ success: boolean; count: number; message: string }> => {
-    const targetUrl = overrideUrl || googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
+    const targetUrl =
+      overrideUrl ||
+      googleSheetsWebhookUrl ||
+      localStorage.getItem('trackpulse_sheets_webhook') ||
+      DEFAULT_WEBHOOK_URL;
     const res = await fetchTimeLogsFromGoogleSheets(targetUrl, DEFAULT_SPREADSHEET_ID);
 
-    if (res.success && res.timeLogs.length > 0) {
-      const existingMap = new Map(timeLogs.map((l) => [l.id, l]));
-      let addedCount = 0;
-      for (const log of res.timeLogs) {
-        if (log.id && !existingMap.has(log.id)) {
-          existingMap.set(log.id, {
-            id: log.id,
-            userId: log.userId || (users.find((u) => u.name.toLowerCase() === (log.userName || '').toLowerCase())?.id || 'usr-imported'),
-            userName: log.userName || 'Employee',
-            userAvatar: log.userAvatar || '',
-            designation: log.designation || 'Agent',
-            task: log.task || 'General',
-            startTime: log.startTime || new Date().toISOString(),
-            endTime: log.endTime || new Date().toISOString(),
-            durationSeconds: log.durationSeconds || 0,
-            status: log.status || 'completed',
-            geoTimezone: log.geoTimezone || 'Asia/Manila',
-            geoLocalStartTime: log.geoLocalStartTime || log.startTime || '',
-            geoLocalEndTime: log.geoLocalEndTime || log.endTime || '',
-            mouseActivityAvg: log.mouseActivityAvg ?? 100,
-            keyboardActivityAvg: log.keyboardActivityAvg ?? 100,
-            idleSeconds: log.idleSeconds ?? 0,
-            date: log.date || getManilaDateString(),
-            notes: log.notes || 'Imported from Google Sheets Time_Logs',
-            appsUsed: log.appsUsed || [],
-          });
-          addedCount++;
-        }
-      }
-      const merged = Array.from(existingMap.values());
-      setTimeLogs(merged);
-      localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
-      safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: merged }).catch((err) =>
-        console.warn('Time logs save err:', err)
-      );
+    if (res.success && Array.isArray(res.timeLogs) && res.timeLogs.length > 0) {
+      setTimeLogs((prev) => {
+        const map = new Map<string, TimeLog>();
+        prev.forEach((l) => {
+          if (l?.id) map.set(l.id, l);
+        });
 
-      setSaveToast(`âœ“ Two-Way Sync: Extracted ${res.timeLogs.length} time logs from Google Sheets!`);
-      setTimeout(() => setSaveToast(null), 7000);
+        for (const log of res.timeLogs) {
+          if (!log?.id) continue;
+          const existing = map.get(log.id);
+          const logEmpCode = ((log as any).employeeCode || '').trim();
+          const logUserName = (log.userName || '').trim();
+
+          const canonical = resolveCanonicalEmployee(logEmpCode || logUserName || log.userId);
+          const matchedUser =
+            (logEmpCode ? users.find((u) => u.employeeCode && u.employeeCode.toUpperCase() === logEmpCode.toUpperCase()) : null) ||
+            (logUserName ? users.find((u) => u.name && u.name.toLowerCase() === logUserName.toLowerCase()) : null) ||
+            (log.userId ? users.find((u) => u.id === log.userId) : null) ||
+            canonical;
+
+          const resolvedEmpCode =
+            logEmpCode ||
+            existing?.employeeCode ||
+            matchedUser?.employeeCode ||
+            canonical?.code ||
+            '';
+
+          const resolvedUserId =
+            log.userId ||
+            existing?.userId ||
+            matchedUser?.id ||
+            (resolvedEmpCode ? `usr-${resolvedEmpCode.toLowerCase().replace(/[^a-z0-9]/g, '-')}` : 'usr-imported');
+
+          const resolvedUserName =
+            logUserName ||
+            matchedUser?.name ||
+            canonical?.name ||
+            existing?.userName ||
+            'Employee';
+
+          const rawDur = log.durationSeconds;
+          let durSec = 0;
+          if (typeof rawDur === 'number' && !isNaN(rawDur)) {
+            durSec = Math.max(0, Math.floor(rawDur));
+          } else if (existing?.durationSeconds) {
+            durSec = existing.durationSeconds;
+          }
+
+          const statusStr = String(log.status || existing?.status || 'completed').toLowerCase();
+          const isRunning =
+            statusStr === 'running' ||
+            log.endTime === 'Running Live' ||
+            log.endTime === 'In Progress (Live)';
+
+          map.set(log.id, {
+            ...(existing || {}),
+            ...log,
+            id: log.id,
+            employeeCode: resolvedEmpCode,
+            userId: resolvedUserId,
+            userName: resolvedUserName,
+            userAvatar: log.userAvatar || existing?.userAvatar || matchedUser?.avatar || '',
+            designation: log.designation || existing?.designation || matchedUser?.designation || canonical?.designation || 'Agent',
+            task: log.task || existing?.task || 'General Work',
+            startTime: log.startTime || existing?.startTime || new Date().toISOString(),
+            endTime: log.endTime || existing?.endTime || (isRunning ? 'Running Live' : ''),
+            durationSeconds: durSec,
+            status: isRunning ? 'running' : 'completed',
+            geoTimezone: log.geoTimezone || existing?.geoTimezone || 'Asia/Manila',
+            geoLocalStartTime: log.geoLocalStartTime || log.startTime || existing?.geoLocalStartTime || '',
+            geoLocalEndTime: log.geoLocalEndTime || log.endTime || existing?.geoLocalEndTime || '',
+            mouseActivityAvg: log.mouseActivityAvg ?? existing?.mouseActivityAvg ?? 95,
+            keyboardActivityAvg: log.keyboardActivityAvg ?? existing?.keyboardActivityAvg ?? 95,
+            idleSeconds: log.idleSeconds ?? existing?.idleSeconds ?? 0,
+            date: log.date || existing?.date || getManilaDateString(),
+            notes: log.notes || existing?.notes || 'Imported from Google Sheets Time_Logs',
+            appsUsed: log.appsUsed || existing?.appsUsed || [],
+          } as TimeLog);
+        }
+
+        const merged = Array.from(map.values());
+        try {
+          localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
+        } catch {}
+        safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: merged }).catch(() => {});
+        return merged;
+      });
+
       return { success: true, count: res.timeLogs.length, message: res.message };
     } else {
-      setSaveToast(`âš ï¸ Google Sheets Time Logs: ${res.message}`);
-      setTimeout(() => setSaveToast(null), 7000);
       return { success: false, count: 0, message: res.message };
     }
   };
@@ -1768,215 +1820,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Central Sync Bridge & Google Sheets Auto-Hydration on Mount
   useEffect(() => {
-    // 1. Fetch shared Webhook URL & sync config
-    fetch('/api/config')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((cfg) => {
-        if (cfg?.webhookUrl && typeof cfg.webhookUrl === 'string' && isValidWebhookUrl(cfg.webhookUrl)) {
-          setGoogleSheetsWebhookUrlState(cfg.webhookUrl.trim());
-          localStorage.setItem('trackpulse_sheets_webhook', cfg.webhookUrl.trim());
+    let isCancelled = false;
+
+    const initConfigAndHydrate = async () => {
+      let activeWebhookUrl =
+        googleSheetsWebhookUrl ||
+        localStorage.getItem('trackpulse_sheets_webhook') ||
+        DEFAULT_WEBHOOK_URL;
+
+      // 1. Fetch shared Webhook URL & sync config from server
+      try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+          const cfg = await res.json();
+          if (cfg?.webhookUrl && typeof cfg.webhookUrl === 'string' && isValidWebhookUrl(cfg.webhookUrl)) {
+            activeWebhookUrl = cfg.webhookUrl.trim();
+            setGoogleSheetsWebhookUrlState(activeWebhookUrl);
+            localStorage.setItem('trackpulse_sheets_webhook', activeWebhookUrl);
+          }
         }
-      })
-      .catch(() => {});
+      } catch (e) {}
 
-    // Pre-populate server with local users and timelogs if available so desktop and web share all records immediately
-    const cleanRoster = deduplicateUsers(users);
-    if (cleanRoster.length !== users.length || JSON.stringify(cleanRoster) !== JSON.stringify(users)) {
-      setUsers(cleanRoster);
-      localStorage.setItem('trackpulse_users', JSON.stringify(cleanRoster));
-    }
+      if (isCancelled) return;
 
-    // 1.5. Read-only Google Sheets Time Logs hydration
-// Google Sheets is used here only to recover records that are missing
-// from the current browser/server cache. No Firestore/API write-back.
-const hydrateTimeLogsFromSheets = async () => {
-  try {
-    const targetUrl =
-      googleSheetsWebhookUrl ||
-      localStorage.getItem('trackpulse_sheets_webhook') ||
-      '';
-
-    const result = await fetchTimeLogsFromGoogleSheets(
-      targetUrl,
-      DEFAULT_SPREADSHEET_ID
-    );
-
-    if (
-      !result.success ||
-      !Array.isArray(result.timeLogs) ||
-      result.timeLogs.length === 0
-    ) {
-      return;
-    }
-
-    setTimeLogs((prev) => {
-      const map = new Map<string, TimeLog>();
-
-      // Keep everything already available locally.
-      prev.forEach((log) => {
-        if (log?.id) {
-          map.set(log.id, log);
-        }
-      });
-
-      // Add/update records coming from Google Sheets.
-      for (const log of result.timeLogs) {
-        if (!log?.id) continue;
-
-        const existing = map.get(log.id);
-
-        const canonical = resolveCanonicalEmployee(
-          (log as any).employeeCode || log.userName || log.userId
-        );
-        const matchedUser =
-          canonical ||
-          users.find(
-            (u) =>
-              (log.userName && u.name?.toLowerCase() === log.userName.toLowerCase()) ||
-              (log.userId && u.id === log.userId) ||
-              ((log as any).employeeCode && u.employeeCode === (log as any).employeeCode)
-          );
-
-        const resolvedDuration =
-          (log.durationSeconds && log.durationSeconds > 0)
-            ? log.durationSeconds
-            : (existing?.durationSeconds && existing.durationSeconds > 0)
-            ? existing.durationSeconds
-            : 0;
-
-        map.set(log.id, {
-          ...(existing || {}),
-          ...log,
-
-          id: log.id,
-          employeeCode:
-            (log as any).employeeCode ||
-            existing?.employeeCode ||
-            matchedUser?.employeeCode ||
-            '',
-
-          userId:
-            log.userId ||
-            existing?.userId ||
-            matchedUser?.id ||
-            'usr-imported',
-
-          userName:
-            matchedUser?.name ||
-            log.userName ||
-            existing?.userName ||
-            'Employee',
-
-          userAvatar:
-            log.userAvatar ||
-            existing?.userAvatar ||
-            matchedUser?.avatar ||
-            '',
-
-          designation:
-            log.designation ||
-            existing?.designation ||
-            matchedUser?.designation ||
-            'Agent',
-
-          task:
-            log.task ||
-            existing?.task ||
-            'General',
-
-          startTime:
-            log.startTime ||
-            existing?.startTime ||
-            '',
-
-          endTime:
-            log.endTime ||
-            existing?.endTime ||
-            '',
-
-          durationSeconds: resolvedDuration,
-
-          status:
-            log.status ||
-            existing?.status ||
-            'completed',
-
-          geoTimezone:
-            log.geoTimezone ||
-            existing?.geoTimezone ||
-            'Asia/Manila',
-
-          geoLocalStartTime:
-            log.geoLocalStartTime ||
-            existing?.geoLocalStartTime ||
-            '',
-
-          geoLocalEndTime:
-            log.geoLocalEndTime ||
-            existing?.geoLocalEndTime ||
-            '',
-
-          mouseActivityAvg:
-            log.mouseActivityAvg ??
-            existing?.mouseActivityAvg ??
-            95,
-
-          keyboardActivityAvg:
-            log.keyboardActivityAvg ??
-            existing?.keyboardActivityAvg ??
-            95,
-
-          idleSeconds:
-            log.idleSeconds ??
-            existing?.idleSeconds ??
-            0,
-
-          date:
-            log.date ||
-            existing?.date ||
-            '',
-
-          notes:
-            log.notes ||
-            existing?.notes ||
-            'Imported from Google Sheets Time_Logs',
-
-          appsUsed:
-            log.appsUsed ||
-            existing?.appsUsed ||
-            [],
-        } as TimeLog);
+      // Pre-populate server with local users and timelogs if available
+      const cleanRoster = deduplicateUsers(users);
+      if (cleanRoster.length !== users.length || JSON.stringify(cleanRoster) !== JSON.stringify(users)) {
+        setUsers(cleanRoster);
+        localStorage.setItem('trackpulse_users', JSON.stringify(cleanRoster));
       }
 
-      const merged = Array.from(map.values());
-
-      localStorage.setItem(
-        'trackpulse_timelogs',
-        JSON.stringify(merged)
-      );
-
-      return merged;
-    });
-  } catch (err) {
-    console.warn(
-      '[Sheets] Time log hydration failed:',
-      err
-    );
-  }
-};
-
-hydrateTimeLogsFromSheets();
-
-    // 1.6. Two-way Google Sheets Employee Directory hydration on boot
-    const hydrateEmployeesFromSheets = async () => {
+      // 1.5. Initial Time Logs hydration with confirmed webhook URL
       try {
-        const targetUrl =
-          googleSheetsWebhookUrl ||
-          localStorage.getItem('trackpulse_sheets_webhook') ||
-          '';
+        await importTimeLogsFromGoogleSheets(activeWebhookUrl);
+      } catch (err) {
+        console.warn('[Sheets] Initial time log hydration notice:', err);
+      }
 
+      if (isCancelled) return;
+
+      // 1.6. Initial Employee Directory hydration
+      try {
         const result = await fetchEmployeesFromGoogleSheets(
-          targetUrl,
+          activeWebhookUrl,
           DEFAULT_SPREADSHEET_ID,
           users
         );
@@ -2013,21 +1899,22 @@ hydrateTimeLogsFromSheets();
             }
             const deduplicated = deduplicateUsers(merged);
             localStorage.setItem('trackpulse_users', JSON.stringify(deduplicated));
-            fetch('/api/users', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(deduplicated),
-            }).catch(() => {});
             return deduplicated;
           });
         }
       } catch (err) {
-        console.warn('[Sheets] Employee hydration failed:', err);
+        console.warn('Initial employee hydration error:', err);
       }
     };
 
-    hydrateEmployeesFromSheets();
+    initConfigAndHydrate();
 
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     // 2. Continuous Central Sync Bridge (timelogs, users, presence across desktop & web)
     const fetchCentralSync = () => {
       // 2a. Sync timelogs across desktop software and web portal

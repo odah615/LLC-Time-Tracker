@@ -3602,16 +3602,14 @@ export const syncAgentHeartbeatToSheets = async (
  */
 export const fetchTimeLogsFromGoogleSheets = async (
   webhookUrl?: string,
-  spreadsheetId?: string
+  spreadsheetId: string = DEFAULT_SPREADSHEET_ID
 ): Promise<{ success: boolean; timeLogs: Partial<TimeLog>[]; message: string }> => {
-  if (!webhookUrl && !spreadsheetId) {
-    return { success: false, timeLogs: [], message: 'No Webhook URL or Spreadsheet ID provided.' };
-  }
+  const targetUrl = (webhookUrl && isValidWebhookUrl(webhookUrl)) ? webhookUrl.trim() : DEFAULT_WEBHOOK_URL;
 
-  // Method 1: Webhook GET
-  if (webhookUrl && isValidWebhookUrl(webhookUrl)) {
+  // Method 1: Webhook GET via Cloudflare proxy (/api/sync-sheets)
+  if (targetUrl && isValidWebhookUrl(targetUrl)) {
     try {
-      const proxyRes = await fetch(`/api/sync-sheets?url=${encodeURIComponent(webhookUrl.trim())}`);
+      const proxyRes = await fetch(`/api/sync-sheets?url=${encodeURIComponent(targetUrl)}`);
       if (proxyRes.ok) {
         const data = await proxyRes.json();
         if (data && Array.isArray(data.timeLogs) && data.timeLogs.length > 0) {
@@ -3623,7 +3621,24 @@ export const fetchTimeLogsFromGoogleSheets = async (
         }
       }
     } catch (err) {
-      console.warn('Webhook GET for timeLogs failed, trying CSV export fallback...', err);
+      console.warn('Webhook GET for timeLogs via /api/sync-sheets failed, trying direct fetch fallback...', err);
+    }
+
+    // Direct Webhook GET fetch fallback
+    try {
+      const directRes = await fetch(targetUrl, { method: 'GET' });
+      if (directRes.ok) {
+        const data = await directRes.json();
+        if (data && Array.isArray(data.timeLogs) && data.timeLogs.length > 0) {
+          return {
+            success: true,
+            timeLogs: data.timeLogs,
+            message: `Successfully extracted ${data.timeLogs.length} time logs directly from Google Sheets Webhook!`,
+          };
+        }
+      }
+    } catch (directErr) {
+      console.warn('Direct Webhook GET fetch failed, trying CSV export fallback...', directErr);
     }
   }
 
