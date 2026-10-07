@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { downloadDesktopSoftwarePackage, DesktopOS } from '../../lib/desktopDownloader';
 import { UserAvatar } from '../UserAvatar';
@@ -19,7 +19,8 @@ import {
   Monitor,
   ShieldCheck,
   Check,
-  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 interface AgentDashboardViewProps {
@@ -32,23 +33,81 @@ export const AgentDashboardView: React.FC<AgentDashboardViewProps> = ({
   onOpenManualModal,
   onOpenLeaveModal,
 }) => {
-  const { currentUser, timeLogs, formatDuration, setIsDesktopDockView } = useApp();
+  const { currentUser, timeLogs, userPresenceList, isTracking, elapsedSeconds, formatDuration } = useApp();
 
-  // Filter logs for current agent
-  const agentLogs = timeLogs.filter((l) => l.userId === currentUser.id);
+  // Robust matching for current agent across userId, employeeCode, username, and name
+  const agentLogs = useMemo(() => {
+    const uId = (currentUser.id || '').trim().toLowerCase();
+    const uCode = (currentUser.employeeCode || '').trim().toLowerCase();
+    const uName = (currentUser.name || '').trim().toLowerCase();
+    const uUsername = ((currentUser as any).username || '').trim().toLowerCase();
+
+    return timeLogs
+      .filter((l) => {
+        const logUId = (l.userId || '').trim().toLowerCase();
+        const logEmpCode = ((l as any).employeeCode || '').trim().toLowerCase();
+        const logUName = (l.userName || '').trim().toLowerCase();
+
+        return (
+          (logUId && (logUId === uId || (uCode && logUId === uCode) || (uUsername && logUId === uUsername))) ||
+          (logEmpCode && (logEmpCode === uCode || logEmpCode === uId)) ||
+          (logUName && uName && (logUName === uName || logUName.includes(uName) || uName.includes(logUName)))
+        );
+      })
+      .sort((a, b) => {
+        const getTs = (l: typeof a) => {
+          if (l.startTime && !isNaN(Date.parse(l.startTime))) return new Date(l.startTime).getTime();
+          if (l.date && !isNaN(Date.parse(l.date))) return new Date(l.date).getTime();
+          return 0;
+        };
+        return getTs(b) - getTs(a);
+      });
+  }, [timeLogs, currentUser]);
+
+  // Live session calculation
+  const liveExtraSeconds = useMemo(() => {
+    if (isTracking && elapsedSeconds > 0) return elapsedSeconds;
+    const presence = userPresenceList.find((p) => {
+      const uId = (currentUser.id || '').trim().toLowerCase();
+      const uCode = (currentUser.employeeCode || '').trim().toLowerCase();
+      const pId = (p.userId || '').trim().toLowerCase();
+      const pCode = (p.employeeCode || '').trim().toLowerCase();
+      return (uId && pId === uId) || (uCode && pCode === uCode);
+    });
+    return (presence?.isTracking && presence.elapsedSeconds) ? presence.elapsedSeconds : 0;
+  }, [isTracking, elapsedSeconds, userPresenceList, currentUser]);
 
   // Calculate stats
-  const totalTrackedSec = agentLogs.reduce((acc, l) => acc + l.durationSeconds, 0);
+  const totalTrackedSec = useMemo(() => {
+    return agentLogs.reduce((acc, l) => acc + (Math.max(0, Number(l.durationSeconds) || 0)), 0) + liveExtraSeconds;
+  }, [agentLogs, liveExtraSeconds]);
+
   const totalHoursFormatted = (totalTrackedSec / 3600).toFixed(1);
-  const avgMouse = Math.round(
-    agentLogs.reduce((acc, l) => acc + l.mouseActivityAvg, 0) / (agentLogs.length || 1)
-  );
-  const avgKeyboard = Math.round(
-    agentLogs.reduce((acc, l) => acc + l.keyboardActivityAvg, 0) / (agentLogs.length || 1)
-  );
+
+  const avgMouse = useMemo(() => {
+    if (agentLogs.length === 0) return 95;
+    const sum = agentLogs.reduce((acc, l) => acc + (Number(l.mouseActivityAvg) || 95), 0);
+    return Math.round(sum / agentLogs.length);
+  }, [agentLogs]);
+
+  const avgKeyboard = useMemo(() => {
+    if (agentLogs.length === 0) return 95;
+    const sum = agentLogs.reduce((acc, l) => acc + (Number(l.keyboardActivityAvg) || 95), 0);
+    return Math.round(sum / agentLogs.length);
+  }, [agentLogs]);
 
   const [selectedOS, setSelectedOS] = useState<DesktopOS>('windows');
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+
+  // Pagination for Recent Timesheet Logs (10 rows max per page)
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+  const totalPages = Math.ceil(agentLogs.length / pageSize) || 1;
+  const safePage = Math.min(page, totalPages);
+  const paginatedLogs = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return agentLogs.slice(start, start + pageSize);
+  }, [agentLogs, safePage, pageSize]);
 
   const handleDownloadAppPackage = (os: DesktopOS = selectedOS) => {
     downloadDesktopSoftwarePackage(os);
@@ -58,7 +117,7 @@ export const AgentDashboardView: React.FC<AgentDashboardViewProps> = ({
 
   return (
     <div id="agent-dashboard-view" className="space-y-6">
-      {/* Desktop App Instant Launcher Banner */}
+      {/* Desktop App Download & Install Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-slate-800 rounded-2xl p-6 text-white shadow-xl relative overflow-hidden">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
           <div className="flex items-start gap-4">
@@ -75,7 +134,7 @@ export const AgentDashboardView: React.FC<AgentDashboardViewProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
-                Clock in for your shift, monitor live mouse/keyboard activity, switch task categories, and capture screenshots instantly. All logs sync directly to your central database and timesheets.
+                Clock in for your shift, monitor live mouse/keyboard activity, switch task categories, and capture screenshots directly on your computer. All logs automatically sync to your portal and Google Sheets.
               </p>
 
               {/* OS Selection Buttons */}
@@ -119,25 +178,17 @@ export const AgentDashboardView: React.FC<AgentDashboardViewProps> = ({
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto shrink-0">
             <button
-              onClick={() => setIsDesktopDockView(true)}
-              className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-emerald-600/30 transition-all active:scale-[0.98] ring-2 ring-emerald-400/50 cursor-pointer"
-            >
-              <Clock className="w-5 h-5 text-emerald-100" />
-              <span>Launch Desktop Tracker Now</span>
-              <ArrowRight className="w-4 h-4 text-emerald-200" />
-            </button>
-            <button
               onClick={() => handleDownloadAppPackage(selectedOS)}
-              className="px-4 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-2 border border-slate-700 shadow-md transition-all cursor-pointer"
+              className="px-6 py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-emerald-600/30 transition-all active:scale-[0.98] ring-2 ring-emerald-400/50 cursor-pointer"
             >
               {downloadSuccess ? (
                 <>
-                  <Check className="w-4 h-4 text-emerald-400" />
+                  <Check className="w-5 h-5 text-emerald-100" />
                   <span>Installer Downloaded!</span>
                 </>
               ) : (
                 <>
-                  <Download className="w-4 h-4 text-emerald-400" />
+                  <Download className="w-5 h-5 text-emerald-100" />
                   <span>
                     Download {selectedOS === 'windows' ? 'Windows App (.bat)' : selectedOS === 'mac' ? 'macOS App (.sh)' : 'Linux App (.sh)'}
                   </span>
@@ -243,7 +294,9 @@ export const AgentDashboardView: React.FC<AgentDashboardViewProps> = ({
                 <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-blue-600" /> Recent Timesheet Logs
                 </h3>
-                <p className="text-xs text-slate-500">Detailed logs recorded by the time tracking software</p>
+                <p className="text-xs text-slate-500">
+                  Showing {agentLogs.length === 0 ? 0 : (safePage - 1) * pageSize + 1} - {Math.min(safePage * pageSize, agentLogs.length)} of {agentLogs.length} recorded logs
+                </p>
               </div>
             </div>
 
@@ -252,54 +305,88 @@ export const AgentDashboardView: React.FC<AgentDashboardViewProps> = ({
                 No timesheet records found yet. Launch your Desktop Tracker software to start logging hours!
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
-                    <tr>
-                      <th className="py-3 px-3 rounded-l-lg">Date/Time</th>
-                      <th className="py-3 px-3">Task & Designation</th>
-                      <th className="py-3 px-3">Duration</th>
-                      <th className="py-3 px-3 rounded-r-lg">Activity %</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-800">
-                    {agentLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-3">
-                          <div className="font-bold text-slate-900">{log.date}</div>
-                          <div className="text-[11px] text-blue-600 flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-slate-400" /> {log.geoLocalStartTime}
-                          </div>
-                        </td>
-                        <td className="py-3 px-3">
-                          <div className="font-semibold text-emerald-700">{log.task}</div>
-                          <div className="text-[10px] text-slate-500">{log.designation}</div>
-                        </td>
-                        <td className="py-3 px-3 font-mono font-bold text-slate-900">
-                          {formatDuration(log.durationSeconds)}
-                        </td>
-                        <td className="py-3 px-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-12 bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                              <div
-                                className="bg-emerald-500 h-full"
-                                style={{
-                                  width: `${Math.round(
-                                    (log.mouseActivityAvg + log.keyboardActivityAvg) / 2
-                                  )}%`,
-                                }}
-                              />
-                            </div>
-                            <span className="font-mono text-[11px] font-semibold text-slate-700">
-                              {Math.round((log.mouseActivityAvg + log.keyboardActivityAvg) / 2)}%
-                            </span>
-                          </div>
-                        </td>
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider">
+                      <tr>
+                        <th className="py-3 px-3 rounded-l-lg">Date/Time</th>
+                        <th className="py-3 px-3">Task & Designation</th>
+                        <th className="py-3 px-3">Duration</th>
+                        <th className="py-3 px-3 rounded-r-lg">Activity %</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-800">
+                      {paginatedLogs.map((log) => {
+                        const durSec = Number(log.durationSeconds) || 0;
+                        const mouseAct = Number(log.mouseActivityAvg) || 95;
+                        const keyAct = Number(log.keyboardActivityAvg) || 95;
+                        const avgAct = Math.round((mouseAct + keyAct) / 2);
+
+                        return (
+                          <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-3">
+                              <div className="font-bold text-slate-900">{log.date}</div>
+                              <div className="text-[11px] text-blue-600 flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-slate-400" /> {log.geoLocalStartTime || log.startTime || 'N/A'}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="font-semibold text-emerald-700">{log.task}</div>
+                              <div className="text-[10px] text-slate-500">{log.designation}</div>
+                            </td>
+                            <td className="py-3 px-3 font-mono font-bold text-slate-900">
+                              {formatDuration(durSec)}
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-12 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className="bg-emerald-500 h-full"
+                                    style={{
+                                      width: `${avgAct}%`,
+                                    }}
+                                  />
+                                </div>
+                                <span className="font-mono text-[11px] font-semibold text-slate-700">
+                                  {avgAct}%
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+                    <div>
+                      Page <strong className="text-slate-900">{safePage}</strong> of <strong className="text-slate-900">{totalPages}</strong>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={safePage <= 1}
+                        className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-semibold text-slate-700 transition-all cursor-pointer"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" /> Previous
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={safePage >= totalPages}
+                        className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-semibold text-slate-700 transition-all cursor-pointer"
+                      >
+                        Next <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -353,7 +440,7 @@ export const AgentDashboardView: React.FC<AgentDashboardViewProps> = ({
 
             <button
               onClick={onOpenLeaveModal}
-              className="mt-4 w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs flex items-center justify-center gap-1.5 transition-all border border-slate-200"
+              className="mt-4 w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs flex items-center justify-center gap-1.5 transition-all border border-slate-200 cursor-pointer"
             >
               <FileText className="w-4 h-4 text-slate-600" /> Request Leave
             </button>

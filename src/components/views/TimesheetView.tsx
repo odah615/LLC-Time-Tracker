@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { getManilaDateString, formatTotalTime } from '../../lib/dateUtils';
 import { DEFAULT_SPREADSHEET_ID, DEFAULT_SPREADSHEET_URL, generateAppsScriptCode } from '../../lib/googleSheetsSync';
@@ -42,6 +42,7 @@ import {
 import { TASK_LIST } from '../../data/initialData';
 import { TimeLog } from '../../types';
 import { UserAvatar } from '../UserAvatar';
+import { resolveCanonicalEmployee } from '../../lib/userUtils';
 
 interface TimesheetViewProps {
   onOpenManualModal: () => void;
@@ -414,7 +415,11 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
           const logEmpCode = ((log as any).employeeCode || '').trim().toLowerCase();
           const logUName = (log.userName || '').trim().toLowerCase();
 
+          const canonicalLogUser = resolveCanonicalEmployee(logEmpCode || logUName || logUId);
+          const canonicalCurrent = resolveCanonicalEmployee(uCode || uName || uId);
+
           const matchesUser =
+            (canonicalLogUser && canonicalCurrent && canonicalLogUser.code === canonicalCurrent.code) ||
             (logUId && (logUId === uId || (uCode && logUId === uCode) || (uUsername && logUId === uUsername))) ||
             (logEmpCode && (logEmpCode === uCode || logEmpCode === uId)) ||
             (logUName && uName && (logUName === uName || logUName.includes(uName) || uName.includes(logUName)));

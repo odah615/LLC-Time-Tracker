@@ -78,6 +78,7 @@ export interface ActivityMetric {
 export interface TimeLog {
   id: string;
   userId: string;
+  employeeCode?: string;
   userName: string;
   userAvatar: string;
   designation: Designation;

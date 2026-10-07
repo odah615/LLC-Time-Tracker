@@ -3084,11 +3084,51 @@ export const fetchTimeLogsFromGoogleSheets = async (
             for (let i = 1; i < rows.length; i++) {
               const r = rows[i];
               const id = (r[0] || '').trim();
+              const empCode = (r[1] || '').trim();
               const empName = (r[2] || '').trim();
-              if (!id && !empName) continue;
+              if (!id && !empName && !empCode) continue;
+
+              // Parse duration seconds from rawSecs or human string or start/end times
+              let durSec = 0;
+              const rawSecStr = (r[8] || '').trim().replace(/,/g, '');
+              if (rawSecStr && !isNaN(Number(rawSecStr))) {
+                durSec = Math.max(0, parseInt(rawSecStr, 10));
+              }
+              if (durSec === 0 && r[9]) {
+                const humanStr = String(r[9]).trim().toLowerCase();
+                const hMatch = humanStr.match(/(\d+)\s*h/);
+                const mMatch = humanStr.match(/(\d+)\s*m/);
+                const sMatch = humanStr.match(/(\d+)\s*s/);
+                const hours = hMatch ? parseInt(hMatch[1], 10) : 0;
+                const mins = mMatch ? parseInt(mMatch[1], 10) : 0;
+                const secs = sMatch ? parseInt(sMatch[1], 10) : 0;
+                durSec = hours * 3600 + mins * 60 + secs;
+              }
+
+              // Parse mouse and keyboard activity percentages
+              let mouseAvg = 95;
+              let keyAvg = 95;
+              if (r[11]) {
+                const parsedMouse = parseInt(String(r[11]).replace(/[^\d]/g, ''), 10);
+                if (!isNaN(parsedMouse)) mouseAvg = parsedMouse;
+              }
+              if (r[12]) {
+                const parsedKey = parseInt(String(r[12]).replace(/[^\d]/g, ''), 10);
+                if (!isNaN(parsedKey)) keyAvg = parsedKey;
+              }
+
+              // Parse idle seconds
+              let idleSec = 0;
+              if (r[10]) {
+                const idleMins = parseInt(String(r[10]).replace(/[^\d]/g, ''), 10);
+                if (!isNaN(idleMins)) idleSec = idleMins * 60;
+              }
+
+              const statusVal = (r[13] || 'completed').toLowerCase().includes('run') ? 'running' : 'completed';
 
               parsedLogs.push({
                 id: id || `log-sheet-${Date.now()}-${i}`,
+                employeeCode: empCode,
                 userName: empName,
                 designation: (r[3] || 'Agent').trim(),
                 task: (r[4] || 'General').trim(),
@@ -3096,9 +3136,14 @@ export const fetchTimeLogsFromGoogleSheets = async (
                 startTime: (r[6] || '').trim(),
                 endTime: (r[7] || '').trim(),
                 geoLocalStartTime: (r[6] || '').trim(),
+                geoLocalEndTime: (r[7] || '').trim(),
+                durationSeconds: durSec,
+                mouseActivityAvg: mouseAvg,
+                keyboardActivityAvg: keyAvg,
+                idleSeconds: idleSec,
                 geoTimezone: 'Asia/Manila',
-                status: (r[12] || 'completed').toLowerCase().includes('run') ? 'running' : 'completed',
-                notes: (r[13] || 'Imported from Google Sheets Database').trim(),
+                status: statusVal,
+                notes: (r[14] || r[13] || 'Imported from Google Sheets Database').trim(),
               });
             }
             if (parsedLogs.length > 0) {

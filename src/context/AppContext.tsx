@@ -1854,17 +1854,35 @@ const hydrateTimeLogsFromSheets = async () => {
 
         const existing = map.get(log.id);
 
-        const matchedUser = users.find(
-          (u) =>
-            u.name?.toLowerCase() ===
-            (log.userName || '').toLowerCase()
+        const canonical = resolveCanonicalEmployee(
+          (log as any).employeeCode || log.userName || log.userId
         );
+        const matchedUser =
+          canonical ||
+          users.find(
+            (u) =>
+              (log.userName && u.name?.toLowerCase() === log.userName.toLowerCase()) ||
+              (log.userId && u.id === log.userId) ||
+              ((log as any).employeeCode && u.employeeCode === (log as any).employeeCode)
+          );
+
+        const resolvedDuration =
+          (log.durationSeconds && log.durationSeconds > 0)
+            ? log.durationSeconds
+            : (existing?.durationSeconds && existing.durationSeconds > 0)
+            ? existing.durationSeconds
+            : 0;
 
         map.set(log.id, {
           ...(existing || {}),
           ...log,
 
           id: log.id,
+          employeeCode:
+            (log as any).employeeCode ||
+            existing?.employeeCode ||
+            matchedUser?.employeeCode ||
+            '',
 
           userId:
             log.userId ||
@@ -1873,6 +1891,7 @@ const hydrateTimeLogsFromSheets = async () => {
             'usr-imported',
 
           userName:
+            matchedUser?.name ||
             log.userName ||
             existing?.userName ||
             'Employee',
@@ -1886,6 +1905,7 @@ const hydrateTimeLogsFromSheets = async () => {
           designation:
             log.designation ||
             existing?.designation ||
+            matchedUser?.designation ||
             'Agent',
 
           task:
@@ -1903,10 +1923,7 @@ const hydrateTimeLogsFromSheets = async () => {
             existing?.endTime ||
             '',
 
-          durationSeconds:
-            log.durationSeconds ??
-            existing?.durationSeconds ??
-            0,
+          durationSeconds: resolvedDuration,
 
           status:
             log.status ||
@@ -1931,12 +1948,12 @@ const hydrateTimeLogsFromSheets = async () => {
           mouseActivityAvg:
             log.mouseActivityAvg ??
             existing?.mouseActivityAvg ??
-            100,
+            95,
 
           keyboardActivityAvg:
             log.keyboardActivityAvg ??
             existing?.keyboardActivityAvg ??
-            100,
+            95,
 
           idleSeconds:
             log.idleSeconds ??
