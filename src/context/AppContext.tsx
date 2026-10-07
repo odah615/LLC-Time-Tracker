@@ -27,6 +27,7 @@ import {
   syncAgentHeartbeatToSheets,
   DEFAULT_SPREADSHEET_URL,
   DEFAULT_SPREADSHEET_ID,
+  DEFAULT_WEBHOOK_URL,
   fetchEmployeesFromGoogleSheets,
   fetchTimeLogsFromGoogleSheets,
   fetchLivePresenceFromGoogleSheets,
@@ -668,11 +669,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [googleSheetsWebhookUrl, setGoogleSheetsWebhookUrlState] = useState<string>(() => {
     const saved = localStorage.getItem('trackpulse_sheets_webhook') || '';
-    if (saved && !isValidWebhookUrl(saved)) {
-      localStorage.removeItem('trackpulse_sheets_webhook');
-      return '';
+    if (saved && isValidWebhookUrl(saved)) {
+      return saved;
     }
-    return saved;
+    return DEFAULT_WEBHOOK_URL;
   });
 
   const setGoogleSheetsWebhookUrl = (url: string) => {
@@ -3159,22 +3159,10 @@ if (mode === 'software') {
       let activeUrl =
         googleSheetsWebhookUrl ||
         localStorage.getItem('trackpulse_sheets_webhook') ||
-        '';
+        DEFAULT_WEBHOOK_URL;
 
       if (!activeUrl || !isValidWebhookUrl(activeUrl)) {
-        try {
-          const res = await fetch('/api/config');
-          if (res.ok) {
-            const cfg = await res.json();
-            if (cfg?.webhookUrl && isValidWebhookUrl(cfg.webhookUrl)) {
-              activeUrl = cfg.webhookUrl.trim();
-              setGoogleSheetsWebhookUrlState(activeUrl);
-              localStorage.setItem('trackpulse_sheets_webhook', activeUrl);
-            }
-          }
-        } catch (err) {
-          console.warn('[SHEETS HEARTBEAT] Config fetch failed:', err);
-        }
+        activeUrl = DEFAULT_WEBHOOK_URL;
       }
 
       if (!activeUrl || !isValidWebhookUrl(activeUrl)) {

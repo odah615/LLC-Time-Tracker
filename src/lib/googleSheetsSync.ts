@@ -3,6 +3,7 @@ import { generateUniqueUsername, isPlaceholderName, deduplicateUsers, resolveCan
 
 export const DEFAULT_SPREADSHEET_ID = '1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA';
 export const DEFAULT_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA/edit?gid=1299988798#gid=1299988798';
+export const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyKGMOWV0u5xcv_lOKBk6LXpbjrlgZiuqtCs3_HbqjekoJZdXpdfA_1kDjP7H0ulLsw3Q/exec';
 
 // Expected Google Sheet Tabs and Columns Schema with Dedicated Separated Tabs
 export const maskPassword = (pwd?: string): string => {
