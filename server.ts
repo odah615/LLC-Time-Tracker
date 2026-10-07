@@ -46,6 +46,8 @@ let bridgeState: BridgeData = {
 
 const CANONICAL_STAFF: Record<string, string> = {
   'SUPERADMIN': 'Admin',
+  'LLC-0001': 'Agent_Admin',
+  'LLC-0002': 'Team_Leader1',
   'LLC-0003': 'Pia',
   'LLC-0004': 'Alexa Gabrielle Bardaje',
   'LLC-0005': 'April Sam Dimaano',
@@ -67,8 +69,52 @@ const CANONICAL_STAFF: Record<string, string> = {
   'LLC-0021': 'Shiela Romey',
   'LLC-0022': 'Trixy Ashley Decena Mabutol',
   'LLC-0023': 'Juan David',
-  'LLC-0046': 'Y. Obiedo',
-  'LLC-0047': 'R. Vegilla',
+  'LLC-0024': 'Carl',
+  'LLC-0025': 'Lyanne',
+  'LLC-0026': 'Allen',
+  'LLC-0027': 'Bryan',
+  'LLC-0028': 'Test Agent',
+  'LLC-0029': 'Kyra',
+  'LLC-0030': 'Hosen',
+  'LLC-0031': 'Danah',
+  'LLC-0032': 'Miko Carmel',
+  'LLC-0033': 'Jocelyn Enriquez',
+  'LLC-0034': 'Omar Apolinario',
+  'LLC-0035': 'John Gabriel Pai',
+  'LLC-0036': 'Amy Janine Pedrito',
+  'LLC-0037': 'Nicole Alcantara',
+  'LLC-0038': 'Chessa Mae Ful',
+  'LLC-0039': 'Myra Balatbat',
+  'LLC-0040': 'John Cedric San',
+  'LLC-0041': 'Jhureza Lazo',
+  'LLC-0042': 'Orpha Percy',
+  'LLC-0043': 'Judy',
+  'LLC-0044': 'Ann Abad',
+  'LLC-0045': 'Aiza Gonzales',
+  'LLC-0049': 'Paolo Leanillo',
+  'LLC-0052': 'Gley Alday',
+  'LLC-0053': 'Paul Jeffrey Bulosan',
+  'LLC-0060': 'Justine Hiceta',
+  'LLC-0063': 'Beinalyn Dianala',
+  'LLC-0101': 'Junaisa Dianne Ramos',
+  'LLC-0102': 'Jessa Fuentes',
+  'LLC-0103': 'Rowena Vegilla',
+  'LLC-0104': 'Toni Mitchell Villoso',
+  'LLC-0105': 'Y. Obiedo',
+  'LLC-0106': 'Camille',
+  'LLC-0107': 'Juan Carlo Yamzon',
+  'LLC-0108': 'Kris Simpson',
+  'LLC-0109': 'Esperanza Bacalla',
+  'LLC-0110': 'Albert Monfero',
+  'LLC-0111': 'Rochelle Ebit',
+  'LLC-0112': 'Irish Jane Paz',
+  'LLC-0113': 'Jessica Algones',
+  'LLC-0114': 'Chamille Enriquez',
+  'LLC-0115': 'Maria Leatrice Laderas',
+  'LLC-0116': 'Michellenie Mae Yntela',
+  'LLC-0120': 'Niña Carmella Domingo',
+  'LLC-0121': 'Ayra Erika Sy',
+  'LLC-0122': 'Bian Labares Maglangit',
 };
 
 const resolveStaffName = (code?: string, username?: string, name?: string, id?: string): string => {
@@ -86,8 +132,8 @@ const resolveStaffName = (code?: string, username?: string, name?: string, id?: 
   const nLower = n.toLowerCase();
   const rawId = (id || '').toLowerCase().trim();
   if (u === 'jdavid' || nLower === 'jdavid' || rawId.includes('0023')) return 'Juan David';
-  if (u === 'yobiedo' || nLower === 'yobiedo' || rawId.includes('0046')) return 'Y. Obiedo';
-  if (u === 'rvegilla' || nLower === 'rvegilla' || rawId.includes('0047')) return 'R. Vegilla';
+  if (u === 'yobiedo' || nLower === 'yobiedo' || rawId.includes('0105')) return 'Y. Obiedo';
+  if (u === 'rvegilla' || nLower === 'rvegilla' || rawId.includes('0103')) return 'Rowena Vegilla';
   if (u === 'agabr' || nLower === 'agabr' || rawId.includes('0004')) return 'Alexa Gabrielle Bardaje';
   if (u === 'asamd' || nLower === 'asamd' || rawId.includes('0005')) return 'April Sam Dimaano';
   if (u === 'bandr' || nLower === 'bandr' || rawId.includes('0006')) return 'Boris Andrew Villanueva';
