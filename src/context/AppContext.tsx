@@ -3186,38 +3186,37 @@ if (mode === 'software') {
       const snap = liveTrackingSnapshotRef.current;
 
       const isDesktop =
-        typeof window !== 'undefined' &&
-        Boolean(
-          (window as any).electronAPI ||
-          navigator.userAgent.includes('Electron')
-        );
+        loginMode === 'software' ||
+        snap.loginMode === 'software' ||
+        isTracking ||
+        (typeof window !== 'undefined' &&
+          Boolean(
+            (window as any).electronAPI ||
+            navigator.userAgent.includes('Electron') ||
+            localStorage.getItem('trackpulse_login_mode') === 'software'
+          ));
 
-      // ONLY the Desktop App is allowed to track time.
-      const isEffTracking = isDesktop && isTracking && !isPaused;
+      const isEffTracking = isTracking && !isPaused;
+      const currentElapsed = isEffTracking
+        ? Math.max(getLiveElapsedSeconds(), elapsedSeconds, snap.elapsedSeconds || 0)
+        : 0;
 
       const statusLabel = isEffTracking
-        ? 'ðŸŸ¢ Live Tracking'
-        : isDesktop && isPaused
-        ? 'ðŸŸ¡ Idle / Break'
+        ? '🟢 Live Tracking'
+        : isPaused
+        ? '🟡 Idle / Break'
         : isDesktop
-        ? 'ðŸ”µ Desktop Online'
-        : 'ðŸŸ¢ Website Online';
+        ? '🔵 Desktop Online'
+        : '🟢 Website Online';
 
       const startFormatted =
-        isDesktop && snap.startTimeIso
-          ? formatLogStartTime(snap.startTimeIso, 'Asia/Manila')
+        snap.startTimeIso || startTimeIso
+          ? formatLogStartTime(snap.startTimeIso || startTimeIso, 'Asia/Manila')
           : '--:--';
 
-      console.log('[SHEETS HEARTBEAT] Sending:', {
-        employeeCode: currentUser.employeeCode,
-        isTracking: isTracking && !isPaused,
-        elapsedSeconds: isEffTracking
-  ? Math.max(snap.elapsedSeconds, 0)
-  : 0,
-        timestamp: new Date().toISOString(),
-      });
-      
-      console.log('[SHEETS HEARTBEAT] CALLING', currentUser.employeeCode);
+      const taskName = isEffTracking
+        ? (currentTask || snap.currentTask || 'Active Work')
+        : (isDesktop ? 'Desktop Standby' : 'Website Session');
 
       syncAgentHeartbeatToSheets(activeUrl, {
         userId: currentUser.id,
@@ -3229,34 +3228,20 @@ if (mode === 'software') {
         status: isPaused ? 'idle' : 'online',
         statusLabel,
         isOnline: true,
-        isTracking: isDesktop && isEffTracking,
-        isPaused: isDesktop ? isPaused : false,
-        elapsedSeconds: isDesktop && isEffTracking
-          ? Math.max(snap.elapsedSeconds, 0)
-          : 0,
-        currentTask: isEffTracking
-  ? currentTask || 'Active Work'
-  : isDesktop
-  ? 'Not Tracking'
-  : 'Website Session',
+        isTracking: isEffTracking,
+        isPaused: isPaused,
+        elapsedSeconds: currentElapsed,
+        currentTask: taskName,
         currentApp: currentActiveApp || (isDesktop ? 'LLC Time Tracker Desktop App' : 'Web Browser'),
         loginPlatform: isDesktop ? 'software' : 'webapp',
         firstCheckin: startFormatted,
         timezone: currentUser.geoTimezone || 'Asia/Manila (GMT+8)',
         lastHeartbeat: new Date().toISOString(),
-        mouseActivity: snap.mouseActivity || 95,
-        keyboardActivity: snap.keyboardActivity || 95,
-      }).then((result) => {
-        console.log('[SHEETS HEARTBEAT] Result:', result);
+        mouseActivity: isEffTracking ? (snap.mouseActivity || 95) : 0,
+        keyboardActivity: isEffTracking ? (snap.keyboardActivity || 95) : 0,
       }).catch((err) => {
         console.warn('[SHEETS HEARTBEAT] Failed:', err);
-            })
-        .then((result) => {
-          console.log('[SHEETS HEARTBEAT] Result:', result);
-        })
-        .catch((err) => {
-          console.warn('[SHEETS HEARTBEAT] Failed:', err);
-        });
+      });
     };
 
     // Initial pulse after 3 seconds
@@ -3830,6 +3815,7 @@ if (mode === 'software') {
     const newLog: TimeLog = {
       id: `log-${Date.now()}`,
       userId: currentUser.id,
+      employeeCode: currentUser.employeeCode || '',
       userName: currentUser.name,
       userAvatar: currentUser.avatar,
       designation: currentDesignation,
@@ -4214,6 +4200,7 @@ if (mode === 'software') {
     const newLog: TimeLog = {
       id: `log-${Date.now()}`,
       userId: currentUser.id,
+      employeeCode: currentUser.employeeCode || '',
       userName: currentUser.name,
       userAvatar: currentUser.avatar,
       designation: currentDesignation || currentUser.designation || 'Agent',

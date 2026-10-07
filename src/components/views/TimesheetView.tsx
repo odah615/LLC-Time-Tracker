@@ -497,13 +497,16 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
 
     const currentUserId = (currentUser.id || '').trim().toLowerCase();
     const currentEmployeeCode = (currentUser.employeeCode || '').trim().toLowerCase();
+    const currentName = (currentUser.name || '').trim().toLowerCase();
 
     const presence = userPresenceList.find((p) => {
       const pUserId = String(p.userId || '').trim().toLowerCase();
       const pCode = String(p.employeeCode || '').trim().toLowerCase();
+      const pName = String(p.userName || '').trim().toLowerCase();
       return (
         (currentUserId && pUserId === currentUserId) ||
-        (currentEmployeeCode && pCode === currentEmployeeCode)
+        (currentEmployeeCode && (pCode === currentEmployeeCode || pUserId === currentEmployeeCode)) ||
+        (currentName && pName && (pName === currentName || pName.includes(currentName) || currentName.includes(pName)))
       );
     });
 
@@ -515,7 +518,9 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
         (
           String(log.userId || '').trim().toLowerCase() === currentUserId ||
           (currentEmployeeCode &&
-            String((log as any).employeeCode || '').trim().toLowerCase() === currentEmployeeCode)
+            (String((log as any).employeeCode || '').trim().toLowerCase() === currentEmployeeCode ||
+             String(log.userId || '').trim().toLowerCase() === currentEmployeeCode)) ||
+          (currentName && String(log.userName || '').trim().toLowerCase() === currentName)
         )
     );
 
