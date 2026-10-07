@@ -82,28 +82,150 @@ if (!isFirestoreLoaded) {
   setErrorMsg('Loading employee accounts. Please wait a moment and try again.');
   return;
 }
-    // Always get the latest shared user credentials before authentication.
-// This prevents stale Electron/localStorage credentials from being used.
-try {
-  const remoteResponse = await fetch('/api/users', {
-    method: 'GET',
-    cache: 'no-store',
-  });
+    // PRODUCTION AUTHENTICATION
+    // Apps Script Employee_Auth is the authoritative credential source.
+    try {
+      const authResponse = await fetch('/api/sync-sheets', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+        body: JSON.stringify({
+          action: 'AUTH_LOGIN',
+          identifier: employeeCodeInput.trim(),
+          password: password.trim(),
+        }),
+      });
 
-  if (remoteResponse.ok) {
-    const remoteUsers = await remoteResponse.json();
+      const proxyData = await authResponse.json().catch(() => null);
+      const authData = proxyData?.result ?? proxyData;
 
-    if (Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-      // Refresh the local roster with the central roster.
-      // IMPORTANT: do this BEFORE searching for the employee/password.
-      setUsers(remoteUsers);
-      localStorage.setItem('trackpulse_users', JSON.stringify(remoteUsers));
+      if (
+        !authResponse.ok ||
+        !authData?.success ||
+        !authData?.user
+      ) {
+        setErrorMsg(
+          authData?.error ||
+          'Invalid username/employee code or password.'
+        );
+        return;
+      }
+
+      const authenticatedUser: User = {
+        ...authData.user,
+        mustChangePassword:
+          authData.user.mustChangePassword === true,
+      };
+
+      setUsers((prev) => {
+        const exists = prev.some(
+          (u) =>
+            u.id === authenticatedUser.id ||
+            (
+              u.employeeCode &&
+              authenticatedUser.employeeCode &&
+              u.employeeCode.toLowerCase() ===
+                authenticatedUser.employeeCode.toLowerCase()
+            )
+        );
+
+        if (exists) {
+          return prev.map((u) =>
+            u.id === authenticatedUser.id ||
+            (
+              u.employeeCode &&
+              authenticatedUser.employeeCode &&
+              u.employeeCode.toLowerCase() ===
+                authenticatedUser.employeeCode.toLowerCase()
+            )
+              ? { ...u, ...authenticatedUser }
+              : u
+          );
+        }
+
+        return [...prev, authenticatedUser];
+      });
+
+      localStorage.setItem(
+        'trackpulse_users',
+        JSON.stringify(
+          (() => {
+            try {
+              const raw = localStorage.getItem('trackpulse_users');
+              const existing = raw ? JSON.parse(raw) : [];
+              const list = Array.isArray(existing) ? existing : [];
+
+              const index = list.findIndex(
+                (u) =>
+                  u.id === authenticatedUser.id ||
+                  (
+                    u.employeeCode &&
+                    authenticatedUser.employeeCode &&
+                    u.employeeCode.toLowerCase() ===
+                      authenticatedUser.employeeCode.toLowerCase()
+                  )
+              );
+
+              if (index >= 0) {
+                list[index] = {
+                  ...list[index],
+                  ...authenticatedUser,
+                };
+              } else {
+                list.push(authenticatedUser);
+              }
+
+              return list;
+            } catch {
+              return [authenticatedUser];
+            }
+          })()
+        )
+      );
+
+      const isRootAdmin =
+        authenticatedUser.employeeCode?.toLowerCase() === 'superadmin' ||
+        authenticatedUser.id === 'usr-superadmin-red' ||
+        authenticatedUser.email?.toLowerCase() === 'admin@llc.com';
+
+      const isDefaultPasswordUsed =
+        password.trim() === 'Password123!';
+
+      const forceChangeRequired =
+        !isRootAdmin &&
+        (
+          authenticatedUser.mustChangePassword === true ||
+          (
+            authenticatedUser.mustChangePassword !== false &&
+            isDefaultPasswordUsed
+          )
+        );
+
+      if (forceChangeRequired) {
+        setPendingPasswordChangeUser(authenticatedUser);
+        setNewUniquePassword('');
+        setConfirmUniquePassword('');
+        setFirstTimeError('');
+        return;
+      }
+
+      const resolvedMode: 'webapp' | 'software' =
+        isSoftwareEnv ? 'software' : 'webapp';
+
+      login(authenticatedUser, resolvedMode);
+      return;
+    } catch (authError) {
+      console.error(
+        'Production authentication error:',
+        authError
+      );
+      setErrorMsg(
+        'Unable to contact the authentication server. Please try again.'
+      );
+      return;
     }
-  }
-} catch (syncError) {
-  console.warn('Central user credential refresh failed:', syncError);
-}
-
     const cleanCode = employeeCodeInput.trim();
     if (!cleanCode) {
       setErrorMsg('Please enter your Employee Code.');
@@ -608,7 +730,7 @@ let foundUser = authUsers.find((u) => {
                 onClick={() => setShowDownloadModal(false)}
                 className="text-slate-400 hover:text-slate-600 text-sm font-bold"
               >
-                ✕
+                âœ•
               </button>
             </div>
 
@@ -622,7 +744,7 @@ let foundUser = authUsers.find((u) => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                🖥️ Windows OS (.exe / .bat)
+                ðŸ–¥ï¸ Windows OS (.exe / .bat)
               </button>
               <button
                 onClick={() => setDownloadOS('mac')}
@@ -632,7 +754,7 @@ let foundUser = authUsers.find((u) => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                🍎 macOS (Apple)
+                ðŸŽ macOS (Apple)
               </button>
               <button
                 onClick={() => setDownloadOS('linux')}
@@ -642,7 +764,7 @@ let foundUser = authUsers.find((u) => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                🐧 Linux OS
+                ðŸ§ Linux OS
               </button>
             </div>
 
@@ -655,7 +777,7 @@ let foundUser = authUsers.find((u) => {
                     <Download className="w-4 h-4 text-emerald-700" /> Option 1: Instant Native Desktop Launcher (100% Safe)
                   </span>
                   <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full">
-                    RECOMMENDED • 0-INSTALL
+                    RECOMMENDED â€¢ 0-INSTALL
                   </span>
                 </div>
                 <p className="text-[11px] text-emerald-900 leading-relaxed">
@@ -705,7 +827,7 @@ let foundUser = authUsers.find((u) => {
                     <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" /> Getting "Application Control policy has blocked this file"?
                   </div>
                   <p className="leading-relaxed text-amber-900">
-                    Windows 11 Smart App Control blocks unsigned shortcuts. <strong>Solution:</strong> Use <strong>Option 1 (Instant Launcher)</strong> above, or right-click the blocked file → click <strong>Properties</strong> → check the <strong>"Unblock"</strong> checkbox at the bottom → click <strong>Apply</strong>.
+                    Windows 11 Smart App Control blocks unsigned shortcuts. <strong>Solution:</strong> Use <strong>Option 1 (Instant Launcher)</strong> above, or right-click the blocked file â†’ click <strong>Properties</strong> â†’ check the <strong>"Unblock"</strong> checkbox at the bottom â†’ click <strong>Apply</strong>.
                   </p>
                 </div>
               )}
