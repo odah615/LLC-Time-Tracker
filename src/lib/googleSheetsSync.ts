@@ -815,175 +815,316 @@ function syncEmployeeDirectoryInternal(ss, directoryUsers, userMap) {
   return list.length;
 }
 
-var CANONICAL_STAFF = {
-  'SUPERADMIN': 'Admin',
-  'LLC-0001': 'Agent_Admin',
-  'LLC-0002': 'Team_Leader1',
-  'LLC-0003': 'Pia',
-  'LLC-0004': 'Alexa Gabrielle Bardaje',
-  'LLC-0005': 'April Sam Dimaano',
-  'LLC-0006': 'Boris Andrew Villanueva',
-  'LLC-0007': 'Cyril Diola Garcia',
-  'LLC-0008': 'Daina Yanez',
-  'LLC-0009': 'Fatima Dence David',
-  'LLC-0010': 'Gerald A. Salvador',
-  'LLC-0011': 'Jayson Cariaga',
-  'LLC-0012': 'Jenalyn Nueva',
-  'LLC-0013': 'Kathleen Ann L. Totaan',
-  'LLC-0014': 'Lourdes Mary Cenina',
-  'LLC-0015': 'Luis David Ramirez',
-  'LLC-0016': 'Maria Racquel Gracia M. Libarios',
-  'LLC-0017': 'Mark Jesus A. Egoy',
-  'LLC-0018': 'Raquel Guiapal',
-  'LLC-0019': 'Ron Louie Logan',
-  'LLC-0020': 'Rubilyne Barrameda',
-  'LLC-0021': 'Shiela Romey',
-  'LLC-0022': 'Trixy Ashley Decena Mabutol',
-  'LLC-0023': 'Juan David',
-  'LLC-0024': 'Carl',
-  'LLC-0025': 'Lyanne',
-  'LLC-0026': 'Allen',
-  'LLC-0027': 'Bryan',
-  'LLC-0028': 'Test Agent',
-  'LLC-0029': 'Kyra',
-  'LLC-0030': 'Hosen',
-  'LLC-0031': 'Danah',
-  'LLC-0032': 'Miko Carmel',
-  'LLC-0033': 'Jocelyn Enriquez',
-  'LLC-0034': 'Omar Apolinario',
-  'LLC-0035': 'John Gabriel Pai',
-  'LLC-0036': 'Amy Janine Pedrito',
-  'LLC-0037': 'Nicole Alcantara',
-  'LLC-0038': 'Chessa Mae Ful',
-  'LLC-0039': 'Myra Balatbat',
-  'LLC-0040': 'John Cedric San',
-  'LLC-0041': 'Jhureza Lazo',
-  'LLC-0042': 'Orpha Percy',
-  'LLC-0043': 'Judy',
-  'LLC-0044': 'Ann Abad',
-  'LLC-0045': 'Aiza Gonzales',
-  'LLC-0049': 'Paolo Leanillo',
-  'LLC-0052': 'Gley Alday',
-  'LLC-0053': 'Paul Jeffrey Bulosan',
-  'LLC-0055': 'Mae Frances',
-  'LLC-0056': 'Leslie Timog',
-  'LLC-0057': 'Almark Debuque',
-  'LLC-0058': 'John Calvin Natividad',
-  'LLC-0059': 'Queenie Mae Engbino',
-  'LLC-0060': 'Justine Hiceta',
-  'LLC-0061': 'Patricia Elizon',
-  'LLC-0062': 'Annalyn Alforque',
-  'LLC-0063': 'Beinalyn Dianala',
-  'LLC-0064': 'Deny Datiles',
-  'LLC-0065': 'Jean Cristine Serdea',
-  'LLC-0066': 'Patrick Guardian',
-  'LLC-0069': 'Princess Nicole Regala',
-  'LLC-0070': 'Rodolfo Peralta Jr',
-  'LLC-0071': 'Princess Loto',
-  'LLC-0072': 'Mechill Barredo',
-  'LLC-0073': 'Ejay Suaze',
-  'LLC-0074': 'Marvin Garcia',
-  'LLC-0075': 'Rexcell Remocaldo',
-  'LLC-0076': 'Kristeen Liquit',
-  'LLC-0077': 'Ma. Fedelyn Rapiz',
-  'LLC-0078': 'Maria Paula Nabo',
-  'LLC-0079': 'Moneque Belarmino',
-  'LLC-0080': 'Rain Machado',
-  'LLC-0081': 'Suzette Apordo',
-  'LLC-0082': 'Geraldine Grajo',
-  'LLC-0083': 'Jasmine Joyce Lucena',
-  'LLC-0084': 'Mike Rapiz',
-  'LLC-0085': 'Princess Yara Mustapha',
-  'LLC-0086': 'Gracious Yvonne Batarra',
-  'LLC-0087': 'Miya Pearl Pricas',
-  'LLC-0088': 'Jera Mae Millan',
-  'LLC-0089': 'Charie Ceniza',
-  'LLC-0090': 'Jeramil Vegilla',
-  'LLC-0091': 'Julius Cabrera',
-  'LLC-0092': 'Aubrey Dela Cruz',
-  'LLC-0093': 'Ayessa Balondo',
-  'PBULOSAN': 'Paul Jeffrey Bulosan',
-  'LLC-0101': 'Junaisa Dianne Ramos',
-  'LLC-0102': 'Jessa Fuentes',
-  'LLC-0103': 'Rowena Vegilla',
-  'LLC-0104': 'Toni Mitchell Villoso',
-  'LLC-0105': 'Y. Obiedo',
-  'LLC-0106': 'Camille',
-  'LLC-0107': 'Juan Carlo Yamzon',
-  'LLC-0108': 'Kris Simpson',
-  'LLC-0109': 'Esperanza Bacalla',
-  'LLC-0110': 'Albert Monfero',
-  'LLC-0111': 'Rochelle Ebit',
-  'LLC-0112': 'Irish Jane Paz',
-  'LLC-0113': 'Jessica Algones',
-  'LLC-0114': 'Chamille Enriquez',
-  'LLC-0115': 'Maria Leatrice Laderas',
-  'LLC-0116': 'Michellenie Mae Yntela',
-  'LLC-0120': 'Niña Carmella Domingo',
-  'LLC-0121': 'Ayra Erika Sy',
-  'LLC-0122': 'Bian Labares Maglangit',
-  'LLC-0123': 'Cedena Amor Rodriguez',
-  'LLC-0124': 'Cenbert Domingo',
-  'LLC-0125': 'Frangelo Dela Cruz',
-  'LLC-0126': 'Jay-R B. Ventura',
-  'LLC-0127': 'Joarah Marie Octavio',
-  'LLC-0128': 'John Vincent Flores',
-  'LLC-0129': 'J. Perez',
-  'LLC-0130': 'Mark Anthony E. Gonzales',
-  'LLC-0131': 'Michael A. Custodio',
-  'LLC-0132': 'Eugene Munda',
-  'LLC-0133': 'Nhel Singson',
-  'LLC-0135': 'Riza Mae B. Oliva'
-};
+var authHeaders = [
+  'Employee Code',
+  'Username',
+  'Full Name',
+  'Password Hash',
+  'Must Change Password',
+  'Last Login (ISO)',
+  'Account Status',
+  'Last Updated (ISO)'
+];
+
+function getEmployeeAuthSheet_(ss) {
+  var candidateNames = ['Employee_Auth', 'Employee Auth', 'Staff_Auth', 'Auth_Accounts'];
+  for (var i = 0; i < candidateNames.length; i++) {
+    var sh = ss.getSheetByName(candidateNames[i]);
+    if (sh) return sh;
+  }
+  var newSheet = ss.insertSheet('Employee_Auth');
+  try {
+    newSheet.setTabColor('#1e293b');
+  } catch (e) {}
+  return newSheet;
+}
+
+function hashEmployeePassword_(password) {
+  if (!password) return '';
+  var rawBytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(password), Utilities.Charset.UTF_8);
+  var hash = '';
+  for (var i = 0; i < rawBytes.length; i++) {
+    var byteVal = rawBytes[i];
+    if (byteVal < 0) byteVal += 256;
+    var byteHex = byteVal.toString(16);
+    if (byteHex.length === 1) byteHex = '0' + byteHex;
+    hash += byteHex;
+  }
+  return hash;
+}
+
+function upsertEmployeeAuthRecords_(ss, usersList) {
+  var authSheet = getEmployeeAuthSheet_(ss);
+  if (authSheet.getLastRow() === 0) {
+    authSheet.appendRow(authHeaders);
+    authSheet.getRange(1, 1, 1, authHeaders.length).setFontWeight('bold').setBackground('#1e293b').setFontColor('#ffffff');
+    authSheet.setFrozenRows(1);
+  }
+
+  var existingRows = [];
+  var existingAuthMap = {};
+  var lastRow = authSheet.getLastRow();
+  if (lastRow > 1) {
+    var numCols = Math.max(authSheet.getLastColumn(), authHeaders.length);
+    var data = authSheet.getRange(2, 1, lastRow - 1, numCols).getValues();
+    for (var r = 0; r < data.length; r++) {
+      var row = data[r];
+      var eCode = String(row[0] || '').trim().toUpperCase();
+      var eUser = String(row[1] || '').trim().toLowerCase();
+      var key = (eCode && eCode !== 'N/A') ? eCode : (eUser ? eUser : ('auth_row_' + r));
+      existingAuthMap[key] = { rowIndex: r, row: row };
+      if (eCode && eCode !== 'N/A') existingAuthMap[eCode] = { rowIndex: r, row: row };
+      if (eUser) existingAuthMap[eUser] = { rowIndex: r, row: row };
+      existingRows.push(row);
+    }
+  }
+
+  var list = (usersList && usersList.length > 0) ? usersList : [];
+  var nowIso = new Date().toISOString();
+
+  list.forEach(function(u) {
+    if (!u) return;
+    var code = String(u.employeeCode || '').trim().toUpperCase();
+    var uName = String(u.username || '').trim().toLowerCase();
+    var matchKey = (code && code !== 'N/A') ? code : uName;
+    if (!matchKey) return;
+
+    var existingMatch = existingAuthMap[matchKey] || (code && existingAuthMap[code]) || (uName && existingAuthMap[uName]);
+    var rawPass = u.password ? String(u.password).trim() : '';
+
+    // Determine password hash - PRESERVE existing hash unless a valid new unmasked password is provided
+    var passHash = '';
+    var isRealNewPass = rawPass && !rawPass.includes('*') && rawPass !== 'Password123!' && rawPass !== 'Pass****' && rawPass.length >= 3;
+
+    if (isRealNewPass) {
+      passHash = hashEmployeePassword_(rawPass);
+    } else if (existingMatch && existingMatch.row && existingMatch.row[3] && String(existingMatch.row[3]).trim().length > 0) {
+      passHash = String(existingMatch.row[3]).trim();
+    } else if (rawPass && !rawPass.includes('*') && rawPass !== 'Pass****') {
+      passHash = hashEmployeePassword_(rawPass);
+    } else {
+      passHash = hashEmployeePassword_('Password123!');
+    }
+
+    var mustChange = u.mustChangePassword !== undefined ? (u.mustChangePassword ? 'YES' : 'NO') :
+                     (existingMatch && existingMatch.row && existingMatch.row[4] ? existingMatch.row[4] : 'NO');
+    var lastLogin = (existingMatch && existingMatch.row && existingMatch.row[5]) ? existingMatch.row[5] : '';
+    var status = u.status || (existingMatch && existingMatch.row && existingMatch.row[6]) || 'active';
+    var fullName = u.name || (existingMatch && existingMatch.row && existingMatch.row[2]) || 'Employee';
+
+    var authRow = [
+      code || (existingMatch ? existingMatch.row[0] : 'N/A'),
+      u.username || (existingMatch ? existingMatch.row[1] : 'agent'),
+      fullName,
+      passHash,
+      mustChange,
+      lastLogin,
+      status,
+      nowIso
+    ];
+
+    if (existingMatch) {
+      existingRows[existingMatch.rowIndex] = authRow;
+    } else {
+      existingRows.push(authRow);
+      existingAuthMap[matchKey] = { rowIndex: existingRows.length - 1, row: authRow };
+    }
+  });
+
+  if (existingRows.length > 0) {
+    populateMergedSheet(authSheet, authHeaders, existingRows, '#1e293b', 0, 7);
+  }
+}
+
+function buildEmployeeProfileByCodeOrUsername_(ss, identifier) {
+  if (!identifier) return null;
+  var target = String(identifier).trim().toLowerCase();
+  var targetUpper = target.toUpperCase();
+
+  var dirSheet = getEmployeeDirectorySheet(ss);
+  var dirData = [];
+  if (dirSheet && dirSheet.getLastRow() > 1) {
+    dirData = dirSheet.getRange(2, 1, dirSheet.getLastRow() - 1, Math.max(dirSheet.getLastColumn(), 14)).getValues();
+  }
+
+  var foundRow = null;
+  for (var i = 0; i < dirData.length; i++) {
+    var r = dirData[i];
+    var rCode = String(r[0] || '').trim().toUpperCase();
+    var rUser = String(r[1] || '').trim().toLowerCase();
+    var rName = String(r[2] || '').trim().toLowerCase();
+    var rEmail = String(r[3] || '').trim().toLowerCase();
+    if (rCode === targetUpper || rUser === target || rName === target || rEmail === target) {
+      foundRow = r;
+      break;
+    }
+  }
+
+  if (!foundRow) {
+    return null;
+  }
+
+  var empCode = String(foundRow[0] || '').trim();
+  var username = String(foundRow[1] || '').trim();
+  var fullName = String(foundRow[2] || '').trim();
+  var email = String(foundRow[3] || '').trim();
+  var role = String(foundRow[4] || 'agent').trim();
+  var designation = String(foundRow[5] || 'Agent').trim();
+  var hireDate = String(foundRow[6] || '').trim();
+  var monthlyRate = Number(foundRow[7] || 0);
+  var hourlyRate = Number(foundRow[8] || 0);
+  var supervisor = String(foundRow[9] || 'None / Direct Executive').trim();
+  var screenshotMon = String(foundRow[10] || '').toUpperCase() === 'YES';
+  var activityMon = String(foundRow[11] || '').toUpperCase() === 'YES';
+  var status = String(foundRow[12] || 'active').trim();
+
+  return {
+    id: empCode || username || 'user_' + new Date().getTime(),
+    name: fullName,
+    employeeCode: empCode,
+    username: username,
+    email: email,
+    role: role,
+    designation: designation,
+    joinDate: hireDate,
+    monthlyRate: monthlyRate,
+    hourlyRate: hourlyRate,
+    teamLeaderId: supervisor,
+    screenshotMonitored: screenshotMon,
+    activityMonitored: activityMon,
+    status: status
+  };
+}
+
+function authenticateEmployee_(ss, usernameOrCode, inputPassword) {
+  if (!usernameOrCode || !inputPassword) {
+    return {
+      status: 'ERROR',
+      success: false,
+      message: 'Username/employee code and password are required.'
+    };
+  }
+
+  var target = String(usernameOrCode).trim().toLowerCase();
+  var targetUpper = target.toUpperCase();
+  var inputHash = hashEmployeePassword_(inputPassword);
+
+  var authSheet = getEmployeeAuthSheet_(ss);
+  var authData = [];
+  var matchAuthRow = null;
+
+  if (authSheet && authSheet.getLastRow() > 1) {
+    authData = authSheet.getRange(2, 1, authSheet.getLastRow() - 1, Math.max(authSheet.getLastColumn(), 8)).getValues();
+    for (var a = 0; a < authData.length; a++) {
+      var aRow = authData[a];
+      var aCode = String(aRow[0] || '').trim().toUpperCase();
+      var aUser = String(aRow[1] || '').trim().toLowerCase();
+      if (aCode === targetUpper || aUser === target) {
+        matchAuthRow = { rowIndex: a + 2, row: aRow };
+        break;
+      }
+    }
+  }
+
+  var isAuthenticated = false;
+  var mustChange = false;
+
+  if (matchAuthRow) {
+    var storedHash = String(matchAuthRow.row[3] || '').trim();
+    if (storedHash && (storedHash === inputHash || storedHash === inputPassword)) {
+      isAuthenticated = true;
+      mustChange = String(matchAuthRow.row[4] || '').toUpperCase() === 'YES';
+      // Update Last Login in Employee_Auth
+      try {
+        authSheet.getRange(matchAuthRow.rowIndex, 6).setValue(new Date().toISOString());
+      } catch (e) {}
+    }
+  } else {
+    // Fallback: Check Employee_Directory directly
+    var dirSheet = getEmployeeDirectorySheet(ss);
+    if (dirSheet && dirSheet.getLastRow() > 1) {
+      var dData = dirSheet.getRange(2, 1, dirSheet.getLastRow() - 1, Math.max(dirSheet.getLastColumn(), 14)).getValues();
+      for (var d = 0; d < dData.length; d++) {
+        var dRow = dData[d];
+        var dCode = String(dRow[0] || '').trim().toUpperCase();
+        var dUser = String(dRow[1] || '').trim().toLowerCase();
+        if (dCode === targetUpper || dUser === target) {
+          var dirPass = String(dRow[13] || '').trim();
+          if (dirPass && !dirPass.includes('*') && (dirPass === inputPassword || hashEmployeePassword_(dirPass) === inputHash)) {
+            isAuthenticated = true;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  if (!isAuthenticated) {
+    return {
+      status: 'ERROR',
+      success: false,
+      message: 'Invalid credentials. Please verify your employee code/username and password.'
+    };
+  }
+
+  var profile = buildEmployeeProfileByCodeOrUsername_(ss, usernameOrCode);
+  if (!profile) {
+    profile = {
+      id: usernameOrCode,
+      name: usernameOrCode,
+      employeeCode: usernameOrCode,
+      username: usernameOrCode,
+      role: 'agent',
+      designation: 'Agent',
+      status: 'active'
+    };
+  }
+  profile.mustChangePassword = mustChange;
+
+  // Log successful login to Login_Logs
+  try {
+    var loginSheet = ss.getSheetByName('Login_Logs') || ss.getSheetByName('Login_Session_Logs');
+    if (loginSheet) {
+      var now = new Date();
+      loginSheet.appendRow([
+        'log_' + now.getTime(),
+        now.toISOString(),
+        Utilities.formatDate(now, 'Asia/Manila', 'yyyy-MM-dd hh:mm:ss a'),
+        profile.employeeCode || 'N/A',
+        profile.name,
+        profile.role || 'agent',
+        profile.designation || 'Agent',
+        'Direct Auth Login',
+        'Asia/Manila (GMT+8)',
+        'Authenticated (Active)',
+        maskPassword(inputPassword)
+      ]);
+    }
+  } catch (logErr) {}
+
+  return {
+    status: 'SUCCESS',
+    success: true,
+    user: profile,
+    mustChangePassword: mustChange,
+    message: 'Authentication successful for ' + profile.name
+  };
+}
 
 function resolveStaffFullName(code, username, name, id) {
-  var u = (username || '').toLowerCase().trim();
-  var nLower = (name || '').toLowerCase().trim();
-  var rawId = (id || '').toLowerCase().trim();
-
-  // Handle aliases & variations
-  if (u === 'pdelin' || nLower === 'pdelin' || u === 'piadelin') return 'Pia';
-  if (u === 'bmaglangiy2001' || u === 'bmaglangiy2' || u === 'bmaglangit2001') return 'Bian Labares Maglangit';
-  if (u === 'jperez' || nLower === 'jperez') return 'J. Perez';
-
   var n = (name || '').trim();
   if (n && n !== 'Unknown' && n !== 'Employee' && n !== 'Staff' && n !== 'Agent') {
     return n;
   }
-  var c = (code || '').toUpperCase().trim();
-  var num = c.replace(/^[A-Z\-_]+/, '');
-  for (var k in CANONICAL_STAFF) {
-    var kNum = k.replace(/^[A-Z\-_]+/, '');
-    if (c === k || (num && kNum && num === kNum)) return CANONICAL_STAFF[k];
+  var u = (username || '').trim();
+  if (u && u.toLowerCase() !== 'agent' && u.toLowerCase() !== 'employee') {
+    return u;
   }
-  var u = (username || '').toLowerCase().trim();
-  var nLower = n.toLowerCase();
-  var rawId = (id || '').toLowerCase().trim();
-  if (u === 'jdavid' || nLower === 'jdavid' || rawId.indexOf('0023') !== -1) return 'Juan David';
-  if (u === 'yobiedo' || nLower === 'yobiedo' || rawId.indexOf('0105') !== -1) return 'Y. Obiedo';
-  if (u === 'rvegilla' || nLower === 'rvegilla' || rawId.indexOf('0103') !== -1) return 'Rowena Vegilla';
-  if (u === 'agabr' || nLower === 'agabr' || rawId.indexOf('0004') !== -1) return 'Alexa Gabrielle Bardaje';
-  if (u === 'asamd' || nLower === 'asamd' || rawId.indexOf('0005') !== -1) return 'April Sam Dimaano';
-  if (u === 'bandr' || nLower === 'bandr' || rawId.indexOf('0006') !== -1) return 'Boris Andrew Villanueva';
-  if (u === 'cdiol' || nLower === 'cdiol' || rawId.indexOf('0007') !== -1) return 'Cyril Diola Garcia';
-  if (u === 'dyane' || nLower === 'dyane' || rawId.indexOf('0008') !== -1) return 'Daina Yanez';
-  if (u === 'fdenc' || nLower === 'fdenc' || rawId.indexOf('0009') !== -1) return 'Fatima Dence David';
-  if (u === 'gasal' || nLower === 'gasal' || rawId.indexOf('0010') !== -1) return 'Gerald A. Salvador';
-  if (u === 'jcari' || nLower === 'jcari' || rawId.indexOf('0011') !== -1) return 'Jayson Cariaga';
-  if (u === 'jnuev' || nLower === 'jnuev' || rawId.indexOf('0012') !== -1) return 'Jenalyn Nueva';
-  if (u === 'kannl' || nLower === 'kannl' || rawId.indexOf('0013') !== -1) return 'Kathleen Ann L. Totaan';
-  if (u === 'lmary' || nLower === 'lmary' || rawId.indexOf('0014') !== -1) return 'Lourdes Mary Cenina';
-  if (u === 'ldavi' || nLower === 'ldavi' || rawId.indexOf('0015') !== -1) return 'Luis David Ramirez';
-  if (u === 'mracq' || nLower === 'mracq' || rawId.indexOf('0016') !== -1) return 'Maria Racquel Gracia M. Libarios';
-  if (u === 'mjesu' || nLower === 'mjesu' || rawId.indexOf('0017') !== -1) return 'Mark Jesus A. Egoy';
-  if (u === 'rguia' || nLower === 'rguia' || rawId.indexOf('0018') !== -1) return 'Raquel Guiapal';
-  if (u === 'rloui' || nLower === 'rloui' || rawId.indexOf('0019') !== -1) return 'Ron Louie Logan';
-  if (u === 'rbarr' || nLower === 'rbarr' || rawId.indexOf('0020') !== -1) return 'Rubilyne Barrameda';
-  if (u === 'srome' || nLower === 'srome' || rawId.indexOf('0021') !== -1) return 'Shiela Romey';
-  if (u === 'tashl' || nLower === 'tashl' || rawId.indexOf('0022') !== -1) return 'Trixy Ashley Decena Mabutol';
-  if (u === 'trainer' || nLower === 'pia' || c === 'LLC-0003') return 'Pia';
-  if (u === 'admin' || c === 'SUPERADMIN') return 'Admin';
-  return n || username || 'Employee';
+  var c = (code || '').toUpperCase().trim();
+  if (c && c !== 'N/A') {
+    return c;
+  }
+  return n || u || c || 'Employee';
 }
 
 var presenceHeaders = [
@@ -1397,6 +1538,11 @@ function setupSheetsSchema() {
       headers: ['Employee Code', 'Username', 'Full Name', 'Work Email', 'System Role', 'Designation', 'Date Hired', 'Monthly Rate (₱)', 'Hourly Rate (₱)', 'Assigned Supervisor', 'Screenshot Monitored', 'Activity Monitored', 'Status', 'Account Password (Masked)']
     },
     {
+      tab: 'Employee_Auth',
+      color: '#1e293b', // Slate
+      headers: ['Employee Code', 'Username', 'Full Name', 'Password Hash', 'Must Change Password', 'Last Login (ISO)', 'Account Status', 'Last Updated (ISO)']
+    },
+    {
       tab: 'Leave_Requests',
       color: '#9333ea', // Purple
       headers: ['Leave ID', 'Employee Name', 'Leave Type', 'Start Date', 'End Date', 'Reason', 'Status', 'Requested At']
@@ -1484,6 +1630,17 @@ function doPost(e) {
       data = { action: 'SYNC_ALL' };
     }
 
+    // ==========================================
+    // ACTION: AUTH_LOGIN / AUTHENTICATE
+    // ==========================================
+    if (data.action === 'AUTH_LOGIN' || data.action === 'AUTHENTICATE') {
+      var userIdentifier = data.username || data.employeeCode || data.email || data.user;
+      var pass = data.password;
+      var authResult = authenticateEmployee_(ss, userIdentifier, pass);
+      SpreadsheetApp.flush();
+      return ContentService.createTextOutput(JSON.stringify(authResult)).setMimeType(ContentService.MimeType.JSON);
+    }
+
     if (data.action === 'RESET_ALL') {
       var allDataTabs = [
         'Time_Logs',
@@ -1530,7 +1687,7 @@ function doPost(e) {
     // HEARTBEAT_UPDATE (Targeted Single-Row Agent Tracking Pulse)
     // Runs in <200ms without schema rebuilding overhead!
     // ==========================================
-    if (data.action === 'HEARTBEAT_UPDATE') {
+    if (data.action === 'HEARTBEAT_UPDATE' || data.action === 'HEARTBEAT') {
       var presSheet = ss.getSheetByName('Live_Presence') || ss.getSheetByName('Live Presence') || ss.insertSheet('Live_Presence');
       var pData = data.presence || data.userPresence || data.agent || data;
       if (pData) {
@@ -1580,12 +1737,17 @@ function doPost(e) {
         if (u.employeeCode) uMap[String(u.employeeCode).toUpperCase()] = u;
       });
       var count = syncEmployeeDirectoryInternal(ss, rawUsersList, uMap);
+      try {
+        upsertEmployeeAuthRecords_(ss, rawUsersList);
+      } catch (authErr) {
+        Logger.log('Auth upsert error: ' + authErr.toString());
+      }
       SpreadsheetApp.flush();
       return ContentService.createTextOutput(JSON.stringify({
         status: 'SUCCESS',
         action: 'SYNC_EMPLOYEES',
         count: count,
-        message: 'Successfully populated ' + count + ' employees into Employee_Directory and mployee_Directory tab!'
+        message: 'Successfully populated ' + count + ' employees into Employee_Directory, mployee_Directory, and Employee_Auth!'
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -2343,11 +2505,12 @@ function doPost(e) {
       if (attSheet) populateMergedSheet(attSheet, attHeaders, attRows, '#0e7490', 0, 1);
 
       // ==========================================
-      // 8. POPULATE EMPLOYEE DIRECTORY
+      // 8. POPULATE EMPLOYEE DIRECTORY & EMPLOYEE AUTH
       // ==========================================
       if (data.syncEmployees === true || data.action === 'SYNC_EMPLOYEES' || data.action === 'SYNC_USERS') {
         try {
           syncEmployeeDirectoryInternal(ss, (users && users.length > 0) ? users : rawUsers, userMap);
+          upsertEmployeeAuthRecords_(ss, (users && users.length > 0) ? users : rawUsers);
         } catch (empErr) {
           Logger.log('Error updating Employee_Directory: ' + empErr.toString());
         }
@@ -2505,6 +2668,25 @@ function doGet(e) {
   try {
     var ss = getSpreadsheet();
     var empSheet = ss.getSheetByName('Employee_Directory') || ss.getSheetByName('Employee Directory') || ss.getSheetByName('mployee_Directory') || ss.getSheetByName('Employees');
+    var authSheet = ss.getSheetByName('Employee_Auth') || ss.getSheetByName('Employee Auth');
+    var authMap = {};
+    if (authSheet && authSheet.getLastRow() > 1) {
+      try {
+        var aData = authSheet.getRange(2, 1, authSheet.getLastRow() - 1, Math.max(authSheet.getLastColumn(), 8)).getValues();
+        aData.forEach(function(aRow) {
+          var aCode = String(aRow[0] || '').trim().toUpperCase();
+          var aUser = String(aRow[1] || '').trim().toLowerCase();
+          var aObj = {
+            passwordHash: String(aRow[3] || '').trim(),
+            mustChangePassword: String(aRow[4] || '').toUpperCase() === 'YES',
+            lastLogin: String(aRow[5] || '').trim()
+          };
+          if (aCode && aCode !== 'N/A') authMap[aCode] = aObj;
+          if (aUser) authMap[aUser] = aObj;
+        });
+      } catch (aErr) {}
+    }
+
     var employees = [];
     if (empSheet && empSheet.getLastRow() > 1) {
       var data = empSheet.getRange(2, 1, empSheet.getLastRow() - 1, 14).getValues();
@@ -2513,6 +2695,10 @@ function doGet(e) {
         var username = String(row[1] || '').trim();
         var name = String(row[2] || '').trim();
         if (!code && !name && !username) return;
+        var empCodeUpper = (code || '').toUpperCase();
+        var empUserLower = (username || '').toLowerCase();
+        var aInfo = authMap[empCodeUpper] || authMap[empUserLower] || {};
+
         employees.push({
           employeeCode: code || 'LLC-' + Math.floor(1000 + Math.random() * 9000),
           username: username || (name ? name.toLowerCase().replace(/\s+/g, '') : 'agent'),
@@ -2527,7 +2713,8 @@ function doGet(e) {
           screenshotMonitored: String(row[10]).toUpperCase() === 'YES' || row[10] === true,
           activityMonitored: String(row[11]).toUpperCase() === 'YES' || row[11] === true,
           status: String(row[12] || 'active').toLowerCase().trim(),
-          password: String(row[13] || '').trim()
+          password: aInfo.passwordHash || String(row[13] || '').trim(),
+          mustChangePassword: aInfo.mustChangePassword !== undefined ? aInfo.mustChangePassword : false
         });
       });
     }
@@ -2535,11 +2722,41 @@ function doGet(e) {
     var timeLogsSheet = ss.getSheetByName('Time_Logs') || ss.getSheetByName('Active_Logs') || ss.getSheetByName('Live_Sessions');
     var timeLogs = [];
     if (timeLogsSheet && timeLogsSheet.getLastRow() > 1) {
-      var tData = timeLogsSheet.getRange(2, 1, timeLogsSheet.getLastRow() - 1, 14).getValues();
+      var tData = timeLogsSheet.getRange(2, 1, timeLogsSheet.getLastRow() - 1, Math.max(timeLogsSheet.getLastColumn(), 15)).getValues();
       tData.forEach(function(row) {
         var id = String(row[0] || '').trim();
         var empName = String(row[2] || '').trim();
         if (!id && !empName) return;
+
+        var durSec = 0;
+        var rawSecStr = String(row[8] || '').trim().replace(/,/g, '');
+        if (rawSecStr && !isNaN(Number(rawSecStr))) {
+          durSec = Math.max(0, parseInt(rawSecStr, 10));
+        }
+
+        var totalTimeStr = String(row[9] || '').trim();
+        if (!totalTimeStr && durSec > 0) {
+          totalTimeStr = formatTotalTime(durSec);
+        }
+
+        var idleSec = 0;
+        if (row[10]) {
+          var idleMins = parseInt(String(row[10]).replace(/[^\d]/g, ''), 10);
+          if (!isNaN(idleMins)) idleSec = idleMins * 60;
+        }
+
+        var mouseAvg = 95;
+        if (row[11] !== undefined && row[11] !== '') {
+          var parsedMouse = parseInt(String(row[11]).replace(/[^\d]/g, ''), 10);
+          if (!isNaN(parsedMouse)) mouseAvg = parsedMouse;
+        }
+
+        var keyAvg = 95;
+        if (row[12] !== undefined && row[12] !== '') {
+          var parsedKey = parseInt(String(row[12]).replace(/[^\d]/g, ''), 10);
+          if (!isNaN(parsedKey)) keyAvg = parsedKey;
+        }
+
         timeLogs.push({
           id: id || ('log-' + Date.now()),
           employeeCode: String(row[1] || '').trim(),
@@ -2549,12 +2766,15 @@ function doGet(e) {
           date: String(row[5] || '').trim(),
           startTime: String(row[6] || '').trim(),
           endTime: String(row[7] || '').trim(),
-          durationFormatted: String(row[8] || '').trim(),
-          idleDeductions: String(row[9] || '').trim(),
-          mouseActivityAvg: Number(String(row[10] || '0').replace(/[^0-9.]/g, '')) || 0,
-          keyboardActivityAvg: Number(String(row[11] || '0').replace(/[^0-9.]/g, '')) || 0,
-          status: String(row[12] || 'completed').trim(),
-          notes: String(row[13] || '').trim()
+          durationSeconds: durSec,
+          durationFormatted: totalTimeStr || formatTotalTime(durSec),
+          totalTime: totalTimeStr || formatTotalTime(durSec),
+          idleDeductions: String(row[10] || '').trim(),
+          idleSeconds: idleSec,
+          mouseActivityAvg: mouseAvg,
+          keyboardActivityAvg: keyAvg,
+          status: String(row[13] || 'completed').trim(),
+          notes: String(row[14] || '').trim()
         });
       });
     }
