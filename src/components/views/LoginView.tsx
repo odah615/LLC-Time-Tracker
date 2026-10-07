@@ -42,22 +42,21 @@ export const LoginView: React.FC = () => {
   isFirestoreLoaded,
 } = useApp();
 
-  // Detect if running inside the Standalone Software App (.exe / Electron) vs Web Browser
+  // Detect if running inside the Standalone Software App (.exe / Electron / .bat) vs Web Browser
   const isSoftwareEnv = typeof window !== 'undefined' && (
     window.location.search.includes('mode=desktop') ||
     window.location.search.includes('appMode=desktop') ||
     window.location.search.includes('source=software') ||
+    window.location.search.includes('mode=software') ||
     navigator.userAgent.includes('Electron') ||
-    (window as any).isElectronApp === true
+    (window as any).isElectronApp === true ||
+    Boolean((window as any).electronAPI)
   );
 
   const currentWebUrl = typeof window !== 'undefined' && window.location.origin
     ? window.location.origin
     : '';
 
-  const [activeMode, setActiveMode] = useState<'webapp' | 'software'>(() => {
-    return isSoftwareEnv ? 'software' : 'webapp';
-  });
   const [employeeCodeInput, setEmployeeCodeInput] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -529,15 +528,15 @@ export const LoginView: React.FC = () => {
             <button
               type="submit"
               className={`w-full py-3.5 px-6 rounded-xl font-extrabold text-xs sm:text-sm text-white shadow-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                activeMode === 'webapp'
-                  ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
-                  : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/30'
+                isSoftwareEnv
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-700/30'
+                  : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
               }`}
             >
               <span>
-                {activeMode === 'webapp'
-                  ? 'Sign In to LLC Web Portal'
-                  : 'Authenticate & Launch LLC Desktop Tracker'}
+                {isSoftwareEnv
+                  ? 'Sign In to Time Tracker'
+                  : 'Sign In to LLC Web Portal'}
               </span>
               <ArrowRight className="w-4 h-4" />
             </button>
@@ -545,7 +544,7 @@ export const LoginView: React.FC = () => {
 
           {/* Contextual Link at the Bottom */}
           <div className="mt-5 pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
-            {activeMode === 'software' ? (
+            {isSoftwareEnv ? (
               <>
                 <span className="text-[11px] text-slate-400">
                   Need manager timesheets, payroll, or audit sheets on the web?

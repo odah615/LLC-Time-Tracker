@@ -104,12 +104,11 @@ const MainAppContent: React.FC = () => {
               href={`${currentWebUrl}${currentWebUrl.includes('?') ? '&' : '?'}user=${encodeURIComponent(currentUser.employeeCode || currentUser.id)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-blue-600/20 transition-all"
-              title="Open Web Portal in new browser window"
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all"
+              title="Open Web Dashboard Portal in Browser Tab"
             >
-              <Globe className="w-4 h-4" />
-              <span>Open Web App Portal in Browser</span>
-              <ExternalLink className="w-3.5 h-3.5" />
+              <Globe className="w-3.5 h-3.5 text-blue-400" />
+              <span>Web Portal ↗</span>
             </a>
             <button
               onClick={logout}

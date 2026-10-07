@@ -2305,6 +2305,18 @@ hydrateTimeLogsFromSheets();
 
   // Desktop App Widget vs Web Dashboard Mode
   const [isDesktopDockView, setIsDesktopDockView] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (
+        urlParams.get('mode') === 'desktop' ||
+        urlParams.get('source') === 'software' ||
+        urlParams.get('appMode') === 'desktop' ||
+        window.navigator.userAgent.includes('Electron') ||
+        (window as any).isElectronApp === true
+      ) {
+        return true;
+      }
+    }
     return localStorage.getItem('trackpulse_login_mode') === 'software';
   });
 
