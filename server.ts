@@ -66,6 +66,9 @@ const CANONICAL_STAFF: Record<string, string> = {
   'LLC-0020': 'Rubilyne Barrameda',
   'LLC-0021': 'Shiela Romey',
   'LLC-0022': 'Trixy Ashley Decena Mabutol',
+  'LLC-0023': 'Juan David',
+  'LLC-0046': 'Y. Obiedo',
+  'LLC-0047': 'R. Vegilla',
 };
 
 const resolveStaffName = (code?: string, username?: string, name?: string, id?: string): string => {
@@ -82,6 +85,9 @@ const resolveStaffName = (code?: string, username?: string, name?: string, id?: 
   const u = (username || '').toLowerCase().trim();
   const nLower = n.toLowerCase();
   const rawId = (id || '').toLowerCase().trim();
+  if (u === 'jdavid' || nLower === 'jdavid' || rawId.includes('0023')) return 'Juan David';
+  if (u === 'yobiedo' || nLower === 'yobiedo' || rawId.includes('0046')) return 'Y. Obiedo';
+  if (u === 'rvegilla' || nLower === 'rvegilla' || rawId.includes('0047')) return 'R. Vegilla';
   if (u === 'agabr' || nLower === 'agabr' || rawId.includes('0004')) return 'Alexa Gabrielle Bardaje';
   if (u === 'asamd' || nLower === 'asamd' || rawId.includes('0005')) return 'April Sam Dimaano';
   if (u === 'bandr' || nLower === 'bandr' || rawId.includes('0006')) return 'Boris Andrew Villanueva';

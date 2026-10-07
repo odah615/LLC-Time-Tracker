@@ -700,45 +700,6 @@ function syncEmployeeDirectoryInternal(ss, directoryUsers, userMap) {
     'Status',
     'Account Password (Masked)'
   ];
-  var empRows = [];
-  var seenKeys = {};
-
-  var list = (directoryUsers && directoryUsers.length > 0) ? directoryUsers : [];
-  list.forEach(function(u) {
-    if (!u) return;
-    var code = String(u.employeeCode || '').trim().toUpperCase();
-    var uName = String(u.username || '').trim().toLowerCase();
-    var dKey = code && code !== 'N/A' ? code : (uName ? uName : (u.id || Math.random()));
-    if (seenKeys[dKey]) return;
-    seenKeys[dKey] = true;
-
-    var maskedPass = maskPassword(u.password || 'Password123!');
-    var hireDate = u.joinDate || '2020-01-01';
-    var supervisorName = 'None / Direct Executive';
-    if (u.teamLeaderId && userMap) {
-      var sv = userMap[u.teamLeaderId] || userMap[String(u.teamLeaderId).toUpperCase()];
-      supervisorName = sv ? sv.name + ' (' + (sv.designation || sv.role) + ')' : u.teamLeaderId;
-    }
-    var mRate = (u.monthlyRate !== undefined && u.monthlyRate !== null && !isNaN(Number(u.monthlyRate))) ? Number(u.monthlyRate) : 0;
-    var hRate = (u.hourlyRate !== undefined && u.hourlyRate !== null && !isNaN(Number(u.hourlyRate))) ? Number(u.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : 0);
-
-    empRows.push([
-      u.employeeCode || 'N/A',
-      u.username || 'agent',
-      u.name || 'Unknown',
-      u.email || '',
-      u.role || 'agent',
-      u.designation || 'Agent',
-      hireDate,
-      mRate,
-      hRate,
-      supervisorName,
-      u.screenshotMonitored ? 'YES' : 'NO',
-      u.activityMonitored ? 'YES' : 'NO',
-      u.status || 'active',
-      maskedPass
-    ]);
-  });
 
   // Collect ALL employee directory tabs present in the spreadsheet
   var targetSheets = [];
@@ -754,16 +715,104 @@ function syncEmployeeDirectoryInternal(ss, directoryUsers, userMap) {
     targetSheets.push(getEmployeeDirectorySheet(ss));
   }
 
-  // Populate EVERY matching sheet with the clean 14 columns
+  var list = (directoryUsers && directoryUsers.length > 0) ? directoryUsers : [];
+
   targetSheets.forEach(function(sh) {
     try {
-      populateCleanSheet(sh, empHeaders, empRows, '#0369a1');
+      if (sh.getLastRow() === 0) {
+        sh.appendRow(empHeaders);
+        sh.getRange(1, 1, 1, empHeaders.length).setFontWeight('bold').setBackground('#0284c7').setFontColor('#ffffff');
+        sh.setFrozenRows(1);
+      }
+
+      // Read ALL existing rows from this sheet so no employee is ever deleted!
+      var existingRows = [];
+      var existingMap = {};
+      var lastRow = sh.getLastRow();
+      if (lastRow > 1) {
+        var numCols = Math.max(sh.getLastColumn(), 14);
+        var data = sh.getRange(2, 1, lastRow - 1, numCols).getValues();
+        for (var r = 0; r < data.length; r++) {
+          var row = data[r];
+          var eCode = String(row[0] || '').trim().toUpperCase();
+          var eUser = String(row[1] || '').trim().toLowerCase();
+          var eEmail = String(row[3] || '').trim().toLowerCase();
+          var key = (eCode && eCode !== 'N/A') ? eCode : (eUser ? eUser : (eEmail ? eEmail : ('row_' + r)));
+          existingMap[key] = { rowIndex: r, row: row };
+          if (eCode && eCode !== 'N/A') existingMap[eCode] = { rowIndex: r, row: row };
+          if (eUser) existingMap[eUser] = { rowIndex: r, row: row };
+          if (eEmail) existingMap[eEmail] = { rowIndex: r, row: row };
+          existingRows.push(row);
+        }
+      }
+
+      // Merge incoming users into existingRows
+      var seenKeys = {};
+      list.forEach(function(u) {
+        if (!u) return;
+        var code = String(u.employeeCode || '').trim().toUpperCase();
+        var uName = String(u.username || '').trim().toLowerCase();
+        var email = String(u.email || '').trim().toLowerCase();
+        var dKey = (code && code !== 'N/A') ? code : (uName ? uName : (email ? email : (u.id || Math.random())));
+        if (seenKeys[dKey]) return;
+        seenKeys[dKey] = true;
+
+        var existingMatch = (code && code !== 'N/A' && existingMap[code]) || (uName && existingMap[uName]) || (email && existingMap[email]);
+        var maskedPass = maskPassword(u.password || 'Password123!');
+        if (existingMatch && existingMatch.row && existingMatch.row[13]) {
+          var exPass = String(existingMatch.row[13]).trim();
+          if (exPass && exPass !== 'Password123!' && !exPass.includes('*') && (maskedPass === 'Password123!' || maskedPass.includes('*'))) {
+            maskedPass = maskPassword(exPass);
+          }
+        }
+
+        var hireDate = u.joinDate || (existingMatch ? existingMatch.row[6] : '2020-01-01');
+        var supervisorName = 'None / Direct Executive';
+        if (u.teamLeaderId && userMap) {
+          var sv = userMap[u.teamLeaderId] || userMap[String(u.teamLeaderId).toUpperCase()];
+          supervisorName = sv ? sv.name + ' (' + (sv.designation || sv.role) + ')' : u.teamLeaderId;
+        } else if (existingMatch && existingMatch.row[9]) {
+          supervisorName = existingMatch.row[9];
+        }
+
+        var mRate = (u.monthlyRate !== undefined && u.monthlyRate !== null && !isNaN(Number(u.monthlyRate))) ? Number(u.monthlyRate) : (existingMatch ? Number(existingMatch.row[7] || 0) : 0);
+        var hRate = (u.hourlyRate !== undefined && u.hourlyRate !== null && !isNaN(Number(u.hourlyRate))) ? Number(u.hourlyRate) : (mRate > 0 ? Number((mRate / 160).toFixed(2)) : (existingMatch ? Number(existingMatch.row[8] || 0) : 0));
+
+        var updatedRow = [
+          u.employeeCode || (existingMatch ? existingMatch.row[0] : 'N/A'),
+          u.username || (existingMatch ? existingMatch.row[1] : 'agent'),
+          u.name || (existingMatch ? existingMatch.row[2] : 'Employee'),
+          u.email || (existingMatch ? existingMatch.row[3] : ''),
+          u.role || (existingMatch ? existingMatch.row[4] : 'agent'),
+          u.designation || (existingMatch ? existingMatch.row[5] : 'Agent'),
+          hireDate,
+          mRate,
+          hRate,
+          supervisorName,
+          u.screenshotMonitored ? 'YES' : ((existingMatch && existingMatch.row[10] === 'YES') ? 'YES' : 'NO'),
+          u.activityMonitored ? 'YES' : ((existingMatch && existingMatch.row[11] === 'YES') ? 'YES' : 'NO'),
+          u.status || (existingMatch ? existingMatch.row[12] : 'active'),
+          maskedPass
+        ];
+
+        if (existingMatch) {
+          existingRows[existingMatch.rowIndex] = updatedRow;
+        } else {
+          existingRows.push(updatedRow);
+          existingMap[dKey] = { rowIndex: existingRows.length - 1, row: updatedRow };
+        }
+      });
+
+      // Write merged rows back to sheet preserving all 117+ employees!
+      if (existingRows.length > 0) {
+        populateMergedSheet(sh, empHeaders, existingRows, '#0369a1', 0, 1);
+      }
     } catch(err) {
       Logger.log('Error populating sheet ' + sh.getName() + ': ' + err.toString());
     }
   });
 
-  return empRows.length;
+  return list.length;
 }
 
 var CANONICAL_STAFF = {

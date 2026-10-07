@@ -1996,6 +1996,67 @@ const hydrateTimeLogsFromSheets = async () => {
 
 hydrateTimeLogsFromSheets();
 
+    // 1.6. Two-way Google Sheets Employee Directory hydration on boot
+    const hydrateEmployeesFromSheets = async () => {
+      try {
+        const targetUrl =
+          googleSheetsWebhookUrl ||
+          localStorage.getItem('trackpulse_sheets_webhook') ||
+          '';
+
+        const result = await fetchEmployeesFromGoogleSheets(
+          targetUrl,
+          DEFAULT_SPREADSHEET_ID,
+          users
+        );
+
+        if (result.success && Array.isArray(result.employees) && result.employees.length > 0) {
+          setUsers((prev) => {
+            const existingMap = new Map<string, User>();
+            prev.forEach((u) => {
+              if (u && u.id) existingMap.set(u.id, u);
+              if (u && u.employeeCode) existingMap.set(u.employeeCode.toUpperCase(), u);
+            });
+
+            const merged = [...prev];
+            for (const emp of result.employees) {
+              if (!emp) continue;
+              const codeKey = (emp.employeeCode || '').toUpperCase();
+              const existing = (emp.id && existingMap.get(emp.id)) || (codeKey && existingMap.get(codeKey));
+              if (existing) {
+                const idx = merged.findIndex((u) => u.id === existing.id);
+                if (idx !== -1) {
+                  merged[idx] = {
+                    ...existing,
+                    ...emp,
+                    password: (existing.password && existing.password !== 'Password123!' && !existing.password.includes('*'))
+                      ? existing.password
+                      : (emp.password || existing.password || 'Password123!'),
+                  };
+                }
+              } else {
+                merged.push(emp);
+                if (emp.id) existingMap.set(emp.id, emp);
+                if (codeKey) existingMap.set(codeKey, emp);
+              }
+            }
+            const deduplicated = deduplicateUsers(merged);
+            localStorage.setItem('trackpulse_users', JSON.stringify(deduplicated));
+            fetch('/api/users', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(deduplicated),
+            }).catch(() => {});
+            return deduplicated;
+          });
+        }
+      } catch (err) {
+        console.warn('[Sheets] Employee hydration failed:', err);
+      }
+    };
+
+    hydrateEmployeesFromSheets();
+
     // 2. Continuous Central Sync Bridge (timelogs, users, presence across desktop & web)
     const fetchCentralSync = () => {
       // 2a. Sync timelogs across desktop software and web portal
