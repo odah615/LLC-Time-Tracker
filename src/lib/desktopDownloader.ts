@@ -109,26 +109,38 @@ start "" "${SOFTWARE_APP_URL}"
     const cmdContent = `#!/bin/bash
 # ========================================================
 # LLC Time Tracker - macOS Instant Desktop Launcher
+# 100% Compatible with Apple Silicon (M1/M2/M3/M4) & Intel
 # ========================================================
 SOFTWARE_URL="${SOFTWARE_APP_URL}"
 
-# Try Google Chrome in App Mode
+echo "Launching LLC Time Tracker Desktop Software for macOS..."
+
+# 1. Try Google Chrome in Dedicated App Window
 if [ -d "/Applications/Google Chrome.app" ]; then
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --app="$SOFTWARE_URL" --window-size=1280,840 &
-  exit 0
+  open -a "/Applications/Google Chrome.app" -n --args --app="$SOFTWARE_URL" --window-size=1280,840 2>/dev/null && exit 0
 fi
 
-# Try Microsoft Edge in App Mode
+# 2. Try Microsoft Edge in Dedicated App Window
 if [ -d "/Applications/Microsoft Edge.app" ]; then
-  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge" --app="$SOFTWARE_URL" --window-size=1280,840 &
-  exit 0
+  open -a "/Applications/Microsoft Edge.app" -n --args --app="$SOFTWARE_URL" --window-size=1280,840 2>/dev/null && exit 0
 fi
 
-# Default Safari / System browser
+# 3. Try Brave Browser
+if [ -d "/Applications/Brave Browser.app" ]; then
+  open -a "/Applications/Brave Browser.app" -n --args --app="$SOFTWARE_URL" --window-size=1280,840 2>/dev/null && exit 0
+fi
+
+# 4. Try Chromium
+if [ -d "/Applications/Chromium.app" ]; then
+  open -a "/Applications/Chromium.app" -n --args --app="$SOFTWARE_URL" --window-size=1280,840 2>/dev/null && exit 0
+fi
+
+# 5. Direct system fallback (Safari / Default Browser)
 open "$SOFTWARE_URL"
-`;
+exit 0
+`.replace(/\r\n/g, '\n');
     const element = document.createElement('a');
-    const file = new Blob([cmdContent], { type: 'text/plain' });
+    const file = new Blob([cmdContent], { type: 'text/plain;charset=utf-8' });
     element.href = URL.createObjectURL(file);
     element.download = 'Launch_LLC_Time_Tracker_Mac.command';
     document.body.appendChild(element);
