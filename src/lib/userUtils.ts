@@ -107,6 +107,18 @@ export const CANONICAL_EMPLOYEE_DIRECTORY: Record<string, { name: string; userna
   'LLC-0120': { name: 'Niña Carmella Domingo', username: 'ndomingo', email: 'nina@llc.com', role: 'agent', designation: 'Agent' },
   'LLC-0121': { name: 'Ayra Erika Sy', username: 'asy', email: 'Erihkasy16@gmail.com', role: 'agent', designation: 'Agent' },
   'LLC-0122': { name: 'Bian Labares Maglangit', username: 'bmaglangit', email: 'bianmaglangit2001@gmail.com', role: 'agent', designation: 'Agent' },
+  'LLC-0123': { name: 'Cedena Amor Rodriguez', username: 'crodriguez', email: 'cedenamorodriguez04@gmail.com', role: 'agent', designation: 'Agent' },
+  'LLC-0124': { name: 'Cenbert Domingo', username: 'cdomingo', email: 'cenbretdomingo@gmail.com', role: 'agent', designation: 'Agent' },
+  'LLC-0125': { name: 'Frangelo Dela Cruz', username: 'fcruz', email: 'frangelodelacruz1@gmail.com', role: 'agent', designation: 'Agent' },
+  'LLC-0126': { name: 'Jay-R B. Ventura', username: 'jventura', email: 'jhekjhek2086@gmail.com', role: 'agent', designation: 'Agent' },
+  'LLC-0127': { name: 'Joarah Marie Octavio', username: 'joctavio', email: 'jhoarahmarie16@gmail.com', role: 'agent', designation: 'Agent' },
+  'LLC-0128': { name: 'John Vincent Flores', username: 'jflores', email: 'jvflores1234567@gmail.com', role: 'agent', designation: 'Agent' },
+  'LLC-0129': { name: 'J. Perez', username: 'jperez', email: 'jperez@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0130': { name: 'Mark Anthony E. Gonzales', username: 'mgonzales', email: 'tristanwakka@gmail.com', role: 'agent', designation: 'Agent' },
+  'LLC-0131': { name: 'Michael A. Custodio', username: 'mcustodio', email: 'michaelacustodio@gmail.com', role: 'agent', designation: 'Agent' },
+  'LLC-0132': { name: 'Eugene Munda', username: 'emunda', email: 'mundaeugene0@gmail.com', role: 'agent', designation: 'Agent' },
+  'LLC-0133': { name: 'Nhel Singson', username: 'nsingson', email: 'cle0nhel2019@gmail.com', role: 'agent', designation: 'Agent' },
+  'LLC-0135': { name: 'Riza Mae B. Oliva', username: 'roliva', email: 'rizamaeoliva10@gmail.com', role: 'agent', designation: 'Agent' },
 };
 
 /**
@@ -148,6 +160,20 @@ export const resolveCanonicalEmployee = (input?: {
   }
 
   const numCode = rawCode.replace(/^[A-Z\-_]+/, '');
+
+  // Specific alias mappings for username/email typos or variations
+  const ALIAS_MAP: Record<string, string> = {
+    'pdelin': 'LLC-0003',
+    'bmaglangiy2001': 'LLC-0122',
+    'bmaglangiy2': 'LLC-0122',
+    'bmaglangit2001': 'LLC-0122',
+    'jperez': 'LLC-0129',
+  };
+
+  const aliasTarget = ALIAS_MAP[rawUser] || ALIAS_MAP[rawCode.toLowerCase()] || ALIAS_MAP[rawEmail.split('@')[0]];
+  if (aliasTarget && CANONICAL_EMPLOYEE_DIRECTORY[aliasTarget]) {
+    return { code: aliasTarget, ...CANONICAL_EMPLOYEE_DIRECTORY[aliasTarget] };
+  }
 
   for (const [code, info] of Object.entries(CANONICAL_EMPLOYEE_DIRECTORY)) {
     const infoNum = code.replace(/^[A-Z\-_]+/, '');

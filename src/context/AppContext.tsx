@@ -765,38 +765,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       lastAutoSyncTimestampRef.current = now;
 
-      let activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
+      let activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || DEFAULT_WEBHOOK_URL;
       if (activeUrl && !isValidWebhookUrl(activeUrl)) {
-        activeUrl = '';
-      }
-
-      if (!activeUrl || !activeUrl.trim()) {
-        try {
-          const apiRes = await fetch('/api/config');
-          if (apiRes.ok) {
-            const apiCfg = await apiRes.json();
-            if (apiCfg?.webhookUrl && isValidWebhookUrl(apiCfg.webhookUrl)) {
-              activeUrl = apiCfg.webhookUrl.trim();
-              setGoogleSheetsWebhookUrlState(activeUrl);
-              localStorage.setItem('trackpulse_sheets_webhook', activeUrl);
-            }
-          }
-        } catch (e) {}
-
-        if (!activeUrl || !activeUrl.trim()) {
-          try {
-            const cfgSnap = await getDoc(doc(db, 'system_state', 'config'));
-            if (cfgSnap.exists()) {
-              const cData = cfgSnap.data();
-              const candUrl = (cData?.webhookUrl || cData?.sheetsWebhookUrl || '').trim();
-              if (candUrl && isValidWebhookUrl(candUrl)) {
-                activeUrl = candUrl;
-                setGoogleSheetsWebhookUrlState(activeUrl);
-                localStorage.setItem('trackpulse_sheets_webhook', activeUrl);
-              }
-            }
-          } catch (e) {}
-        }
+        activeUrl = DEFAULT_WEBHOOK_URL;
       }
 
       if (activeUrl && isValidWebhookUrl(activeUrl)) {
@@ -4093,8 +4064,43 @@ if (mode === 'software') {
     setSessionIdleDeductionSeconds(0);
     setCurrentInactivitySeconds(0);
 
-    // Sync newly finalized time logs and updated attendance to Google Sheets database
-    triggerAutoSync(users, updatedLogs, auditLogs, updatedPayroll, updatedAttendance, idleLogs, leaveRequests, designationTasks, rolePermissions);
+    // Direct targeted Google Sheets heartbeat to clear live tracking tag immediately
+    const webhookTarget = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || DEFAULT_WEBHOOK_URL;
+    if (webhookTarget && isValidWebhookUrl(webhookTarget)) {
+      syncAgentHeartbeatToSheets(webhookTarget, {
+        userId: currentUser.id,
+        userName: currentUser.name,
+        employeeCode: currentUser.employeeCode || '',
+        role: currentUser.role,
+        designation: currentDesignation || currentUser.designation || 'Agent',
+        teamLeaderId: currentUser.teamLeaderId || '',
+        isOnline: true,
+        status: 'online',
+        isTracking: false,
+        isPaused: false,
+        elapsedSeconds: 0,
+        currentTask: 'Available / Ready',
+        currentApp: 'LLC Time Tracker Desktop App',
+        timezone: currentUser.geoTimezone || 'Asia/Manila (GMT+8)',
+        lastHeartbeat: new Date().toISOString(),
+        mouseActivity: 0,
+        keyboardActivity: 0,
+      }).catch(() => {});
+    }
+
+    // Sync newly finalized time logs and updated attendance to Google Sheets database with forced immediate push
+    triggerAutoSync(
+      users,
+      updatedLogs,
+      auditLogs,
+      updatedPayroll,
+      updatedAttendance,
+      idleLogs,
+      leaveRequests,
+      designationTasks,
+      rolePermissions,
+      true
+    );
   };
 
   // 30-Minute Offline Connection Loss & Grace Period Engine
@@ -4834,7 +4840,7 @@ if (mode === 'software') {
     setSaveToast(`âœ“ Saved time log to Database & Google Sheets!`);
     setTimeout(() => setSaveToast(null), 6000);
 
-    triggerAutoSync(users, updatedLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
+    triggerAutoSync(users, updatedLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions, true);
   };
 
   const updateTimeLog = (id: string, data: Partial<TimeLog>) => {
@@ -4856,10 +4862,10 @@ if (mode === 'software') {
       details: `Updated time log (${targetLog?.task || id}): ${data.task ? `Task changed to ${data.task}` : 'Notes/Duration modified'}. Saved to Database & Google Sheets.`,
     });
 
-    setSaveToast(`âœ“ Saved time log edits to Database & Google Sheets!`);
+    setSaveToast(`✓ Saved time log edits to Database & Google Sheets!`);
     setTimeout(() => setSaveToast(null), 6000);
 
-    triggerAutoSync(users, updatedLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests);
+    triggerAutoSync(users, updatedLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions, true);
   };
 
   const deleteTimeLog = (id: string) => {

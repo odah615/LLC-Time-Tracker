@@ -921,10 +921,31 @@ var CANONICAL_STAFF = {
   'LLC-0116': 'Michellenie Mae Yntela',
   'LLC-0120': 'Niña Carmella Domingo',
   'LLC-0121': 'Ayra Erika Sy',
-  'LLC-0122': 'Bian Labares Maglangit'
+  'LLC-0122': 'Bian Labares Maglangit',
+  'LLC-0123': 'Cedena Amor Rodriguez',
+  'LLC-0124': 'Cenbert Domingo',
+  'LLC-0125': 'Frangelo Dela Cruz',
+  'LLC-0126': 'Jay-R B. Ventura',
+  'LLC-0127': 'Joarah Marie Octavio',
+  'LLC-0128': 'John Vincent Flores',
+  'LLC-0129': 'J. Perez',
+  'LLC-0130': 'Mark Anthony E. Gonzales',
+  'LLC-0131': 'Michael A. Custodio',
+  'LLC-0132': 'Eugene Munda',
+  'LLC-0133': 'Nhel Singson',
+  'LLC-0135': 'Riza Mae B. Oliva'
 };
 
 function resolveStaffFullName(code, username, name, id) {
+  var u = (username || '').toLowerCase().trim();
+  var nLower = (name || '').toLowerCase().trim();
+  var rawId = (id || '').toLowerCase().trim();
+
+  // Handle aliases & variations
+  if (u === 'pdelin' || nLower === 'pdelin' || u === 'piadelin') return 'Pia';
+  if (u === 'bmaglangiy2001' || u === 'bmaglangiy2' || u === 'bmaglangit2001') return 'Bian Labares Maglangit';
+  if (u === 'jperez' || nLower === 'jperez') return 'J. Perez';
+
   var n = (name || '').trim();
   if (n && n !== 'Unknown' && n !== 'Employee' && n !== 'Staff' && n !== 'Agent') {
     return n;
@@ -1592,12 +1613,14 @@ function doPost(e) {
       });
 
       // ==========================================
-      // 0. POPULATE EMPLOYEE DIRECTORY FIRST (Updates both mployee_Directory & Employee_Directory)
+      // 0. POPULATE EMPLOYEE DIRECTORY (Only when explicitly requested to keep sheet calm)
       // ==========================================
-      try {
-        syncEmployeeDirectoryInternal(ss, users.length > 0 ? users : rawUsers, userMap);
-      } catch (empErr) {
-        Logger.log('Employee_Directory sync error: ' + empErr.toString());
+      if (data.syncEmployees === true || data.action === 'SYNC_EMPLOYEES' || data.action === 'SYNC_USERS') {
+        try {
+          syncEmployeeDirectoryInternal(ss, users.length > 0 ? users : rawUsers, userMap);
+        } catch (empErr) {
+          Logger.log('Employee_Directory sync error: ' + empErr.toString());
+        }
       }
 
       // ==========================================
@@ -2311,10 +2334,12 @@ function doPost(e) {
       // ==========================================
       // 8. POPULATE EMPLOYEE DIRECTORY
       // ==========================================
-      try {
-        syncEmployeeDirectoryInternal(ss, (users && users.length > 0) ? users : rawUsers, userMap);
-      } catch (empErr) {
-        Logger.log('Error updating Employee_Directory: ' + empErr.toString());
+      if (data.syncEmployees === true || data.action === 'SYNC_EMPLOYEES' || data.action === 'SYNC_USERS') {
+        try {
+          syncEmployeeDirectoryInternal(ss, (users && users.length > 0) ? users : rawUsers, userMap);
+        } catch (empErr) {
+          Logger.log('Error updating Employee_Directory: ' + empErr.toString());
+        }
       }
 
       // ==========================================
@@ -3219,6 +3244,8 @@ export interface AgentHeartbeatPayload {
   userName: string;
   role?: string;
   designation?: string;
+  department?: string;
+  teamLeaderId?: string;
   platformMode?: string;
   status?: 'online' | 'idle' | 'offline';
   statusLabel?: string;
