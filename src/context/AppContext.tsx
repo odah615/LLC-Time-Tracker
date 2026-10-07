@@ -2431,67 +2431,76 @@ if (mode === 'software') {
 
     // Active live presence broadcast on login:
     const isDesktop = mode === 'software';
-    const loginPresence: UserPresence = {
-      userId: user.id,
-      userName: user.name,
-      employeeCode: user.employeeCode || '',
-      role: user.role,
-      designation: userDesig,
-      department: user.department || 'Operations',
-      teamLeaderId: user.teamLeaderId || '',
-      isOnline: true,
-      status: 'online',
-      isTracking: false,
-      isPaused: false,
-      elapsedSeconds: 0,
-      mouseActivity: 100,
-      keyboardActivity: 100,
-      currentTask: initialTask,
-      currentApp: isDesktop ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal',
-      lastHeartbeat: nowIso,
-      loginTime: nowIso,
-      loginPlatform: isDesktop ? 'software' : 'webapp',
-    };
-    safeSetDoc(doc(db, 'user_presence', user.id), loginPresence, { merge: true }).catch(() => {});
-    fetch('/api/presence', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(loginPresence),
-    }).catch(() => {});
-    setUserPresenceList((prev) => {
-      const existing = prev.find((p) => p.userId === user.id);
-      const updated = existing
-        ? prev.map((p) => (p.userId === user.id ? { ...p, ...loginPresence } : p))
-        : [loginPresence, ...prev];
-      safeSetDoc(doc(db, 'system_state', 'presence'), { data: updated }).catch(() => {});
-      return updated;
-    });
+    const existingPresence = userPresenceList.find(
+      (p) => p.userId === user.id || (p.employeeCode && user.employeeCode && p.employeeCode === user.employeeCode)
+    );
+    const hasActiveDesktopSession = existingPresence && existingPresence.isTracking && existingPresence.loginPlatform === 'software';
 
-    // Transmit instant login heartbeat to Google Sheets so agent immediately appears online & tracking
-    const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
-    if (activeHook && isValidWebhookUrl(activeHook)) {
-      syncAgentHeartbeatToSheets(activeHook.trim(), {
+    if (hasActiveDesktopSession && !isDesktop) {
+      console.log('[Login] User already actively tracking on desktop; preserving live tracking presence.');
+    } else {
+      const loginPresence: UserPresence = {
         userId: user.id,
-        employeeCode: user.employeeCode || '',
         userName: user.name,
+        employeeCode: user.employeeCode || '',
         role: user.role,
         designation: userDesig,
-        platformMode: isDesktop ? 'Desktop Tracker' : 'Website',
-        status: 'online',
-        statusLabel: isDesktop ? 'ðŸŸ¢ Live Tracking' : 'ðŸŸ¢ Online',
+        department: user.department || 'Operations',
+        teamLeaderId: user.teamLeaderId || '',
         isOnline: true,
+        status: isDesktop ? 'online' : 'online',
         isTracking: isDesktop,
         isPaused: false,
-        elapsedSeconds: 0,
-        currentTask: initialTask,
-        currentApp: isDesktop ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal',
-        loginPlatform: isDesktop ? 'software' : 'webapp',
-        firstCheckin: getManilaTimeString(now),
-        timezone: user.geoTimezone || 'Asia/Manila (GMT+8)',
-        lastHeartbeat: nowIso,
+        elapsedSeconds: isDesktop ? 0 : (existingPresence?.elapsedSeconds || 0),
         mouseActivity: 100,
         keyboardActivity: 100,
-      }).catch((err) => console.warn('Instant login heartbeat warning:', err));
+        currentTask: isDesktop ? initialTask : (existingPresence?.currentTask || initialTask),
+        currentApp: isDesktop ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal',
+        lastHeartbeat: nowIso,
+        loginTime: existingPresence?.loginTime || nowIso,
+        loginPlatform: isDesktop ? 'software' : (existingPresence?.loginPlatform || 'webapp'),
+      };
+      safeSetDoc(doc(db, 'user_presence', user.id), loginPresence, { merge: true }).catch(() => {});
+      fetch('/api/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginPresence),
+      }).catch(() => {});
+      setUserPresenceList((prev) => {
+        const existing = prev.find((p) => p.userId === user.id);
+        const updated = existing
+          ? prev.map((p) => (p.userId === user.id ? { ...p, ...loginPresence } : p))
+          : [loginPresence, ...prev];
+        safeSetDoc(doc(db, 'system_state', 'presence'), { data: updated }).catch(() => {});
+        return updated;
+      });
+
+      // Transmit instant login heartbeat to Google Sheets so agent immediately appears online & tracking
+      const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
+      if (activeHook && isValidWebhookUrl(activeHook)) {
+        syncAgentHeartbeatToSheets(activeHook.trim(), {
+          userId: user.id,
+          employeeCode: user.employeeCode || '',
+          userName: user.name,
+          role: user.role,
+          designation: userDesig,
+          platformMode: isDesktop ? 'Desktop Tracker' : 'Website',
+          status: 'online',
+          statusLabel: isDesktop ? '🟢 Live Tracking' : '🟢 Online',
+          isOnline: true,
+          isTracking: isDesktop,
+          isPaused: false,
+          elapsedSeconds: 0,
+          currentTask: initialTask,
+          currentApp: isDesktop ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal',
+          loginPlatform: isDesktop ? 'software' : 'webapp',
+          firstCheckin: getManilaTimeString(now),
+          timezone: user.geoTimezone || 'Asia/Manila (GMT+8)',
+          lastHeartbeat: nowIso,
+          mouseActivity: 100,
+          keyboardActivity: 100,
+        }).catch((err) => console.warn('Instant login heartbeat warning:', err));
+      }
     }
 
     triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, currentAttendanceList, idleLogs, leaveRequests, undefined, undefined, true);
@@ -2515,53 +2524,61 @@ if (mode === 'software') {
       const updatedAudit = [logoutLog, ...auditLogs];
       setAuditLogs(updatedAudit);
 
-      // Instant offline status broadcast
-      const offlineDoc = {
-        isOnline: false,
-        status: 'offline' as const,
-        isTracking: false,
-        isPaused: false,
-        currentTask: 'Shift Concluded',
-        lastHeartbeat: new Date().toISOString(),
-      };
-      safeSetDoc(doc(db, 'user_presence', currentUser.id), offlineDoc, { merge: true }).catch(() => {});
-      fetch('/api/presence', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: currentUser.id, ...offlineDoc }),
-      }).catch(() => {});
-      setUserPresenceList((prev) =>
-        prev.map((p) =>
-          p.userId === currentUser.id
-            ? { ...p, ...offlineDoc }
-            : p
-        )
+      // Check if user is currently tracking on desktop client
+      const existingPres = userPresenceList.find(
+        (p) => p.userId === currentUser.id || (p.employeeCode && currentUser.employeeCode && p.employeeCode === currentUser.employeeCode)
       );
+      const isDesktopTracking = loginMode !== 'software' && existingPres && existingPres.isTracking && existingPres.loginPlatform === 'software';
 
-      // Transmit instant logout heartbeat to Google Sheets so agent immediately appears offline
-      const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
-      if (activeHook && isValidWebhookUrl(activeHook)) {
-        syncAgentHeartbeatToSheets(activeHook.trim(), {
-          userId: currentUser.id,
-          employeeCode: currentUser.employeeCode || '',
-          userName: currentUser.name,
-          role: currentUser.role,
-          designation: currentUser.designation || 'Agent',
-          platformMode: 'None / Offline',
-          status: 'offline',
-          statusLabel: 'âšª Offline',
+      if (!isDesktopTracking) {
+        // Instant offline status broadcast
+        const offlineDoc = {
           isOnline: false,
+          status: 'offline' as const,
           isTracking: false,
           isPaused: false,
-          elapsedSeconds: 0,
           currentTask: 'Shift Concluded',
-          currentApp: 'None / Offline',
-          loginPlatform: 'webapp',
           lastHeartbeat: new Date().toISOString(),
-        }).catch((err) => console.warn('Instant logout heartbeat warning:', err));
-      }
+        };
+        safeSetDoc(doc(db, 'user_presence', currentUser.id), offlineDoc, { merge: true }).catch(() => {});
+        fetch('/api/presence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: currentUser.id, ...offlineDoc }),
+        }).catch(() => {});
+        setUserPresenceList((prev) =>
+          prev.map((p) =>
+            p.userId === currentUser.id
+              ? { ...p, ...offlineDoc }
+              : p
+          )
+        );
 
-      triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, undefined, undefined, true);
+        // Transmit instant logout heartbeat to Google Sheets so agent immediately appears offline
+        const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
+        if (activeHook && isValidWebhookUrl(activeHook)) {
+          syncAgentHeartbeatToSheets(activeHook.trim(), {
+            userId: currentUser.id,
+            employeeCode: currentUser.employeeCode || '',
+            userName: currentUser.name,
+            role: currentUser.role,
+            designation: currentUser.designation || 'Agent',
+            platformMode: 'None / Offline',
+            status: 'offline',
+            statusLabel: '⚪ Offline',
+            isOnline: false,
+            isTracking: false,
+            isPaused: false,
+            elapsedSeconds: 0,
+            currentTask: 'Shift Concluded',
+            currentApp: 'None / Offline',
+            loginPlatform: 'webapp',
+            lastHeartbeat: new Date().toISOString(),
+          }).catch((err) => console.warn('Instant logout heartbeat warning:', err));
+        }
+
+        triggerAutoSync(users, timeLogs, updatedAudit, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, undefined, undefined, true);
+      }
     }
     setIsAuthenticated(false);
     setIsSessionWarningActive(false);
@@ -3064,6 +3081,16 @@ if (mode === 'software') {
       return;
     }
 
+    // Check if user already has an active desktop tracking session running
+    const existingPres = userPresenceList.find(
+      (p) => p.userId === snap.currentUser.id || (p.employeeCode && snap.currentUser.employeeCode && p.employeeCode === snap.currentUser.employeeCode)
+    );
+
+    // If web portal is open but this employee is actively tracking on their desktop app, do not overwrite desktop tracking
+    if (!snap.isTracking && snap.loginMode !== 'software' && existingPres && existingPres.isTracking && existingPres.loginPlatform === 'software') {
+      return;
+    }
+
     const isTracking = Boolean(snap.isTracking);
     const isDesktop = snap.loginMode === 'software' || isTracking;
     const isEffectivelyOnline = true;
@@ -3073,9 +3100,6 @@ if (mode === 'software') {
       : (isDesktop ? 'Desktop App Standby (Timer Not Started)' : 'Web Portal Active');
 
     // Preserve original loginTime from previous presence state instead of overwriting on every heartbeat
-    const existingPres = userPresenceList.find(
-      (p) => p.userId === snap.currentUser.id || (p.employeeCode && snap.currentUser.employeeCode && p.employeeCode === snap.currentUser.employeeCode)
-    );
     const resolvedLoginTime = existingPres?.loginTime || nowIso;
 
     const presenceDoc: UserPresence = {
@@ -3232,11 +3256,12 @@ if (mode === 'software') {
       });
     };
 
-    // Initial pulse after 3 seconds
-    const initialTimer = setTimeout(sendGoogleSheetsAgentHeartbeat, 3000);
+    // Initial pulse after 1.5 seconds
+    const initialTimer = setTimeout(sendGoogleSheetsAgentHeartbeat, 1500);
 
-    // 60-second recurring heartbeat
-    const sheetHbInterval = setInterval(sendGoogleSheetsAgentHeartbeat, 60000);
+    // Recurring heartbeat (every 20s while tracking, 45s when on standby)
+    const intervalMs = isTracking && !isPaused ? 20000 : 45000;
+    const sheetHbInterval = setInterval(sendGoogleSheetsAgentHeartbeat, intervalMs);
 
     return () => {
       clearTimeout(initialTimer);
@@ -3713,6 +3738,32 @@ if (mode === 'software') {
       );
 
       // Instantly sync active tracking status to Google Sheets database
+      const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
+      if (activeHook && isValidWebhookUrl(activeHook)) {
+        syncAgentHeartbeatToSheets(activeHook.trim(), {
+          userId: currentUser.id,
+          employeeCode: currentUser.employeeCode || '',
+          userName: currentUser.name,
+          role: currentUser.role,
+          designation: currentDesignation || currentUser.designation || 'Agent',
+          platformMode: 'Desktop Tracker',
+          status: 'online',
+          statusLabel: '🟢 Live Tracking',
+          isOnline: true,
+          isTracking: true,
+          isPaused: false,
+          elapsedSeconds: 0,
+          currentTask: currentTask,
+          currentApp: currentActiveApp || (loginMode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal'),
+          loginPlatform: 'software',
+          firstCheckin: getManilaTimeString(new Date()),
+          timezone: currentUser.geoTimezone || 'Asia/Manila (GMT+8)',
+          lastHeartbeat: nowIso,
+          mouseActivity: 100,
+          keyboardActivity: 100,
+        }).catch((err) => console.warn('Instant start tracking heartbeat warning:', err));
+      }
+
       triggerAutoSync();
     }
   };

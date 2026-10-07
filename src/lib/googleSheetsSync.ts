@@ -1065,6 +1065,83 @@ function upsertLiveTrackingSessionRow(sheet, p) {
   return rowData;
 }
 
+function upsertDailySummaryRow(sheet, p) {
+  if (!sheet || !p) return null;
+  var dailyHeaders = ['Date', 'Employee Code', 'Employee Name', 'Designation', 'Tasks Worked On', 'First Clock-In (Manila)', 'Last Clock-Out (Manila)', 'Gross Tracked Shift', 'Total Idle / Breaks', 'Net Productive Work', 'Duration (Seconds)', 'Avg Activity %', 'Shift Status', 'Log Entries'];
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(dailyHeaders);
+    sheet.getRange(1, 1, 1, dailyHeaders.length).setFontWeight('bold').setBackground('#0284c7').setFontColor('#ffffff');
+    sheet.setFrozenRows(1);
+  }
+
+  var targetCode = String(p.employeeCode || '').trim().toUpperCase();
+  var targetName = String(p.userName || p.name || '').trim();
+  var resolvedName = resolveStaffFullName(targetCode, targetName, targetName, p.userId);
+  var todayStr = Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
+
+  var lastRow = sheet.getLastRow();
+  var matchRow = -1;
+  var existingRow = null;
+
+  if (lastRow > 1) {
+    try {
+      var maxCols = Math.max(sheet.getLastColumn(), 14);
+      var sheetData = sheet.getRange(2, 1, lastRow - 1, maxCols).getValues();
+      for (var r = 0; r < sheetData.length; r++) {
+        var row = sheetData[r];
+        var rowDate = String(row[0] || '').trim();
+        var rowCode = String(row[1] || '').trim().toUpperCase();
+        var rowName = String(row[2] || '').trim().toLowerCase();
+        if ((rowDate === todayStr || !rowDate) &&
+            ((targetCode && targetCode !== 'N/A' && rowCode === targetCode) ||
+             (resolvedName && rowName === resolvedName.toLowerCase()) ||
+             (targetName && rowName === targetName.toLowerCase()))) {
+          matchRow = r + 2;
+          existingRow = row;
+          break;
+        }
+      }
+    } catch(e) {}
+  }
+
+  var isTracking = p.isTracking === true || (p.status === 'online' && p.isTracking) || (p.statusLabel && p.statusLabel.indexOf('Live Tracking') !== -1);
+  var elapsedSecs = typeof p.elapsedSeconds === 'number' ? Math.max(0, Math.floor(p.elapsedSeconds)) : 0;
+  if (!elapsedSecs && existingRow && existingRow[10]) {
+    elapsedSecs = Number(existingRow[10]) || 0;
+  }
+  var sTime = p.firstCheckin || (existingRow && existingRow[5] ? existingRow[5] : Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a'));
+  var eTime = isTracking ? 'Running Live' : (existingRow && existingRow[6] ? existingRow[6] : Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a'));
+  var taskName = p.currentTask || (existingRow && existingRow[4] ? existingRow[4] : 'General Work');
+
+  var rowData = [
+    todayStr,
+    targetCode || 'N/A',
+    resolvedName || targetName || 'Employee',
+    p.designation || (existingRow ? existingRow[3] : 'Agent'),
+    taskName,
+    sTime,
+    eTime,
+    formatTotalTime(elapsedSecs),
+    '0 mins',
+    formatTotalTime(elapsedSecs),
+    elapsedSecs,
+    (p.mouseActivity != null ? p.mouseActivity : 95) + '%',
+    isTracking ? 'Active Live' : 'Completed',
+    '1 active shift'
+  ];
+
+  if (sheet.getMaxColumns() < 14) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), 14 - sheet.getMaxColumns());
+  }
+
+  if (matchRow > 0) {
+    sheet.getRange(matchRow, 1, 1, 14).setValues([rowData]);
+  } else {
+    sheet.appendRow(rowData);
+  }
+  return rowData;
+}
+
 function setupSheetsSchema() {
   var ss = getSpreadsheet();
   var schema = [
@@ -1285,10 +1362,20 @@ function doPost(e) {
           upsertLiveTrackingSessionRow(liveSessSheet, pData);
         }
 
-        // 3. Also keep Time_Logs updated if agent is currently tracking
+        // 3. Keep Time_Logs and Timesheets updated if agent is currently tracking
         var tLogsSheet = ss.getSheetByName('Time_Logs');
         if (tLogsSheet && pData.isTracking) {
           upsertLiveTrackingSessionRow(tLogsSheet, pData);
+        }
+        var timesheetsSheet = ss.getSheetByName('Timesheets') || ss.getSheetByName('Timesheet');
+        if (timesheetsSheet && pData.isTracking) {
+          upsertLiveTrackingSessionRow(timesheetsSheet, pData);
+        }
+
+        // 4. Keep Daily_Summary updated if agent is currently tracking
+        var dailySummarySheet = ss.getSheetByName('Daily_Summary');
+        if (dailySummarySheet && pData.isTracking) {
+          upsertDailySummaryRow(dailySummarySheet, pData);
         }
       }
       SpreadsheetApp.flush();
@@ -1571,6 +1658,36 @@ function doPost(e) {
           (t.keyboardActivityAvg != null ? t.keyboardActivityAvg : 0) + '%',
           t.status || (eTime === 'Running Live' ? 'running' : 'completed'),
           t.notes || ''
+        ]);
+      });
+
+      // Also inject all actively tracking sessions from rawPresenceList into activeRows
+      rawPresenceList.forEach(function(p) {
+        if (!p || (!p.isTracking && String(p.statusLabel || '').indexOf('Live Tracking') === -1)) return;
+        var pCode = String(p.employeeCode || '').toUpperCase();
+        var pName = resolveStaffFullName(pCode, p.userName || p.name, p.userName || p.name, p.userId);
+        var pSessionId = 'live-' + (p.userId || (pCode !== 'N/A' ? pCode.toLowerCase() : 'agent'));
+        if (activeSeen[pSessionId]) return;
+        activeSeen[pSessionId] = true;
+
+        var elapsed = typeof p.elapsedSeconds === 'number' ? Math.max(0, Math.floor(p.elapsedSeconds)) : 0;
+        var sTime = p.firstCheckin || Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a');
+        activeRows.push([
+          pSessionId,
+          pCode || 'N/A',
+          pName,
+          p.designation || 'Agent',
+          p.currentTask || 'Active Work',
+          todayStr,
+          sTime,
+          'Running Live',
+          elapsed,
+          formatTotalTime(elapsed),
+          '0 mins',
+          (p.mouseActivity != null ? p.mouseActivity : 95) + '%',
+          (p.keyboardActivity != null ? p.keyboardActivity : 95) + '%',
+          'running',
+          'Active tracking in progress'
         ]);
       });
 

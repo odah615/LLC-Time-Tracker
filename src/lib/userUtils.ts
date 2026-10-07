@@ -1,7 +1,9 @@
 import { User } from '../types';
 
-export const CANONICAL_EMPLOYEE_DIRECTORY: Record<string, { name: string; username: string; email: string; role: 'admin' | 'trainer' | 'agent'; designation: string }> = {
+export const CANONICAL_EMPLOYEE_DIRECTORY: Record<string, { name: string; username: string; email: string; role: 'admin' | 'trainer' | 'agent' | 'team_lead'; designation: string }> = {
   'SUPERADMIN': { name: 'Admin', username: 'admin', email: 'admin@llc.com', role: 'admin', designation: 'Admin' },
+  'LLC-0001': { name: 'Agent_Admin', username: 'agent_admin', email: 'agent_admin@llc.com', role: 'admin', designation: 'Admin' },
+  'LLC-0002': { name: 'Team_Leader1', username: 'team_leader1', email: 'team_leader1@llc.com', role: 'team_lead', designation: 'Team Leader' },
   'LLC-0003': { name: 'Pia', username: 'trainer', email: 'piaodahcam@gmail.com', role: 'trainer', designation: 'Trainer' },
   'LLC-0004': { name: 'Alexa Gabrielle Bardaje', username: 'agabr', email: 'bardajealexagabrielle@gmail.com', role: 'agent', designation: 'Agent' },
   'LLC-0005': { name: 'April Sam Dimaano', username: 'asamd', email: 'dimaanosam2@gmail.com', role: 'agent', designation: 'Agent' },
@@ -22,39 +24,109 @@ export const CANONICAL_EMPLOYEE_DIRECTORY: Record<string, { name: string; userna
   'LLC-0020': { name: 'Rubilyne Barrameda', username: 'rbarr', email: 'brubilyne@gmail.com', role: 'agent', designation: 'Agent' },
   'LLC-0021': { name: 'Shiela Romey', username: 'srome', email: 'mizfeb@hotmail.com', role: 'agent', designation: 'Agent' },
   'LLC-0022': { name: 'Trixy Ashley Decena Mabutol', username: 'tashl', email: 'trixdecena@gmail.com', role: 'agent', designation: 'Agent' },
+  'LLC-0023': { name: 'Juan David', username: 'jdavid', email: 'jdavid@gmail.com', role: 'agent', designation: 'Agent' },
+  'LLC-0024': { name: 'Carl', username: 'carl', email: 'carl@llc.com', role: 'team_lead', designation: 'Team Leader' },
+  'LLC-0025': { name: 'Lyanne', username: 'lyanne', email: 'lyanne@llc.com', role: 'team_lead', designation: 'Team Leader' },
+  'LLC-0026': { name: 'Allen', username: 'allen', email: 'allen@llc.com', role: 'team_lead', designation: 'Team Leader' },
+  'LLC-0027': { name: 'Bryan', username: 'bryan', email: 'bryan@llc.com', role: 'team_lead', designation: 'Team Leader' },
+  'LLC-0028': { name: 'Test Agent', username: 'testagent', email: 'testagent@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0029': { name: 'Kyra', username: 'kyra', email: 'kyra@llc.com', role: 'team_lead', designation: 'Team Leader' },
+  'LLC-0030': { name: 'Hosen', username: 'hosen', email: 'hosen@llc.com', role: 'team_lead', designation: 'Team Leader' },
+  'LLC-0031': { name: 'Danah', username: 'danah', email: 'danah@llc.com', role: 'team_lead', designation: 'Team Leader' },
+  'LLC-0032': { name: 'Miko Carmel', username: 'mcarm', email: 'miko@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0033': { name: 'Jocelyn Enriquez', username: 'jenri', email: 'jocelyn@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0034': { name: 'Omar Apolinario', username: 'oapol', email: 'omar@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0035': { name: 'John Gabriel Pai', username: 'jgpai', email: 'john@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0036': { name: 'Amy Janine Pedrito', username: 'ajped', email: 'amy@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0037': { name: 'Nicole Alcantara', username: 'nalca', email: 'nicole@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0038': { name: 'Chessa Mae Ful', username: 'cmful', email: 'chessa@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0039': { name: 'Myra Balatbat', username: 'mbala', email: 'myra@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0040': { name: 'John Cedric San', username: 'jcsan', email: 'cedric@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0041': { name: 'Jhureza Lazo', username: 'jlazo', email: 'jhureza@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0042': { name: 'Orpha Percy', username: 'operc', email: 'orpha@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0043': { name: 'Judy', username: 'judy', email: 'judy@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0044': { name: 'Ann Abad', username: 'aabad', email: 'ann@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0045': { name: 'Aiza Gonzales', username: 'agall', email: 'aiza@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0049': { name: 'Paolo Leanillo', username: 'plean', email: 'paolo@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0053': { name: 'Paul Jeffrey Bulosan', username: 'pjbul', email: 'paul@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0060': { name: 'Justine Hiceta', username: 'jhice', email: 'justine@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0063': { name: 'Beinalyn Dianala', username: 'bdian', email: 'beinalyn@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0102': { name: 'Jessa Fuentes', username: 'jfuen', email: 'jessa@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0106': { name: 'Camille', username: 'camil', email: 'camille@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0109': { name: 'Esperanza Bacalla', username: 'ebaca', email: 'esperanza@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0110': { name: 'Albert Monfero', username: 'amonf', email: 'albert@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0116': { name: 'Michellenie Mae Yntela', username: 'myntela', email: 'michellenie@llc.com', role: 'agent', designation: 'Agent' },
+  'LLC-0120': { name: 'Niña Carmella Domingo', username: 'ndomi', email: 'nina@llc.com', role: 'agent', designation: 'Agent' },
 };
 
 /**
  * Resolves a user's canonical Full Name and verified details by checking
  * employee code, username, ID, or email against the authoritative roster.
  */
-export const resolveCanonicalEmployee = (input: {
+export const resolveCanonicalEmployee = (input?: {
   employeeCode?: string;
   name?: string;
   username?: string;
   email?: string;
   id?: string;
-}): { code: string; name: string; username: string; email: string; role: 'admin' | 'trainer' | 'agent'; designation: string } | null => {
+} | string | null): { code: string; name: string; username: string; email: string; role: 'admin' | 'trainer' | 'agent' | 'team_lead'; designation: string } | null => {
   if (!input) return null;
-  const rawCode = (input.employeeCode || '').toUpperCase().trim();
+
+  let rawCode = '';
+  let rawUser = '';
+  let rawName = '';
+  let rawEmail = '';
+  let rawId = '';
+
+  if (typeof input === 'string') {
+    const s = input.trim();
+    if (/^LLC[-_]?\d+/i.test(s)) {
+      rawCode = s.toUpperCase();
+    } else if (s.includes('@')) {
+      rawEmail = s.toLowerCase();
+    } else {
+      rawUser = s.toLowerCase();
+      rawName = s;
+      rawId = s.toLowerCase();
+    }
+  } else {
+    rawCode = (input.employeeCode || '').toUpperCase().trim();
+    rawUser = (input.username || '').toLowerCase().trim();
+    rawName = (input.name || '').toLowerCase().trim();
+    rawEmail = (input.email || '').toLowerCase().trim();
+    rawId = (input.id || '').toLowerCase().trim();
+  }
+
   const numCode = rawCode.replace(/^[A-Z\-_]+/, '');
-  const rawUser = (input.username || '').toLowerCase().trim();
-  const rawName = (input.name || '').toLowerCase().trim();
-  const rawEmail = (input.email || '').toLowerCase().trim();
-  const rawId = (input.id || '').toLowerCase().trim();
 
   for (const [code, info] of Object.entries(CANONICAL_EMPLOYEE_DIRECTORY)) {
     const infoNum = code.replace(/^[A-Z\-_]+/, '');
-    const codeMatch = rawCode === code || (numCode && numCode === infoNum) || (rawCode.includes(infoNum) && infoNum.length >= 2);
-    const userMatch = rawUser === info.username || (rawUser.length >= 3 && rawUser === info.username);
-    const nameMatch = rawName === info.name.toLowerCase() || rawName === info.username || rawName === code.toLowerCase();
+    const codeMatch = (rawCode && rawCode === code) || (numCode && infoNum && numCode === infoNum);
+    const userMatch = rawUser && rawUser === info.username.toLowerCase();
+    const nameMatch = rawName && (rawName === info.name.toLowerCase() || rawName.includes(info.name.toLowerCase()) || info.name.toLowerCase().includes(rawName));
     const emailMatch = rawEmail && rawEmail === info.email.toLowerCase();
-    const idMatch = rawId.includes(code.toLowerCase()) || rawId.includes(info.username);
+    const idMatch = rawId && (rawId.includes(code.toLowerCase()) || rawId.includes(info.username.toLowerCase()));
 
     if (codeMatch || userMatch || nameMatch || emailMatch || idMatch) {
       return { code, ...info };
     }
   }
+
+  // Dynamic fallback for any employee so they are never dropped or returned as null
+  if (rawCode || rawName || rawUser) {
+    const cleanCode = rawCode || `LLC-${numCode || '0023'}`;
+    const cleanName = rawName || rawUser || cleanCode;
+    const cleanUser = rawUser || cleanName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return {
+      code: cleanCode,
+      name: cleanName,
+      username: cleanUser,
+      email: rawEmail || `${cleanUser}@llctimetracker.com`,
+      role: 'agent',
+      designation: 'Agent',
+    };
+  }
+
   return null;
 };
 
