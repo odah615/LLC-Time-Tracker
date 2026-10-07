@@ -85,7 +85,7 @@ if (!isFirestoreLoaded) {
     // PRODUCTION AUTHENTICATION
     // Apps Script Employee_Auth is the authoritative credential source.
     try {
-      const authResponse = await fetch('/api/sync-sheets', {
+      const authResponse = await fetch('https://llc-time-tracker.pages.dev/api/sync-sheets', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -730,7 +730,7 @@ let foundUser = authUsers.find((u) => {
                 onClick={() => setShowDownloadModal(false)}
                 className="text-slate-400 hover:text-slate-600 text-sm font-bold"
               >
-                âœ•
+                Ã¢Å“â€¢
               </button>
             </div>
 
@@ -744,7 +744,7 @@ let foundUser = authUsers.find((u) => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                ðŸ–¥ï¸ Windows OS (.exe / .bat)
+                Ã°Å¸â€“Â¥Ã¯Â¸Â Windows OS (.exe / .bat)
               </button>
               <button
                 onClick={() => setDownloadOS('mac')}
@@ -754,7 +754,7 @@ let foundUser = authUsers.find((u) => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                ðŸŽ macOS (Apple)
+                Ã°Å¸ÂÅ½ macOS (Apple)
               </button>
               <button
                 onClick={() => setDownloadOS('linux')}
@@ -764,7 +764,7 @@ let foundUser = authUsers.find((u) => {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                ðŸ§ Linux OS
+                Ã°Å¸ÂÂ§ Linux OS
               </button>
             </div>
 
@@ -777,7 +777,7 @@ let foundUser = authUsers.find((u) => {
                     <Download className="w-4 h-4 text-emerald-700" /> Option 1: Instant Native Desktop Launcher (100% Safe)
                   </span>
                   <span className="text-[10px] bg-emerald-600 text-white font-bold px-2 py-0.5 rounded-full">
-                    RECOMMENDED â€¢ 0-INSTALL
+                    RECOMMENDED Ã¢â‚¬Â¢ 0-INSTALL
                   </span>
                 </div>
                 <p className="text-[11px] text-emerald-900 leading-relaxed">
@@ -827,7 +827,7 @@ let foundUser = authUsers.find((u) => {
                     <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" /> Getting "Application Control policy has blocked this file"?
                   </div>
                   <p className="leading-relaxed text-amber-900">
-                    Windows 11 Smart App Control blocks unsigned shortcuts. <strong>Solution:</strong> Use <strong>Option 1 (Instant Launcher)</strong> above, or right-click the blocked file â†’ click <strong>Properties</strong> â†’ check the <strong>"Unblock"</strong> checkbox at the bottom â†’ click <strong>Apply</strong>.
+                    Windows 11 Smart App Control blocks unsigned shortcuts. <strong>Solution:</strong> Use <strong>Option 1 (Instant Launcher)</strong> above, or right-click the blocked file Ã¢â€ â€™ click <strong>Properties</strong> Ã¢â€ â€™ check the <strong>"Unblock"</strong> checkbox at the bottom Ã¢â€ â€™ click <strong>Apply</strong>.
                   </p>
                 </div>
               )}
