@@ -2508,7 +2508,7 @@ if (mode === 'software') {
       });
 
       // Transmit instant login heartbeat to Google Sheets so agent immediately appears online & tracking
-      const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
+      const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || DEFAULT_WEBHOOK_URL;
       if (activeHook && isValidWebhookUrl(activeHook)) {
         syncAgentHeartbeatToSheets(activeHook.trim(), {
           userId: user.id,
@@ -2587,7 +2587,7 @@ if (mode === 'software') {
         );
 
         // Transmit instant logout heartbeat to Google Sheets so agent immediately appears offline
-        const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
+        const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || DEFAULT_WEBHOOK_URL;
         if (activeHook && isValidWebhookUrl(activeHook)) {
           syncAgentHeartbeatToSheets(activeHook.trim(), {
             userId: currentUser.id,
@@ -3770,7 +3770,7 @@ if (mode === 'software') {
       );
 
       // Instantly sync active tracking status to Google Sheets database
-      const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
+      const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || DEFAULT_WEBHOOK_URL;
       if (activeHook && isValidWebhookUrl(activeHook)) {
         syncAgentHeartbeatToSheets(activeHook.trim(), {
           userId: currentUser.id,

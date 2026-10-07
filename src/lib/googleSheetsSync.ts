@@ -1026,6 +1026,7 @@ function upsertSinglePresenceRow(sheet, p) {
     try {
       var maxCols = Math.max(sheet.getLastColumn(), 13);
       var sheetData = sheet.getRange(2, 1, lastRow - 1, maxCols).getValues();
+      var nowMs = new Date().getTime();
       for (var r = 0; r < sheetData.length; r++) {
         var row = sheetData[r];
         var rowCode = String(row[0] || '').trim().toUpperCase();
@@ -1035,7 +1036,17 @@ function upsertSinglePresenceRow(sheet, p) {
             (resolvedName && rowName === resolvedName.toLowerCase())) {
           matchRow = r + 2;
           existingRow = row;
-          break;
+        } else {
+          // Auto-sweep stale rows older than 5 minutes that are still marked as active
+          var rowStatus = String(row[5] || '');
+          var rowIso = String(row[12] || '');
+          if (rowStatus.indexOf('Live Tracking') !== -1 || rowStatus.indexOf('Online') !== -1) {
+            var rowTime = rowIso ? new Date(rowIso).getTime() : 0;
+            if (rowTime > 0 && (nowMs - rowTime) > 300000) {
+              sheet.getRange(r + 2, 6).setValue('⚪ Offline');
+              sheet.getRange(r + 2, 7).setValue('Shift Concluded');
+            }
+          }
         }
       }
     } catch (e) {}
@@ -3271,11 +3282,12 @@ export const syncAgentHeartbeatToSheets = async (
   webhookUrl: string,
   heartbeat: AgentHeartbeatPayload
 ): Promise<{ success: boolean; message: string }> => {
-  if (!webhookUrl || !webhookUrl.trim() || !isValidWebhookUrl(webhookUrl)) {
+  const targetUrl = webhookUrl?.trim() || DEFAULT_WEBHOOK_URL;
+  if (!targetUrl || !isValidWebhookUrl(targetUrl)) {
     return { success: false, message: 'Invalid or missing Google Sheets Webhook URL.' };
   }
 
-  const cleanUrl = webhookUrl.trim();
+  const cleanUrl = targetUrl.trim();
   const payload = {
     action: 'HEARTBEAT_UPDATE',
     presence: {
@@ -3286,39 +3298,15 @@ export const syncAgentHeartbeatToSheets = async (
   };
 
   try {
-    // Strategy 1: Dev / Node Server proxy
-    try {
-      const proxyRes = await fetch('/api/sync-sheets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ webhookUrl: cleanUrl, payload }),
-      });
-      if (proxyRes.ok) {
-        return { success: true, message: 'Heartbeat synced via server proxy' };
-      }
-    } catch (e) {
-      // Server proxy unavailable, proceed to Strategy 2
-    }
-
-    // Strategy 2: Direct browser fetch with mode: 'no-cors'
-    try {
-      await fetch(cleanUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify(payload),
-      });
-    } catch (corsErr) {
-      await fetch(cleanUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify(payload),
-      });
-    }
+    // Direct browser fetch to Google Apps Script (bypasses static host proxy misdirection)
+    await fetch(cleanUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(payload),
+    });
 
     return {
       success: true,
@@ -3577,11 +3565,23 @@ export const fetchLivePresenceFromGoogleSheets = async (
               const appStr = (r[7] || '').trim();
               const isoHb = (r[12] || '').trim();
 
-              const isTracking = statusStr.includes('Live Tracking') || statusStr.includes('Tracking');
-              const isIdle = statusStr.includes('Idle') || statusStr.includes('Break');
-              const isDesktop = platformMode.includes('Desktop') || statusStr.includes('Desktop') || isTracking;
               const isWeb = platformMode.includes('Website') || statusStr.includes('Website');
-              const isOffline = statusStr.includes('Offline') || (!isTracking && !isIdle && !isDesktop && !isWeb);
+
+              // If last heartbeat was more than 5 minutes ago, mark agent as offline
+              let isHeartbeatStale = false;
+              if (isoHb) {
+                const hbTime = new Date(isoHb).getTime();
+                if (!isNaN(hbTime) && (Date.now() - hbTime) > 5 * 60 * 1000) {
+                  isHeartbeatStale = true;
+                }
+              }
+
+              const rawIsTracking = statusStr.includes('Live Tracking') || statusStr.includes('Tracking');
+              const rawIsIdle = statusStr.includes('Idle') || statusStr.includes('Break');
+              const isTracking = !isHeartbeatStale && rawIsTracking;
+              const isIdle = !isHeartbeatStale && rawIsIdle;
+              const isDesktop = !isHeartbeatStale && (platformMode.includes('Desktop') || statusStr.includes('Desktop') || isTracking);
+              const isOffline = isHeartbeatStale || statusStr.includes('Offline') || (!isTracking && !isIdle && !isDesktop && !isWeb);
 
               const matchedUser =
                 (code && userMap.get(code.toUpperCase())) ||
