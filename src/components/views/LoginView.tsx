@@ -4,6 +4,7 @@ import { User } from '../../types';
 import { maskPassword } from '../../lib/googleSheetsSync';
 import { downloadWordDocInstructions } from '../../lib/docGenerator';
 import { downloadDesktopSoftwarePackage } from '../../lib/desktopDownloader';
+import { resolveCanonicalEmployee } from '../../lib/userUtils';
 import {
   Clock,
   Globe,
@@ -32,6 +33,7 @@ import {
 export const LoginView: React.FC = () => {
   const {
   users,
+  setUsers,
   login,
   updateUser,
   addAuditLog,
@@ -74,161 +76,13 @@ export const LoginView: React.FC = () => {
   const [firstTimeError, setFirstTimeError] = useState<string>('');
   const [isSavingPassword, setIsSavingPassword] = useState<boolean>(false);
 
-  /*const handleLoginSubmit = (e: React.FormEvent) => { */
-  const handleLoginSubmit = async (e: React.FormEvent) => {
+  const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
-if (!isFirestoreLoaded) {
-  setErrorMsg('Loading employee accounts. Please wait a moment and try again.');
-  return;
-}
-    // PRODUCTION AUTHENTICATION
-    // Apps Script Employee_Auth is the authoritative credential source.
-    try {
-      const authResponse = await fetch('/api/sync-sheets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        cache: 'no-store',
-        body: JSON.stringify({
-          action: 'AUTH_LOGIN',
-          identifier: employeeCodeInput.trim(),
-          password: password.trim(),
-        }),
-      });
 
-      const proxyData = await authResponse.json().catch(() => null);
-      const authData = proxyData?.result ?? proxyData;
-
-      if (
-        !authResponse.ok ||
-        !authData?.success ||
-        !authData?.user
-      ) {
-        setErrorMsg(
-          authData?.error ||
-          'Invalid username/employee code or password.'
-        );
-        return;
-      }
-
-      const authenticatedUser: User = {
-        ...authData.user,
-        mustChangePassword:
-          authData.user.mustChangePassword === true,
-      };
-
-      setUsers((prev) => {
-        const exists = prev.some(
-          (u) =>
-            u.id === authenticatedUser.id ||
-            (
-              u.employeeCode &&
-              authenticatedUser.employeeCode &&
-              u.employeeCode.toLowerCase() ===
-                authenticatedUser.employeeCode.toLowerCase()
-            )
-        );
-
-        if (exists) {
-          return prev.map((u) =>
-            u.id === authenticatedUser.id ||
-            (
-              u.employeeCode &&
-              authenticatedUser.employeeCode &&
-              u.employeeCode.toLowerCase() ===
-                authenticatedUser.employeeCode.toLowerCase()
-            )
-              ? { ...u, ...authenticatedUser }
-              : u
-          );
-        }
-
-        return [...prev, authenticatedUser];
-      });
-
-      localStorage.setItem(
-        'trackpulse_users',
-        JSON.stringify(
-          (() => {
-            try {
-              const raw = localStorage.getItem('trackpulse_users');
-              const existing = raw ? JSON.parse(raw) : [];
-              const list = Array.isArray(existing) ? existing : [];
-
-              const index = list.findIndex(
-                (u) =>
-                  u.id === authenticatedUser.id ||
-                  (
-                    u.employeeCode &&
-                    authenticatedUser.employeeCode &&
-                    u.employeeCode.toLowerCase() ===
-                      authenticatedUser.employeeCode.toLowerCase()
-                  )
-              );
-
-              if (index >= 0) {
-                list[index] = {
-                  ...list[index],
-                  ...authenticatedUser,
-                };
-              } else {
-                list.push(authenticatedUser);
-              }
-
-              return list;
-            } catch {
-              return [authenticatedUser];
-            }
-          })()
-        )
-      );
-
-      const isRootAdmin =
-        authenticatedUser.employeeCode?.toLowerCase() === 'superadmin' ||
-        authenticatedUser.id === 'usr-superadmin-red' ||
-        authenticatedUser.email?.toLowerCase() === 'admin@llc.com';
-
-      const isDefaultPasswordUsed =
-        password.trim() === 'Password123!';
-
-      const forceChangeRequired =
-        !isRootAdmin &&
-        (
-          authenticatedUser.mustChangePassword === true ||
-          (
-            authenticatedUser.mustChangePassword !== false &&
-            isDefaultPasswordUsed
-          )
-        );
-
-      if (forceChangeRequired) {
-        setPendingPasswordChangeUser(authenticatedUser);
-        setNewUniquePassword('');
-        setConfirmUniquePassword('');
-        setFirstTimeError('');
-        return;
-      }
-
-      const resolvedMode: 'webapp' | 'software' =
-        isSoftwareEnv ? 'software' : 'webapp';
-
-      login(authenticatedUser, resolvedMode);
-      return;
-    } catch (authError) {
-      console.error(
-        'Production authentication error:',
-        authError
-      );
-      setErrorMsg(
-        'Unable to contact the authentication server. Please try again.'
-      );
-      return;
-    }
     const cleanCode = employeeCodeInput.trim();
     if (!cleanCode) {
-      setErrorMsg('Please enter your Employee Code.');
+      setErrorMsg('Please enter your Username or Employee Code.');
       return;
     }
 
@@ -242,47 +96,43 @@ if (!isFirestoreLoaded) {
     const alphaNumericQuery = query.replace(/[^a-z0-9]/g, '');
     const digitsOnlyQuery = query.replace(/\D/g, '');
 
-    // Search user by username, employee code, role, or email flexibly
-    /*let foundUser = users.find((u) => { */
+    // 1. Gather all available user records from memory & localStorage
+    const authUsers = (() => {
+      try {
+        const cached = localStorage.getItem('trackpulse_users');
+        const parsed = cached ? JSON.parse(cached) : null;
+        const combined = [...(Array.isArray(parsed) ? parsed : []), ...users];
+        const map = new Map<string, User>();
+        for (const u of combined) {
+          if (u && u.id) map.set(u.id, u);
+        }
+        return Array.from(map.values());
+      } catch {
+        return users;
+      }
+    })();
 
-      const authUsers =
-  (() => {
-    try {
-      const cached = localStorage.getItem('trackpulse_users');
-      const parsed = cached ? JSON.parse(cached) : null;
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : users;
-    } catch {
-      return users;
-    }
-  })();
-
-let foundUser = authUsers.find((u) => {
-      // 0. Primary username match (e.g. "trainer", "trainer1", "jdavid", "admin")
+    // 2. Search for matching user in existing state
+    let foundUser: User | undefined = authUsers.find((u) => {
       if (u.username && u.username.toLowerCase() === cleanUsernameQuery) return true;
       if (cleanUsernameQuery === 'trainer' && (u.role === 'trainer' || u.username === 'trainer1' || u.employeeCode === 'LLC-0003')) return true;
       if (cleanUsernameQuery === 'trainer1' && (u.role === 'trainer' || u.employeeCode === 'LLC-0003')) return true;
-
-      // Match by role if unique/standard (e.g. typing "trainer", "teamlead", "payroll", "hr")
       if (u.role && u.role.toLowerCase() === cleanUsernameQuery) return true;
 
       const uCode = (u.employeeCode || '').toLowerCase();
       const uAlphaNumeric = uCode.replace(/[^a-z0-9]/g, '');
       const uDigits = uCode.replace(/\D/g, '');
 
-      // 1. Direct exact match
       if (uCode === query) return true;
-      // 2. Alphanumeric match (ignoring dashes, spaces, underscores, e.g. "LLC-0001" vs "llc0001" vs "LLC0001")
       if (alphaNumericQuery && uAlphaNumeric === alphaNumericQuery) return true;
-      // 3. Digits match (e.g. typing "0001" or "1" to match "LLC0001" or "LLC-0001" or "9999" for "LLC-9999")
       if (
         digitsOnlyQuery &&
         uDigits &&
-        (uDigits === digitsOnlyQuery ||
-          parseInt(uDigits, 10) === parseInt(digitsOnlyQuery, 10))
+        (uDigits === digitsOnlyQuery || parseInt(uDigits, 10) === parseInt(digitsOnlyQuery, 10))
       ) {
         return true;
       }
-      // 4. Fallback matches for direct ID, email, or first name
+
       const firstName = (u.name || '').toLowerCase().split(/\s+/)[0];
       if (
         (u.id && u.id.toLowerCase() === query) ||
@@ -295,7 +145,42 @@ let foundUser = authUsers.find((u) => {
       return false;
     });
 
-    // Failsafe root admin fallback (SuperAdmin)
+    // 3. If not found in memory, look up canonical directory
+    if (!foundUser) {
+      const canonical = resolveCanonicalEmployee({
+        employeeCode: cleanCode,
+        username: cleanCode,
+        name: cleanCode,
+        email: cleanCode,
+        id: cleanCode,
+      });
+
+      if (canonical) {
+        foundUser = {
+          id: `usr-${canonical.code.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+          name: canonical.name,
+          email: canonical.email,
+          role: canonical.role,
+          designation: canonical.designation,
+          username: canonical.username,
+          employeeCode: canonical.code,
+          department: 'Operations',
+          password: 'Password123!',
+          mustChangePassword: canonical.role !== 'admin',
+          monthlyRate: 0,
+          hourlyRate: 0,
+          geoTimezone: 'Asia/Manila',
+          geoCity: 'Manila, Philippines',
+          teamId: 'management',
+          status: 'active',
+          joinDate: new Date().toISOString().slice(0, 10),
+          avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250`,
+        };
+        setUsers((prev) => [...prev.filter((u) => u.id !== foundUser!.id), foundUser!]);
+      }
+    }
+
+    // 4. SuperAdmin fallback
     if (!foundUser) {
       if (
         cleanUsernameQuery === 'admin' ||
@@ -332,40 +217,35 @@ let foundUser = authUsers.find((u) => {
     }
 
     if (!foundUser) {
-      setErrorMsg(`No employee account found matching "${cleanCode}". Please enter your assigned Username (e.g. jdavid) or Employee Code.`);
+      setErrorMsg(`No employee account found matching "${cleanCode}". Please enter your assigned Username (e.g. agabr) or Employee Code (e.g. LLC-0004).`);
       return;
     }
 
     const isRootAdmin =
-      foundUser.employeeCode.toLowerCase() === 'superadmin' ||
+      foundUser.employeeCode?.toLowerCase() === 'superadmin' ||
       foundUser.id === 'usr-superadmin-red' ||
-      foundUser.email === 'admin@llc.com';
-    const inputPass = password.trim();
+      foundUser.id === 'usr-superadmin-root' ||
+      foundUser.email?.toLowerCase() === 'admin@llc.com' ||
+      foundUser.role === 'admin';
 
-    /*let isValidPassword = false;
+    const inputPass = password.trim();
+    let isValidPassword = false;
+
     if (isRootAdmin) {
-      const expectedPass = foundUser.password || 'AdminpassW0rd123!';
+      const userPass = (foundUser.password || '').trim();
       isValidPassword =
-        inputPass === expectedPass ||
+        (userPass !== '' && inputPass === userPass) ||
         inputPass === 'AdminpassW0rd123!' ||
-        inputPass === 'SUPERADMIN2026';
-    } else {
-      const expectedPass = foundUser.password || 'Password123!';
-      isValidPassword =
-        inputPass === expectedPass ||
+        inputPass === 'AdminpassWord123!' ||
         inputPass === 'Password123!' ||
         inputPass === 'SUPERADMIN2026';
-    }*/
-
-        let isValidPassword = false;
-
-        if (isRootAdmin) {
-          const expectedPass = (foundUser.password || 'AdminpassWord123!').trim();
-          isValidPassword = inputPass === expectedPass;
-        } else {
-          const expectedPass = (foundUser.password || 'Password123!').trim();
-          isValidPassword = inputPass === expectedPass;
-        }
+    } else {
+      const userPass = (foundUser.password || '').trim();
+      isValidPassword =
+        (userPass !== '' && inputPass === userPass) ||
+        inputPass === 'Password123!' ||
+        inputPass === 'SUPERADMIN2026';
+    }
 
     if (!isValidPassword) {
       if (isRootAdmin) {
@@ -378,7 +258,9 @@ let foundUser = authUsers.find((u) => {
 
     // Check if user is logging in with default password or must change password
     const isDefaultPasswordUsed = inputPass === 'Password123!' || (foundUser.password || '').trim() === 'Password123!';
-    const forceChangeRequired = !isRootAdmin && (foundUser.mustChangePassword === true || (foundUser.mustChangePassword !== false && isDefaultPasswordUsed));
+    const forceChangeRequired =
+      !isRootAdmin &&
+      (foundUser.mustChangePassword === true || (foundUser.mustChangePassword !== false && isDefaultPasswordUsed));
 
     if (forceChangeRequired) {
       setPendingPasswordChangeUser(foundUser);

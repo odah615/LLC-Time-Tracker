@@ -1,4 +1,4 @@
-﻿import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import {
   User,
   TimeLog,
@@ -169,6 +169,7 @@ interface TaskSwitchPending {
 interface AppContextType {
   currentUser: User;
   users: User[];
+  setUsers: React.Dispatch<React.SetStateAction<User[]>>;
   setCurrentUser: (user: User) => void;
   // Cloud Quota & Connection Health
   isCloudQuotaExhausted: boolean;
@@ -1027,9 +1028,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Merge Sheets employees into the existing app roster.
   // Employees missing temporarily from Sheets must NOT be deleted.
 
-  const existingById = new Map(users.map((u) => [u.id, u]));
+  const existingById = new Map<string, User>(users.map((u) => [u.id, u]));
 
-  const existingByCode = new Map(
+  const existingByCode = new Map<string, User>(
     users
       .filter((u) => u.employeeCode)
       .map((u) => [String(u.employeeCode).toUpperCase(), u])
@@ -1986,7 +1987,7 @@ hydrateTimeLogsFromSheets();
         .then((remoteLogs) => {
           if (Array.isArray(remoteLogs) && remoteLogs.length > 0) {
             setTimeLogs((prev) => {
-              const map = new Map(prev.map((l) => [l.id, l]));
+              const map = new Map<string, any>(prev.map((l) => [l.id, l]));
               let hasChanges = false;
               for (const item of remoteLogs) {
                 if (!item || !item.id) continue;
@@ -5528,6 +5529,7 @@ if (mode === 'software') {
       value={{
         currentUser,
         users,
+        setUsers,
         setCurrentUser,
         isCloudQuotaExhausted,
         isAuthenticated,
