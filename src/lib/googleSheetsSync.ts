@@ -3276,12 +3276,12 @@ export interface AgentHeartbeatPayload {
 
 /**
  * Transmits a targeted individual tracking pulse under a dedicated action: 'HEARTBEAT_UPDATE'.
- * Runs periodically (every 60s) from active agent machines to update only their own row in Live_Presence.
+ * Runs periodically (every 20s while tracking) from active agent machines to update only their own row in Live_Presence.
  */
 export const syncAgentHeartbeatToSheets = async (
   webhookUrl: string,
   heartbeat: AgentHeartbeatPayload
-): Promise<{ success: boolean; message: string }> => {
+): Promise<{ success: boolean; message: string; result?: any }> => {
   const targetUrl = webhookUrl?.trim() || DEFAULT_WEBHOOK_URL;
   if (!targetUrl || !isValidWebhookUrl(targetUrl)) {
     return { success: false, message: 'Invalid or missing Google Sheets Webhook URL.' };
@@ -3297,26 +3297,82 @@ export const syncAgentHeartbeatToSheets = async (
     syncedAt: new Date().toISOString(),
   };
 
+  const transport = '/api/sync-sheets';
+
   try {
-    // Direct browser fetch to Google Apps Script (bypasses static host proxy misdirection)
-    await fetch(cleanUrl, {
+    const res = await fetch('/api/sync-sheets', {
       method: 'POST',
-      mode: 'no-cors',
       headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        webhookUrl: cleanUrl,
+        payload,
+      }),
     });
 
-    return {
-      success: true,
-      message: 'Heartbeat pulse transmitted to Google Sheets successfully!',
-    };
+    const serverStatus = res.status;
+    let data: any = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+
+    const appsScriptResult = data?.result || data;
+    const appsScriptStatus =
+      data?.appsScriptStatus ||
+      appsScriptResult?.status ||
+      (appsScriptResult?.success ? 'SUCCESS' : (data?.success ? 'SUCCESS' : 'UNKNOWN'));
+
+    console.log('[SHEETS HEARTBEAT]', {
+      employeeCode: heartbeat.employeeCode,
+      userId: heartbeat.userId,
+      isTracking: heartbeat.isTracking,
+      elapsedSeconds: heartbeat.elapsedSeconds,
+      transport,
+      serverStatus,
+      appsScriptStatus,
+      result: appsScriptResult,
+    });
+
+    const isConfirmedSuccess =
+      res.ok &&
+      data?.success === true &&
+      (appsScriptStatus === 'SUCCESS' ||
+        appsScriptResult?.status === 'SUCCESS' ||
+        appsScriptResult?.action === 'HEARTBEAT_UPDATE');
+
+    if (isConfirmedSuccess) {
+      return {
+        success: true,
+        message: 'Heartbeat pulse transmitted and acknowledged by Google Sheets!',
+        result: appsScriptResult,
+      };
+    } else {
+      const errorMsg =
+        data?.error ||
+        appsScriptResult?.message ||
+        appsScriptResult?.error ||
+        `Heartbeat failed with HTTP ${serverStatus} (Apps Script status: ${appsScriptStatus})`;
+      return {
+        success: false,
+        message: errorMsg,
+        result: appsScriptResult,
+      };
+    }
   } catch (err: any) {
-    console.warn('Direct heartbeat sync warning:', err?.message || err);
+    console.error('[SHEETS HEARTBEAT] Transport failed:', {
+      employeeCode: heartbeat.employeeCode,
+      userId: heartbeat.userId,
+      isTracking: heartbeat.isTracking,
+      elapsedSeconds: heartbeat.elapsedSeconds,
+      transport,
+      error: err?.message || err,
+    });
     return {
       success: false,
-      message: `Heartbeat sync failed: ${err?.message || 'Network error'}`,
+      message: `Heartbeat transport failed: ${err?.message || 'Network error'}`,
     };
   }
 };

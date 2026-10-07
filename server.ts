@@ -525,18 +525,36 @@ app.post('/api/sync-sheets', async (req, res) => {
     });
 
     const text = await fetchResponse.text();
-    let jsonResult;
+    let googleResult: any;
     try {
-      jsonResult = JSON.parse(text);
+      googleResult = JSON.parse(text);
     } catch {
-      jsonResult = { response: text };
+      googleResult = { response: text };
     }
 
-    if (jsonResult && jsonResult.status === 'ERROR') {
-      return res.status(200).json({ success: false, error: jsonResult.message || 'Google Apps Script execution error', result: jsonResult });
-    }
+    const isSuccess =
+      fetchResponse.ok &&
+      (googleResult?.status === 'SUCCESS' ||
+        googleResult?.success === true ||
+        googleResult?.action === 'HEARTBEAT_UPDATE' ||
+        googleResult?.action === payload?.action);
 
-    res.json({ success: true, result: jsonResult });
+    return res.status(fetchResponse.ok ? 200 : fetchResponse.status).json({
+      success: isSuccess,
+      status: fetchResponse.status,
+      appsScriptStatus:
+        googleResult?.status ||
+        (googleResult?.success ? 'SUCCESS' : 'UNKNOWN'),
+      action: googleResult?.action || payload?.action,
+      result: googleResult,
+      error: !isSuccess
+        ? googleResult?.message ||
+          googleResult?.error ||
+          (fetchResponse.ok
+            ? 'Apps Script returned non-success response'
+            : `HTTP Error ${fetchResponse.status}`)
+        : undefined,
+    });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err?.message || String(err) });
   }

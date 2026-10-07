@@ -32,7 +32,7 @@ export async function onRequestPost(context: any) {
 
     const body = await request.json();
 
-    const webhookUrl = GOOGLE_APPS_SCRIPT_WEBHOOK_URL;
+    const webhookUrl = body?.webhookUrl || GOOGLE_APPS_SCRIPT_WEBHOOK_URL;
     const payload = body?.payload || body;
 
     if (
@@ -62,7 +62,7 @@ export async function onRequestPost(context: any) {
 
     const responseText = await googleResponse.text();
 
-    let googleResult: unknown;
+    let googleResult: any;
 
     try {
       googleResult = JSON.parse(responseText);
@@ -78,11 +78,32 @@ export async function onRequestPost(context: any) {
       googleResult
     );
 
-    return jsonResponse({
-      success: googleResponse.ok,
-      status: googleResponse.status,
-      result: googleResult,
-    });
+    const isSuccess =
+      googleResponse.ok &&
+      (googleResult?.status === "SUCCESS" ||
+        googleResult?.success === true ||
+        googleResult?.action === "HEARTBEAT_UPDATE" ||
+        googleResult?.action === payload?.action);
+
+    return jsonResponse(
+      {
+        success: isSuccess,
+        status: googleResponse.status,
+        appsScriptStatus:
+          googleResult?.status ||
+          (googleResult?.success ? "SUCCESS" : "UNKNOWN"),
+        action: googleResult?.action || payload?.action,
+        result: googleResult,
+        error: !isSuccess
+          ? googleResult?.message ||
+            googleResult?.error ||
+            (googleResponse.ok
+              ? "Apps Script returned non-success response"
+              : `HTTP Error ${googleResponse.status}`)
+          : undefined,
+      },
+      googleResponse.ok ? 200 : googleResponse.status
+    );
   } catch (error: any) {
     console.error("Cloudflare sync proxy error:", error);
 
