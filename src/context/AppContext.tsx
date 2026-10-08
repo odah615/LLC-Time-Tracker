@@ -1224,6 +1224,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...(existing || {}),
             ...log,
             id: log.id,
+            sessionId: log.sessionId || (log as any).session_id || existing?.sessionId || undefined,
+            loginSessionId: log.loginSessionId || (log as any).login_session_id || existing?.loginSessionId || undefined,
+            loginTime: log.loginTime || existing?.loginTime || undefined,
             employeeCode: resolvedEmpCode,
             userId: resolvedUserId,
             userName: resolvedUserName,
@@ -2320,55 +2323,39 @@ const allowedTasks =
 
 const initialTask = allowedTasks[0] || 'Email Reachout';
 
-if (mode === 'software') {
-  setIsTracking(true);
-  setIsPaused(false);
-  setElapsedSeconds(0);
-  setStartTimeIso(nowIso);
-  setCurrentTask(initialTask as TaskCategory);
-  setCurrentDesignation(userDesig);
+const loginSessId = `login-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+loginSessionIdRef.current = loginSessId;
+localStorage.setItem('trackpulse_login_session_id', loginSessId);
 
-  trackingSessionStartMsRef.current = nowMs;
-  lastActiveIntervalStartMsRef.current = nowMs;
-  trackingAccumulatedSecondsRef.current = 0;
-  lastMouseActiveTimestampRef.current = nowMs;
-  lastKeyboardActiveTimestampRef.current = nowMs;
+// FIX 1: Application LOGIN must NOT automatically start the work timer.
+// Login is authentication only -> Employee enters STANDBY / READY TO TRACK state.
+// Work tracking begins only when employee explicitly selects a task and clicks "Start Timer".
+setIsTracking(false);
+setIsPaused(false);
+setElapsedSeconds(0);
+setStartTimeIso(null);
+setCurrentTask(initialTask as TaskCategory);
+setCurrentDesignation(userDesig);
 
-  mouseActivityHistoryRef.current = [100];
-  keyboardActivityHistoryRef.current = [100];
+trackingSessionStartMsRef.current = 0;
+lastActiveIntervalStartMsRef.current = 0;
+trackingAccumulatedSecondsRef.current = 0;
+currentSessionIdRef.current = '';
+currentTaskSegmentStartMsRef.current = 0;
+currentTaskSegmentStartTimeIsoRef.current = '';
 
-  setCurrentMouseActivity(100);
-  setCurrentKeyboardActivity(100);
-  setCurrentInactivitySeconds(0);
-  setSessionIdleDeductionSeconds(0);
-  setIsIdleAlertActive(false);
+lastMouseActiveTimestampRef.current = nowMs;
+lastKeyboardActiveTimestampRef.current = nowMs;
+mouseActivityHistoryRef.current = [100];
+keyboardActivityHistoryRef.current = [100];
+setCurrentMouseActivity(100);
+setCurrentKeyboardActivity(100);
+setCurrentInactivitySeconds(0);
+setSessionIdleDeductionSeconds(0);
+setIsIdleAlertActive(false);
 
-  currentTaskSegmentStartMsRef.current = nowMs;
-  currentTaskSegmentStartTimeIsoRef.current = nowIso;
-
-  localStorage.setItem(
-    'trackpulse_active_tracking',
-    JSON.stringify({
-      isTracking: true,
-      isPaused: false,
-      startTimeIso: nowIso,
-      startMs: nowMs,
-      lastActiveMs: nowMs,
-      accumulatedSec: 0,
-      task: initialTask,
-      designation: userDesig,
-      currentTaskSegmentStartMs: nowMs,
-      currentTaskSegmentStartTimeIso: nowIso,
-    })
-  );
-} else {
-  // Web Portal login must NEVER inherit or start a tracking session.
-  setIsTracking(false);
-  setIsPaused(false);
-  setElapsedSeconds(0);
-  setStartTimeIso(null);
-  localStorage.removeItem('trackpulse_active_tracking');
-}
+// FIX 2: Normal Web Portal login must NEVER delete Desktop Tracker's trackpulse_active_tracking from shared localStorage!
+// Removed: localStorage.removeItem('trackpulse_active_tracking')
 
     // Create daily attendance record
     const today = getManilaDateString(now);
@@ -2415,13 +2402,14 @@ if (mode === 'software') {
         department: user.department || 'Operations',
         teamLeaderId: user.teamLeaderId || '',
         isOnline: true,
-        status: isDesktop ? 'online' : 'online',
-        isTracking: isDesktop,
+        status: 'online',
+        isTracking: false,
         isPaused: false,
-        elapsedSeconds: isDesktop ? 0 : (existingPresence?.elapsedSeconds || 0),
+        elapsedSeconds: 0,
+        sessionId: '',
         mouseActivity: 100,
         keyboardActivity: 100,
-        currentTask: isDesktop ? initialTask : (existingPresence?.currentTask || initialTask),
+        currentTask: isDesktop ? 'Standby / Ready to Track' : (existingPresence?.currentTask || 'Web Portal Active'),
         currentApp: isDesktop ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal',
         lastHeartbeat: nowIso,
         loginTime: existingPresence?.loginTime || nowIso,
@@ -2442,7 +2430,7 @@ if (mode === 'software') {
         return updated;
       });
 
-      // Transmit instant login heartbeat to Google Sheets only if running in desktop tracking client
+      // Transmit instant login presence to Google Sheets only if running in desktop tracking client
       const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || DEFAULT_WEBHOOK_URL;
       if (isDesktop && activeHook && isValidWebhookUrl(activeHook)) {
         syncAgentHeartbeatToSheets(activeHook.trim(), {
@@ -2451,16 +2439,18 @@ if (mode === 'software') {
           userName: user.name,
           role: user.role,
           designation: userDesig,
-          platformMode: isDesktop ? 'Desktop Tracker' : 'Website',
+          platformMode: 'Desktop Tracker',
           status: 'online',
-          statusLabel: isDesktop ? '🟢 Live Tracking' : '🟢 Online',
+          statusLabel: '🟢 Online',
           isOnline: true,
-          isTracking: isDesktop,
+          isTracking: false, // STANDBY: Not tracking until explicit Start
           isPaused: false,
           elapsedSeconds: 0,
-          currentTask: initialTask,
-          currentApp: isDesktop ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal',
-          loginPlatform: isDesktop ? 'software' : 'webapp',
+          sessionId: '',
+          loginSessionId: loginSessId,
+          currentTask: 'Standby / Ready to Track',
+          currentApp: 'LLC Time Tracker Desktop App',
+          loginPlatform: 'software',
           firstCheckin: getManilaTimeString(now),
           timezone: user.geoTimezone || 'Asia/Manila (GMT+8)',
           lastHeartbeat: nowIso,
@@ -2474,6 +2464,15 @@ if (mode === 'software') {
   };
 
   const logout = (reason?: string) => {
+    const isDesktopApp =
+      loginMode === 'software' ||
+      (typeof window !== 'undefined' &&
+        Boolean(
+          (window as any).electronAPI ||
+          navigator.userAgent.includes('Electron') ||
+          localStorage.getItem('trackpulse_login_mode') === 'software'
+        ));
+
     if (currentUser) {
       const now = new Date();
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -2521,15 +2520,6 @@ if (mode === 'software') {
           )
         );
 
-        const isDesktopApp =
-          loginMode === 'software' ||
-          (typeof window !== 'undefined' &&
-            Boolean(
-              (window as any).electronAPI ||
-              navigator.userAgent.includes('Electron') ||
-              localStorage.getItem('trackpulse_login_mode') === 'software'
-            ));
-
         // Transmit instant logout heartbeat to Google Sheets only if logging out from the actual desktop tracking client
         const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || DEFAULT_WEBHOOK_URL;
         if (isDesktopApp && activeHook && isValidWebhookUrl(activeHook)) {
@@ -2560,7 +2550,11 @@ if (mode === 'software') {
     setIsSessionWarningActive(false);
     localStorage.removeItem('trackpulse_auth');
     localStorage.removeItem('trackpulse_current_user');
-    localStorage.removeItem('trackpulse_active_tracking');
+    localStorage.removeItem('trackpulse_login_session_id');
+    // FIX 2: Only clean up desktop tracking session if logging out from the actual desktop/software tracker
+    if (loginMode === 'software' || isDesktopApp) {
+      localStorage.removeItem('trackpulse_active_tracking');
+    }
   };
 
   // WebApp Inactivity Auto-Logout Effect:
@@ -2729,6 +2723,10 @@ if (mode === 'software') {
   const keyboardActivityHistoryRef = useRef<number[]>([]);
 
   // Wall-clock tracking refs for exact tracking across background/minimized windows
+  const currentSessionIdRef = useRef<string>(savedActiveTracking?.sessionId || '');
+  const loginSessionIdRef = useRef<string>(
+    typeof window !== 'undefined' ? (localStorage.getItem('trackpulse_login_session_id') || '') : ''
+  );
   const trackingSessionStartMsRef = useRef<number>(savedActiveTracking?.startMs || 0);
   const lastActiveIntervalStartMsRef = useRef<number>(
     savedActiveTracking?.isPaused ? 0 : (savedActiveTracking?.lastActiveMs || (savedActiveTracking?.isTracking ? Date.now() : 0))
@@ -3230,6 +3228,8 @@ if (mode === 'software') {
         isTracking: isEffTracking,
         isPaused: isPaused,
         elapsedSeconds: currentElapsed,
+        sessionId: currentSessionIdRef.current || snap.sessionId || '',
+        loginSessionId: loginSessionIdRef.current || '',
         currentTask: taskName,
         currentApp: currentActiveAppRef.current || currentActiveApp || (isDesktop ? 'LLC Time Tracker Desktop App' : 'Web Browser'),
         loginPlatform: isDesktop ? 'software' : 'webapp',
@@ -3389,6 +3389,7 @@ if (mode === 'software') {
         // Keep active session saved in localStorage every 5 seconds
         if (liveSecs % 5 === 0) {
           localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
+            sessionId: currentSessionIdRef.current,
             isTracking: true,
             isPaused: false,
             startTimeIso,
@@ -3645,8 +3646,13 @@ if (mode === 'software') {
     currentTaskSegmentStartMsRef.current = nowMs;
     currentTaskSegmentStartTimeIsoRef.current = nowIso;
 
+    // FIX 5: Generate a NEW authoritative Tracking Session ID upon start
+    const newSessionId = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    currentSessionIdRef.current = newSessionId;
+
     // Save active tracking session to localStorage (immune to minimize, tab throttling, or accidental refresh)
     localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
+      sessionId: newSessionId,
       isTracking: true,
       isPaused: false,
       startTimeIso: nowIso,
@@ -3685,6 +3691,7 @@ if (mode === 'software') {
         safeSetDoc(doc(db, 'system_state', 'attendance'), { data: updatedAttendance }).catch(() => {});
       }
 
+      const currentPres = userPresenceList.find((p) => p.userId === currentUser.id);
       const startTrackingPresence = {
         userId: currentUser.id,
         userName: currentUser.name,
@@ -3698,12 +3705,13 @@ if (mode === 'software') {
         isTracking: true,
         isPaused: false,
         elapsedSeconds: 0,
+        sessionId: newSessionId,
         currentTask: currentTask,
         currentApp: currentActiveApp || (loginMode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal'),
         mouseActivity: 100,
         keyboardActivity: 100,
         lastHeartbeat: nowIso,
-        loginTime: nowIso,
+        loginTime: currentPres?.loginTime || nowIso,
       };
 
       safeSetDoc(doc(db, 'user_presence', currentUser.id), startTrackingPresence, { merge: true }).catch(() => {});
@@ -3740,6 +3748,8 @@ if (mode === 'software') {
           isTracking: true,
           isPaused: false,
           elapsedSeconds: 0,
+          sessionId: newSessionId,
+          loginSessionId: loginSessionIdRef.current || '',
           currentTask: currentTask,
           currentApp: currentActiveApp || (loginMode === 'software' ? 'LLC Time Tracker Desktop App' : 'LLC Web Portal'),
           loginPlatform: 'software',
@@ -3766,6 +3776,7 @@ if (mode === 'software') {
     }
     setIsPaused(true);
     localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
+      sessionId: currentSessionIdRef.current,
       isTracking: true,
       isPaused: true,
       startTimeIso,
@@ -3786,6 +3797,7 @@ if (mode === 'software') {
     lastKeyboardActiveTimestampRef.current = nowMs;
     setIsPaused(false);
     localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
+      sessionId: currentSessionIdRef.current,
       isTracking: true,
       isPaused: false,
       startTimeIso,
@@ -3838,8 +3850,12 @@ if (mode === 'software') {
       ? ` (Subtracted ${idleDeductionMins}m idle inactivity; shift extended by +${idleDeductionMins}m)`
       : '';
 
+    const currentPres = userPresenceList.find((p) => p.userId === currentUser.id);
     const newLog: TimeLog = {
       id: `log-${Date.now()}`,
+      sessionId: currentSessionIdRef.current || `sess-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      loginSessionId: loginSessionIdRef.current || undefined,
+      loginTime: currentPres?.loginTime || undefined,
       userId: currentUser.id,
       employeeCode: currentUser.employeeCode || '',
       userName: currentUser.name,
@@ -3977,7 +3993,7 @@ if (mode === 'software') {
       details: `Clocked out session (${formatDuration(trackedSecs)} total; final segment ${formatDuration(finalSegmentSec)} on ${currentTask}). Saved to Timesheets, Database & Google Sheets.`,
     });
 
-    setSaveToast(`âœ“ Saved to Database & Synced to Timesheets! (${currentUser.name} - ${formatDuration(trackedSecs)} on ${currentTask})`);
+    setSaveToast(`✓ Saved to Database & Synced to Timesheets! (${currentUser.name} - ${formatDuration(trackedSecs)} on ${currentTask})`);
     setTimeout(() => setSaveToast(null), 7000);
 
     triggerAutoSync(users, updatedLogs, auditLogs, updatedPayroll, updatedAttendance, idleLogs, leaveRequests);
@@ -3990,6 +4006,7 @@ if (mode === 'software') {
         isTracking: false,
         isPaused: false,
         elapsedSeconds: 0,
+        sessionId: '',
         currentTask: 'Available / Ready',
         lastHeartbeat: new Date().toISOString(),
       };
@@ -4011,6 +4028,9 @@ if (mode === 'software') {
     trackingSessionStartMsRef.current = 0;
     lastActiveIntervalStartMsRef.current = 0;
     trackingAccumulatedSecondsRef.current = 0;
+    currentSessionIdRef.current = '';
+    currentTaskSegmentStartMsRef.current = 0;
+    currentTaskSegmentStartTimeIsoRef.current = '';
     localStorage.removeItem('trackpulse_active_tracking');
     setIsTracking(false);
     setIsPaused(false);
@@ -4034,6 +4054,8 @@ if (mode === 'software') {
         isTracking: false,
         isPaused: false,
         elapsedSeconds: 0,
+        sessionId: '',
+        loginSessionId: loginSessionIdRef.current || '',
         currentTask: 'Available / Ready',
         currentApp: 'LLC Time Tracker Desktop App',
         timezone: currentUser.geoTimezone || 'Asia/Manila (GMT+8)',
@@ -4257,9 +4279,13 @@ if (mode === 'software') {
       ? Math.round(keyboardActivityHistoryRef.current.reduce((a, b) => a + b, 0) / keyboardActivityHistoryRef.current.length)
       : (currentKeyboardActivity || 100);
 
+    const currentPres = userPresenceList.find((p) => p.userId === currentUser.id);
     // 2. Record previous task as a distinct completed row in Timesheets & Database Spreadsheet
     const newLog: TimeLog = {
       id: `log-${Date.now()}`,
+      sessionId: currentSessionIdRef.current || `sess-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      loginSessionId: loginSessionIdRef.current || undefined,
+      loginTime: currentPres?.loginTime || undefined,
       userId: currentUser.id,
       employeeCode: currentUser.employeeCode || '',
       userName: currentUser.name,
@@ -4339,7 +4365,10 @@ if (mode === 'software') {
     triggerAutoSync(users, updatedLogs, auditLogs, updatedPayroll, updatedAttendance, idleLogs, leaveRequests);
 
     // 3. Switch to target task:
-    // IMPORTANT: Overall tracker timer continues smoothly from current elapsed time onwards!
+    // FIX 5: Immediately generate a fresh Session ID for the newly active task segment
+    const nextSessionId = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    currentSessionIdRef.current = nextSessionId;
+
     setCurrentTask(targetTask);
     currentTaskSegmentStartMsRef.current = nowMs;
     currentTaskSegmentStartTimeIsoRef.current = nowIso;
@@ -4347,6 +4376,7 @@ if (mode === 'software') {
 
     // Persist active session state
     localStorage.setItem('trackpulse_active_tracking', JSON.stringify({
+      sessionId: nextSessionId,
       isTracking: true,
       isPaused,
       startTimeIso,
@@ -4362,6 +4392,7 @@ if (mode === 'software') {
     // Broadcast updated task in presence
     const switchPresence = {
       userId: currentUser.id,
+      sessionId: nextSessionId,
       currentTask: targetTask,
       lastHeartbeat: nowIso,
     };
@@ -4372,7 +4403,7 @@ if (mode === 'software') {
       body: JSON.stringify(switchPresence),
     }).catch(() => {});
 
-    setSaveToast(`âœ“ Switched to "${targetTask}"! Recorded "${prevTask}" (${formatDuration(segmentDurationSec)}) to database & spreadsheet.`);
+    setSaveToast(`✓ Switched to "${targetTask}"! Recorded "${prevTask}" (${formatDuration(segmentDurationSec)}) to database & spreadsheet.`);
     setTimeout(() => setSaveToast(null), 5000);
   };
 

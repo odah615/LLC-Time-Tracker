@@ -199,15 +199,32 @@ export const parseDurationSeconds = (
   endTime?: any
 ): number => {
   // 1. Primary: Numeric or string digits in durationSeconds
+  // CRITICAL RULE: A Date object, epoch timestamp, or date serial number must NEVER be parsed as duration seconds!
   if (rawDuration !== undefined && rawDuration !== null && rawDuration !== '') {
-    if (typeof rawDuration === 'number' && !isNaN(rawDuration)) {
-      const n = Math.floor(rawDuration);
-      if (n > 0) return n;
-    }
-    const cleanDigits = String(rawDuration).trim().replace(/,/g, '');
-    if (/^\d+$/.test(cleanDigits)) {
-      const parsed = parseInt(cleanDigits, 10);
-      if (!isNaN(parsed) && parsed > 0) return parsed;
+    const isDateObj = rawDuration instanceof Date || Object.prototype.toString.call(rawDuration) === '[object Date]';
+    if (!isDateObj) {
+      if (typeof rawDuration === 'number' && !isNaN(rawDuration)) {
+        const n = Math.floor(rawDuration);
+        // Valid shift/session duration must be positive and under reasonable threshold (< 7 days = 604800s).
+        // Rejects billions of seconds, epoch timestamps (e.g. 4000584097), or date serials.
+        if (n > 0 && n < 86400 * 7) return n;
+      }
+      const rawStr = String(rawDuration).trim();
+      // Only process string if it does NOT look like a date/timestamp representation (no GMT, colons, slashes, or dashes)
+      if (
+        !rawStr.includes('GMT') &&
+        !rawStr.includes('-') &&
+        !rawStr.includes('/') &&
+        !rawStr.includes(':') &&
+        !rawStr.toLowerCase().includes('dec') &&
+        !rawStr.toLowerCase().includes('oct')
+      ) {
+        const cleanDigits = rawStr.replace(/,/g, '');
+        if (/^\d+$/.test(cleanDigits)) {
+          const parsed = parseInt(cleanDigits, 10);
+          if (!isNaN(parsed) && parsed > 0 && parsed < 86400 * 7) return parsed;
+        }
+      }
     }
   }
 
@@ -723,8 +740,81 @@ function maskPassword(pwd) {
  * - < 1 hour: "Ym Zs" (e.g. 1121s -> "18m 41s", 2147s -> "35m 47s")
  * - < 1 min: "Zs" (e.g. 14s -> "14s")
  */
+/**
+ * Safely parse and validate duration seconds in Google Apps Script.
+ * - Rejects Date objects and date-like strings
+ * - Rejects epoch timestamps, date serials, and values >= 604,800 seconds (7 days)
+ * - Returns valid duration integer in [0, 604799]
+ */
+function parseDurationSecondsSafe(val) {
+  if (val === undefined || val === null || val === '') return 0;
+  // Reject Date objects
+  if (val instanceof Date || Object.prototype.toString.call(val) === '[object Date]') return 0;
+  var n = 0;
+  if (typeof val === 'number') {
+    if (isNaN(val)) return 0;
+    n = Math.floor(val);
+  } else {
+    var str = String(val).trim();
+    // Reject date strings, timestamps, or strings containing date indicators
+    if (
+      str.indexOf('GMT') !== -1 ||
+      str.indexOf('-') !== -1 ||
+      str.indexOf('/') !== -1 ||
+      str.indexOf('T') !== -1 ||
+      /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(str)
+    ) {
+      return 0;
+    }
+    // Formatted time strings e.g. "2h 24m 0s", "37m 17s", "45s"
+    var hMatch = str.match(/^(\d+)\s*h(?:ours?|rs?)?(?:\s*(\d+)\s*m(?:inutes?|ins?)?)?(?:\s*(\d+)\s*s(?:econds?|ecs?)?)?$/i);
+    var mMatch = str.match(/^(\d+)\s*m(?:inutes?|ins?)?(?:\s*(\d+)\s*s(?:econds?|ecs?)?)?$/i);
+    var sMatch = str.match(/^(\d+)\s*s(?:econds?|ecs?)?$/i);
+    if (hMatch) {
+      var hours = parseInt(hMatch[1], 10) || 0;
+      var mins = parseInt(hMatch[2], 10) || 0;
+      var secs = parseInt(hMatch[3], 10) || 0;
+      n = hours * 3600 + mins * 60 + secs;
+    } else if (mMatch) {
+      var mins2 = parseInt(mMatch[1], 10) || 0;
+      var secs2 = parseInt(mMatch[2], 10) || 0;
+      n = mins2 * 60 + secs2;
+    } else if (sMatch) {
+      n = parseInt(sMatch[1], 10) || 0;
+    } else if (str.indexOf(':') !== -1) {
+      // Possible "HH:MM:SS" or "MM:SS" (reject any AM/PM or non-duration)
+      var colonMatch = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+      if (colonMatch) {
+        var p1 = parseInt(colonMatch[1], 10);
+        var p2 = parseInt(colonMatch[2], 10);
+        var p3 = colonMatch[3] !== undefined ? parseInt(colonMatch[3], 10) : undefined;
+        if (p3 !== undefined) {
+          n = p1 * 3600 + p2 * 60 + p3;
+        } else {
+          n = p1 * 60 + p2;
+        }
+      } else {
+        return 0;
+      }
+    } else {
+      var clean = str.replace(/,/g, '');
+      if (!/^\d+$/.test(clean)) return 0;
+      n = parseInt(clean, 10);
+    }
+  }
+  // Reject non-positive, NaN, or values >= 604800 (7 days)
+  if (isNaN(n) || n <= 0 || n >= 604800) return 0;
+  return n;
+}
+
+/**
+ * Mathematically accurate Total Time conversion:
+ * - >= 1 hour: "Xh Ym Zs" (e.g. 27529s -> "7h 38m 49s")
+ * - < 1 hour: "Ym Zs" (e.g. 1121s -> "18m 41s", 2147s -> "35m 47s")
+ * - < 1 min: "Zs" (e.g. 14s -> "14s")
+ */
 function formatTotalTime(totalSecs) {
-  var secs = Math.max(0, Math.floor(Number(totalSecs) || 0));
+  var secs = parseDurationSecondsSafe(totalSecs);
   var h = Math.floor(secs / 3600);
   var m = Math.floor((secs % 3600) / 60);
   var s = secs % 60;
@@ -1627,9 +1717,15 @@ function upsertLiveTrackingSessionRow(sheet, p) {
   }
 
   var isTracking = p.isTracking === true || (p.status === 'online' && p.isTracking) || (p.statusLabel && p.statusLabel.indexOf('Live Tracking') !== -1);
-  var elapsedSecs = typeof p.elapsedSeconds === 'number' ? Math.max(0, Math.floor(p.elapsedSeconds)) : 0;
+  var elapsedSecs = parseDurationSecondsSafe(p.elapsedSeconds);
   if (!elapsedSecs && existingRow && existingRow[8]) {
-    elapsedSecs = Number(existingRow[8]) || 0;
+    var existingSecs = parseDurationSecondsSafe(existingRow[8]);
+    if (existingSecs > 0 && existingSecs < 604800) {
+      elapsedSecs = existingSecs;
+    }
+  }
+  if (elapsedSecs >= 604800) {
+    elapsedSecs = 0;
   }
   var todayStr = Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
   var startTime = p.firstCheckin || (existingRow && existingRow[6] ? existingRow[6] : Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a'));
@@ -1706,9 +1802,15 @@ function upsertDailySummaryRow(sheet, p) {
   }
 
   var isTracking = p.isTracking === true || (p.status === 'online' && p.isTracking) || (p.statusLabel && p.statusLabel.indexOf('Live Tracking') !== -1);
-  var elapsedSecs = typeof p.elapsedSeconds === 'number' ? Math.max(0, Math.floor(p.elapsedSeconds)) : 0;
+  var elapsedSecs = parseDurationSecondsSafe(p.elapsedSeconds);
   if (!elapsedSecs && existingRow && existingRow[10]) {
-    elapsedSecs = Number(existingRow[10]) || 0;
+    var existingSecs = parseDurationSecondsSafe(existingRow[10]);
+    if (existingSecs > 0 && existingSecs < 604800) {
+      elapsedSecs = existingSecs;
+    }
+  }
+  if (elapsedSecs >= 604800) {
+    elapsedSecs = 0;
   }
   var sTime = p.firstCheckin || (existingRow && existingRow[5] ? existingRow[5] : Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a'));
   var eTime = isTracking ? 'Running Live' : (existingRow && existingRow[6] ? existingRow[6] : Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a'));
@@ -2388,12 +2490,7 @@ function doPost(e) {
         var sTime = String(row[6] || '').trim();
         var eTime = String(row[7] || '').trim();
         var rawDur = row[8];
-        var sSecs = 0;
-        if (typeof rawDur === 'number') {
-          sSecs = Math.max(0, Math.floor(rawDur));
-        } else {
-          sSecs = parseInt(String(rawDur || '0').replace(/[^0-9]/g, ''), 10) || 0;
-        }
+        var sSecs = parseDurationSecondsSafe(rawDur);
 
         var idleStr = String(row[10] || '0').replace(/[^0-9]/g, '');
         var idleSecs = (parseInt(idleStr, 10) || 0) * 60;
@@ -2451,6 +2548,9 @@ function doPost(e) {
           if (mMatch) {
             mSecs = parseInt(mMatch[1], 10) * 3600 + parseInt(mMatch[2], 10) * 60;
           }
+          if (mSecs >= 604800) {
+            mSecs = 0;
+          }
 
           if (!dailyMap[dKey]) {
             var initialTasks = {};
@@ -2482,7 +2582,10 @@ function doPost(e) {
       var dailyRows = [];
       Object.keys(dailyMap).forEach(function(k) {
         var item = dailyMap[k];
+        if (item.grossSecs >= 604800) item.grossSecs = 0;
+        if (item.idleSecs >= 604800) item.idleSecs = 0;
         var netSecs = Math.max(0, item.grossSecs - item.idleSecs);
+        if (netSecs >= 604800) netSecs = 0;
         var taskList = Object.keys(item.tasks).join(', ') || 'General Work';
         var avgAct = item.count > 0 ? Math.round(((item.mouseSum / item.count) + (item.keyboardSum / item.count)) / 2) : 0;
         dailyRows.push([
@@ -2538,7 +2641,7 @@ function doPost(e) {
         var weekLabel = 'Week (' + monStr + ' - ' + sunStr + ')';
 
         var rawDur = row[8];
-        var sSecs = typeof rawDur === 'number' ? Math.max(0, Math.floor(rawDur)) : (parseInt(String(rawDur || '0').replace(/[^0-9]/g, ''), 10) || 0);
+        var sSecs = parseDurationSecondsSafe(rawDur);
         var idleSecs = (parseInt(String(row[10] || '0').replace(/[^0-9]/g, ''), 10) || 0) * 60;
         var mousePct = parseInt(String(row[11] || '0').replace(/[^0-9]/g, ''), 10) || 0;
         var kbPct = parseInt(String(row[12] || '0').replace(/[^0-9]/g, ''), 10) || 0;
@@ -2621,7 +2724,7 @@ function doPost(e) {
         var monthLabel = monthNames[logD.getMonth()] + ' ' + logD.getFullYear();
 
         var rawDur = row[8];
-        var sSecs = typeof rawDur === 'number' ? Math.max(0, Math.floor(rawDur)) : (parseInt(String(rawDur || '0').replace(/[^0-9]/g, ''), 10) || 0);
+        var sSecs = parseDurationSecondsSafe(rawDur);
         var idleSecs = (parseInt(String(row[10] || '0').replace(/[^0-9]/g, ''), 10) || 0) * 60;
         var mousePct = parseInt(String(row[11] || '0').replace(/[^0-9]/g, ''), 10) || 0;
         var kbPct = parseInt(String(row[12] || '0').replace(/[^0-9]/g, ''), 10) || 0;
@@ -3019,11 +3122,7 @@ function doGet(e) {
         var empName = String(row[2] || '').trim();
         if (!id && !empName) return;
 
-        var durSec = 0;
-        var rawSecStr = String(row[8] || '').trim().replace(/,/g, '');
-        if (rawSecStr && !isNaN(Number(rawSecStr))) {
-          durSec = Math.max(0, parseInt(rawSecStr, 10));
-        }
+        var durSec = parseDurationSecondsSafe(row[8]);
 
         var totalTimeStr = String(row[9] || '').trim();
         if (!totalTimeStr && durSec > 0) {
@@ -3764,6 +3863,8 @@ export interface AgentHeartbeatPayload {
   userId: string;
   employeeCode?: string;
   userName: string;
+  sessionId?: string; // Current Active Tracking Session ID
+  loginSessionId?: string; // Associated Login Session ID
   role?: string;
   designation?: string;
   department?: string;

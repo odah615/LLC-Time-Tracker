@@ -77,6 +77,9 @@ export interface ActivityMetric {
 
 export interface TimeLog {
   id: string;
+  sessionId?: string; // Authoritative Tracking Session ID
+  loginSessionId?: string; // Associated Application Login Session ID
+  loginTime?: string; // Application login timestamp (separate from task startTime)
   userId: string;
   employeeCode?: string;
   userName: string;
@@ -245,6 +248,7 @@ export interface UserPresence {
   teamLeaderId?: string;
   isOnline: boolean;
   status: 'online' | 'idle' | 'offline';
+  sessionId?: string; // Current Active Tracking Session ID
   currentTask?: string;
   currentApp?: string;
   mouseActivity?: number;

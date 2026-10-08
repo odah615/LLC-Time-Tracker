@@ -24,7 +24,7 @@ import { User } from './types';
 import { Shield, Clock, Heart, Globe, Laptop, LogOut, Maximize2, Sparkles, ExternalLink, RefreshCw, CheckCircle2, ArrowUpCircle } from 'lucide-react';
 
 const MainAppContent: React.FC = () => {
-  const { currentUser, isAuthenticated, isDesktopDockView, setIsDesktopDockView, logout, saveToast, setSaveToast } = useApp();
+  const { currentUser, isAuthenticated, isTracking, isDesktopDockView, setIsDesktopDockView, logout, saveToast, setSaveToast } = useApp();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
@@ -80,9 +80,15 @@ const MainAppContent: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-sm text-white">LLC Time Tracker Desktop Software</span>
-                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
-                  ACTIVE SHIFT
-                </span>
+                {isTracking ? (
+                  <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                    ACTIVE SHIFT
+                  </span>
+                ) : (
+                  <span className="bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                    STANDBY
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-400">
                 Logged in as <strong className="text-white">{currentUser.name}</strong> ({currentUser.employeeCode}) • {currentUser.designation}
