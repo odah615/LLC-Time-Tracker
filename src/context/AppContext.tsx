@@ -759,6 +759,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedRolePermissions = rolePermissions,
       forcePush = false
     ) => {
+      // ARCHITECTURE RULE: The Web Portal is strictly READ ONLY with respect to Google Sheets.
+      // Its periodic refresh uses GET/read queries only.
+      // It must NOT take records returned by doGet() and automatically send them back through SYNC_ALL.
+      // The Desktop Tracker remains responsible for sending tracking heartbeats and writes.
+      const isDesktopClient =
+        loginMode === 'software' ||
+        (typeof window !== 'undefined' &&
+          Boolean(
+            (window as any).electronAPI ||
+            (window as any).isElectronApp === true ||
+            navigator.userAgent.includes('Electron') ||
+            localStorage.getItem('trackpulse_login_mode') === 'software'
+          ));
+
+      if (!isDesktopClient && !forcePush) {
+        return;
+      }
+
       // If auto-sync is disabled, do not execute background pushes (keeps Google Sheets calm and static without constant reloading)
       if (!isAutoSyncToSheetsEnabled && !forcePush) {
         return;
@@ -869,7 +887,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ).catch((err) => console.warn('Auto-sync to Google Sheets warning:', err));
       }
     },
-    [isAutoSyncToSheetsEnabled, googleSheetsWebhookUrl, users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions, userPresenceList, currentUser]
+    [isAutoSyncToSheetsEnabled, googleSheetsWebhookUrl, users, timeLogs, auditLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, designationTasks, rolePermissions, userPresenceList, currentUser, loginMode]
   );
 
   const triggerGoogleSheetsSync = async (overrideUrl?: string): Promise<{ success: boolean; message: string }> => {

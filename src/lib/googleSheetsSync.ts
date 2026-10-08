@@ -198,11 +198,23 @@ export const parseDurationSeconds = (
   startTime?: any,
   endTime?: any
 ): number => {
-  // 1. Primary: Numeric or string digits in durationSeconds
-  // CRITICAL RULE: A Date object, epoch timestamp, or date serial number must NEVER be parsed as duration seconds!
+  // 1. Primary: Numeric or string digits in durationSeconds, or recovered from Date object
+  // If rawDuration is a Date object (e.g. from previously date-formatted Duration column),
+  // recover underlying Google Sheets serial days * 86400 = duration seconds.
   if (rawDuration !== undefined && rawDuration !== null && rawDuration !== '') {
     const isDateObj = rawDuration instanceof Date || Object.prototype.toString.call(rawDuration) === '[object Date]';
-    if (!isDateObj) {
+    if (isDateObj) {
+      try {
+        const sheetEpoch = new Date(1899, 11, 30, 0, 0, 0);
+        const serialDays = (rawDuration.getTime() - sheetEpoch.getTime()) / (86400 * 1000);
+        const recoveredSecs = Math.round(serialDays * 86400);
+        // Strictly bound to legitimate shift duration [1, 604799] (< 7 days)
+        // Rejects corrupted ~4,000,584,097s from modern dates
+        if (!isNaN(recoveredSecs) && recoveredSecs > 0 && recoveredSecs < 604800) {
+          return recoveredSecs;
+        }
+      } catch (e) {}
+    } else {
       if (typeof rawDuration === 'number' && !isNaN(rawDuration)) {
         const n = Math.floor(rawDuration);
         // Valid shift/session duration must be positive and under reasonable threshold (< 7 days = 604800s).
@@ -224,6 +236,18 @@ export const parseDurationSeconds = (
           const parsed = parseInt(cleanDigits, 10);
           if (!isNaN(parsed) && parsed > 0 && parsed < 86400 * 7) return parsed;
         }
+      } else if (rawStr.includes('1899')) {
+        try {
+          const dParsed = new Date(rawStr);
+          if (!isNaN(dParsed.getTime())) {
+            const sheetEpoch = new Date(1899, 11, 30, 0, 0, 0);
+            const serialDays = (dParsed.getTime() - sheetEpoch.getTime()) / (86400 * 1000);
+            const recoveredSecs = Math.round(serialDays * 86400);
+            if (!isNaN(recoveredSecs) && recoveredSecs > 0 && recoveredSecs < 604800) {
+              return recoveredSecs;
+            }
+          }
+        } catch (e) {}
       }
     }
   }
@@ -242,7 +266,7 @@ export const parseDurationSeconds = (
       const mins = mMatch ? parseInt(mMatch[1], 10) : 0;
       const secs = sMatch ? parseInt(sMatch[1], 10) : 0;
       const total = hours * 3600 + mins * 60 + secs;
-      if (total > 0) return total;
+      if (total > 0 && total < 86400 * 7) return total;
     }
 
     // Pattern: "HH:MM:SS" or "MM:SS" (e.g. "00:37:17", "37:17")
@@ -254,11 +278,11 @@ export const parseDurationSeconds = (
       if (p3 !== undefined) {
         // HH:MM:SS
         const total = p1 * 3600 + p2 * 60 + p3;
-        if (total > 0) return total;
+        if (total > 0 && total < 86400 * 7) return total;
       } else {
         // MM:SS
         const total = p1 * 60 + p2;
-        if (total > 0) return total;
+        if (total > 0 && total < 86400 * 7) return total;
       }
     }
 
@@ -266,7 +290,7 @@ export const parseDurationSeconds = (
     const decMatch = text.match(/^(\d+(?:\.\d+)?)\s*(?:h|hrs|hours)$/);
     if (decMatch) {
       const total = Math.round(parseFloat(decMatch[1]) * 3600);
-      if (total > 0) return total;
+      if (total > 0 && total < 86400 * 7) return total;
     }
   }
 
@@ -305,7 +329,7 @@ export const parseDurationSeconds = (
           // Overnight session: spans midnight
           diff += 86400;
         }
-        if (diff > 0) return diff;
+        if (diff > 0 && diff < 86400 * 7) return diff;
       }
     }
   }
@@ -742,21 +766,40 @@ function maskPassword(pwd) {
  */
 /**
  * Safely parse and validate duration seconds in Google Apps Script.
- * - Rejects Date objects and date-like strings
- * - Rejects epoch timestamps, date serials, and values >= 604,800 seconds (7 days)
- * - Returns valid duration integer in [0, 604799]
+ * - When val is a JavaScript Date object (e.g. from previously date-formatted Duration column),
+ *   recovers its underlying Google Sheets serial value and converts serial days to seconds:
+ *   Google Sheets serial days * 86400 = duration seconds.
+ * - Preserves legitimate values: 0, 407, 1680, 2829, 5460, 8640, 10160, 22032.
+ * - Rejects corrupted duration values >= 604,800 seconds (7 days), including ~4,000,584,097s from modern dates.
+ * - Returns valid duration integer in [0, 604799].
  */
 function parseDurationSecondsSafe(val) {
   if (val === undefined || val === null || val === '') return 0;
-  // Reject Date objects
-  if (val instanceof Date || Object.prototype.toString.call(val) === '[object Date]') return 0;
+  
+  // 1. When val is a JavaScript Date object in the Duration (Seconds) column:
+  // Recover its underlying Google Sheets serial value and convert that serial to seconds:
+  // Google Sheets serial days * 86400 = duration seconds.
+  if (val instanceof Date || Object.prototype.toString.call(val) === '[object Date]') {
+    try {
+      var sheetEpoch = new Date(1899, 11, 30, 0, 0, 0);
+      var serialDays = (val.getTime() - sheetEpoch.getTime()) / (86400 * 1000);
+      var recoveredSecs = Math.round(serialDays * 86400);
+      // Strictly enforce valid shift bounds [1, 604799] (< 7 days).
+      // Rejects non-positive, NaN, or corrupted values >= 604800 (e.g. ~4,000,584,097 seconds from modern timestamps).
+      if (!isNaN(recoveredSecs) && recoveredSecs > 0 && recoveredSecs < 604800) {
+        return recoveredSecs;
+      }
+    } catch (e) {}
+    return 0;
+  }
+
   var n = 0;
   if (typeof val === 'number') {
     if (isNaN(val)) return 0;
     n = Math.floor(val);
   } else {
     var str = String(val).trim();
-    // Reject date strings, timestamps, or strings containing date indicators
+    // Reject modern date strings, timestamps, or strings containing date indicators
     if (
       str.indexOf('GMT') !== -1 ||
       str.indexOf('-') !== -1 ||
@@ -764,6 +807,17 @@ function parseDurationSecondsSafe(val) {
       str.indexOf('T') !== -1 ||
       /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(str)
     ) {
+      if (str.indexOf('1899') !== -1) {
+        try {
+          var dParsed = new Date(str);
+          if (!isNaN(dParsed.getTime())) {
+            var sEpoch = new Date(1899, 11, 30, 0, 0, 0);
+            var sDays = (dParsed.getTime() - sEpoch.getTime()) / (86400 * 1000);
+            var rSecs = Math.round(sDays * 86400);
+            if (!isNaN(rSecs) && rSecs > 0 && rSecs < 604800) return rSecs;
+          }
+        } catch (e2) {}
+      }
       return 0;
     }
     // Formatted time strings e.g. "2h 24m 0s", "37m 17s", "45s"
@@ -828,6 +882,157 @@ function formatTotalTime(totalSecs) {
 }
 
 /**
+ * Safely extracts a clean time-of-day string (e.g. "08:57:00 AM" or "09:02 AM") without 1899 date artifacts.
+ * - Converts Date objects to formatted time string (hh:mm:ss a) in Manila time.
+ * - Extracts time from long date strings like "Sat Dec 30 1899 08:57:00 GMT+0800".
+ * - Preserves 'Running Live'.
+ */
+function formatTimeOnlyCell(val) {
+  if (val === undefined || val === null || val === '') return '';
+  if (val === 'Running Live' || String(val).indexOf('Running') !== -1) return 'Running Live';
+  if (val instanceof Date || Object.prototype.toString.call(val) === '[object Date]') {
+    try {
+      return Utilities.formatDate(val, 'Asia/Manila', 'hh:mm:ss a');
+    } catch(e) {
+      var hrs = val.getHours();
+      var mins = val.getMinutes();
+      var secs = val.getSeconds();
+      var ampm = hrs >= 12 ? 'PM' : 'AM';
+      hrs = hrs % 12;
+      if (hrs === 0) hrs = 12;
+      return (hrs < 10 ? '0' + hrs : hrs) + ':' + (mins < 10 ? '0' + mins : mins) + ':' + (secs < 10 ? '0' + secs : secs) + ' ' + ampm;
+    }
+  }
+  var str = String(val).trim();
+  if (str === 'Running Live' || str.indexOf('Running') !== -1) return 'Running Live';
+  var ampmMatch = str.match(/(?:^|\s|T)(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)/i);
+  if (ampmMatch) {
+    var h = parseInt(ampmMatch[1], 10);
+    var m = ampmMatch[2];
+    var s = ampmMatch[3] || '00';
+    var am = ampmMatch[4].toUpperCase();
+    return (h < 10 ? '0' + h : '' + h) + ':' + m + ':' + s + ' ' + am;
+  }
+  var time24Match = str.match(/(?:^|\s|T)(\d{1,2}):(\d{2}):(\d{2})/);
+  if (time24Match) {
+    var h2 = parseInt(time24Match[1], 10);
+    var m2 = time24Match[2];
+    var s2 = time24Match[3];
+    var am2 = h2 >= 12 ? 'PM' : 'AM';
+    h2 = h2 % 12;
+    if (h2 === 0) h2 = 12;
+    return (h2 < 10 ? '0' + h2 : '' + h2) + ':' + m2 + ':' + s2 + ' ' + am2;
+  }
+  return str;
+}
+
+/**
+ * Safely extracts a clean date string (yyyy-MM-dd) without timestamp artifacts.
+ */
+function formatDateOnlyCell(val, fallback) {
+  if (val === undefined || val === null || val === '') return fallback || '';
+  if (val instanceof Date || Object.prototype.toString.call(val) === '[object Date]') {
+    try {
+      var y = val.getFullYear();
+      if (y >= 2020) {
+        return Utilities.formatDate(val, 'Asia/Manila', 'yyyy-MM-dd');
+      }
+      return fallback || '';
+    } catch(e) {
+      return fallback || '';
+    }
+  }
+  var str = String(val).trim();
+  var dMatch = str.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (dMatch) {
+    var yr = parseInt(dMatch[1], 10);
+    if (yr >= 2020) {
+      var mo = ('0' + dMatch[2]).slice(-2);
+      var da = ('0' + dMatch[3]).slice(-2);
+      return yr + '-' + mo + '-' + da;
+    }
+  }
+  return fallback || str;
+}
+
+/**
+ * Safely calculates duration in seconds between Start Time and End Time without ANY cross-epoch or 1899 date artifacts.
+ * Priority:
+ * 1. Clean time-of-day strings (e.g. "08:57:00 AM", "11:21:00 AM") normalized to the SAME date context (with overnight support).
+ * 2. Only if both are full modern ISO timestamps (years >= 2020), calculates diff.
+ * 3. Never subtracts an 1899/1900 date from a 2020+ timestamp.
+ * 4. Never returns >= 604800 seconds (7 days) or negative values.
+ */
+function calculateTimeDifferenceSecsSafe(startTime, endTime, dateStr, idleSecs) {
+  if (!startTime || !endTime) return 0;
+  var sStr = formatTimeOnlyCell(startTime);
+  var eStr = formatTimeOnlyCell(endTime);
+  if (!sStr || !eStr || eStr === 'Running Live') return 0;
+
+  var idles = (typeof idleSecs === 'number' && !isNaN(idleSecs)) ? Math.max(0, Math.floor(idleSecs)) : 0;
+
+  function parseSecondsOfDay(tVal) {
+    if (!tVal) return null;
+    var tText = String(tVal).trim();
+    var ampmMatch = tText.match(/(?:^|\s|T)(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)/i);
+    if (ampmMatch) {
+      var h = parseInt(ampmMatch[1], 10);
+      var m = parseInt(ampmMatch[2], 10);
+      var s = ampmMatch[3] ? parseInt(ampmMatch[3], 10) : 0;
+      var isPm = ampmMatch[4].toUpperCase() === 'PM';
+      if (isPm && h < 12) h += 12;
+      if (!isPm && h === 12) h = 0;
+      return h * 3600 + m * 60 + s;
+    }
+    var time24Match = tText.match(/(?:^|\s|T)(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (time24Match) {
+      var h2 = parseInt(time24Match[1], 10);
+      var m2 = parseInt(time24Match[2], 10);
+      var s2 = time24Match[3] ? parseInt(time24Match[3], 10) : 0;
+      if (h2 >= 0 && h2 < 24 && m2 >= 0 && m2 < 60) {
+        return h2 * 3600 + m2 * 60 + s2;
+      }
+    }
+    return null;
+  }
+
+  // 1. Primary: pure time-of-day calculation on the same calendar day context
+  var sSec = parseSecondsOfDay(sStr);
+  var eSec = parseSecondsOfDay(eStr);
+  if (sSec !== null && eSec !== null) {
+    var diff = eSec - sSec;
+    if (diff < 0) {
+      // Overnight shift spanning midnight (e.g. 10:00 PM to 06:00 AM)
+      diff += 86400;
+    }
+    var netDiff = diff - idles;
+    if (netDiff > 0 && netDiff < 604800) {
+      return netDiff;
+    }
+  }
+
+  // 2. Secondary: full modern ISO strings (years >= 2020 only)
+  var dStart = new Date(String(startTime).trim());
+  var dEnd = new Date(String(endTime).trim());
+  if (!isNaN(dStart.getTime()) && !isNaN(dEnd.getTime())) {
+    var yStart = dStart.getFullYear();
+    var yEnd = dEnd.getFullYear();
+    // NEVER subtract an 1899 or 1970 date from a 2020+ date!
+    if (yStart >= 2020 && yEnd >= 2020 && Math.abs(yEnd - yStart) <= 1) {
+      var diffMs = dEnd.getTime() - dStart.getTime();
+      if (diffMs > 0) {
+        var diffSec = Math.floor(diffMs / 1000) - idles;
+        if (diffSec > 0 && diffSec < 604800) {
+          return diffSec;
+        }
+      }
+    }
+  }
+
+  return 0;
+}
+
+/**
  * Run this function directly in Apps Script editor (Select createAllTabsNow -> click Run)
  * to immediately initialize and format all tabs in your Google Sheet!
  */
@@ -877,6 +1082,13 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
 
   var rowMap = {};
   var keyIdx = (keyColIdx !== undefined && keyColIdx !== null) ? keyColIdx : 0;
+  var durColIdx = -1;
+  for (var hi = 0; hi < headers.length; hi++) {
+    if (String(headers[hi]).indexOf('Duration (Seconds)') !== -1) {
+      durColIdx = hi;
+      break;
+    }
+  }
 
   var incomingKeyMap = {};
   if (incomingRows && incomingRows.length > 0) {
@@ -902,7 +1114,16 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
         if (k && k !== 'N/A') {
           var normalized = [];
           for (var c = 0; c < headers.length; c++) {
-            normalized.push(exRow[c] !== undefined ? exRow[c] : '');
+            var rawVal = exRow[c] !== undefined ? exRow[c] : '';
+            if (c === durColIdx) {
+              // Sanitize legacy or corrupt duration values: convert Date objects or bad values to clean numeric seconds
+              rawVal = parseDurationSecondsSafe(rawVal);
+            } else if (c === 5) {
+              rawVal = formatDateOnlyCell(rawVal, '');
+            } else if (c === 6 || c === 7) {
+              rawVal = formatTimeOnlyCell(rawVal);
+            }
+            normalized.push(rawVal);
           }
           rowMap[k] = normalized;
         }
@@ -913,7 +1134,13 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
   // Merge incoming rows
   if (incomingRows && incomingRows.length > 0) {
     for (var i = 0; i < incomingRows.length; i++) {
-      var inRow = incomingRows[i];
+      var inRow = incomingRows[i].slice();
+      if (durColIdx !== -1 && durColIdx < inRow.length) {
+        inRow[durColIdx] = parseDurationSecondsSafe(inRow[durColIdx]);
+      }
+      if (inRow.length > 5) inRow[5] = formatDateOnlyCell(inRow[5], '');
+      if (inRow.length > 6) inRow[6] = formatTimeOnlyCell(inRow[6]);
+      if (inRow.length > 7) inRow[7] = formatTimeOnlyCell(inRow[7]);
       var inKey = String(inRow[keyIdx] || '').trim();
       if (inKey && inKey !== 'N/A') {
         rowMap[inKey] = inRow;
@@ -954,12 +1181,21 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
     sheet.insertRowsAfter(sheet.getMaxRows(), numRows - sheet.getMaxRows() + 10);
   }
 
-  // Deep sanitize all cells to ensure zero undefined or null values
+  // Deep sanitize all cells to ensure zero undefined or null values and pure numbers in Duration
   var sanitizedMergedData = [];
   for (var mr = 0; mr < allData.length; mr++) {
     var cleanMergedRow = [];
     for (var mc = 0; mc < numCols; mc++) {
       var cellMVal = allData[mr][mc];
+      if (mr > 0) {
+        if (mc === durColIdx) {
+          cellMVal = parseDurationSecondsSafe(cellMVal);
+        } else if (mc === 5) {
+          cellMVal = formatDateOnlyCell(cellMVal, '');
+        } else if (mc === 6 || mc === 7) {
+          cellMVal = formatTimeOnlyCell(cellMVal);
+        }
+      }
       cleanMergedRow.push(cellMVal === undefined || cellMVal === null ? '' : cellMVal);
     }
     sanitizedMergedData.push(cleanMergedRow);
@@ -967,6 +1203,14 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
 
   // Set values in-place smoothly without clearing formatting
   sheet.getRange(1, 1, numRows, numCols).setValues(sanitizedMergedData);
+
+  // CRITICAL FIX: Ensure Duration (Seconds) column is explicitly formatted as plain number '0'
+  // so Google Sheets never formats duration numbers as dates (e.g. 7140 as 7/19/1919)
+  if (durColIdx !== -1 && numRows > 1) {
+    try {
+      sheet.getRange(2, durColIdx + 1, numRows - 1, 1).setNumberFormat('0');
+    } catch (fmtErr) {}
+  }
 
   if (prevLastRow > numRows) {
     try {
@@ -1020,6 +1264,14 @@ function populateCleanSheet(sheet, headers, rows, headerColor) {
 
   var targetRange = sheet.getRange(1, 1, numRows, numCols);
   targetRange.setValues(sanitizedData);
+
+  // Format Duration (Seconds) column as plain number if present
+  var cleanDurIdx = headers.indexOf('Duration (Seconds)');
+  if (cleanDurIdx !== -1 && numRows > 1) {
+    try {
+      sheet.getRange(2, cleanDurIdx + 1, numRows - 1, 1).setNumberFormat('0');
+    } catch (fmtErr) {}
+  }
 
   // Clear any excess old rows below current dataset smoothly without flickering the sheet view
   if (prevLastRow > numRows) {
@@ -1728,8 +1980,8 @@ function upsertLiveTrackingSessionRow(sheet, p) {
     elapsedSecs = 0;
   }
   var todayStr = Utilities.formatDate(new Date(), 'Asia/Manila', 'yyyy-MM-dd');
-  var startTime = p.firstCheckin || (existingRow && existingRow[6] ? existingRow[6] : Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a'));
-  var endTime = isTracking ? 'Running Live' : Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a');
+  var startTime = formatTimeOnlyCell(p.firstCheckin || (existingRow && existingRow[6] ? existingRow[6] : Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a')));
+  var endTime = isTracking ? 'Running Live' : formatTimeOnlyCell(Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a'));
   var status = isTracking ? 'running' : 'completed';
 
   var rowData = [
@@ -1738,7 +1990,7 @@ function upsertLiveTrackingSessionRow(sheet, p) {
     resolvedName || targetName || 'Employee',
     p.designation || (existingRow ? existingRow[3] : 'Agent'),
     p.currentTask || (existingRow ? existingRow[4] : 'Active Work'),
-    (existingRow && existingRow[5]) ? existingRow[5] : todayStr,
+    (existingRow && existingRow[5]) ? formatDateOnlyCell(existingRow[5], todayStr) : todayStr,
     startTime,
     endTime,
     elapsedSecs,
@@ -1756,8 +2008,14 @@ function upsertLiveTrackingSessionRow(sheet, p) {
 
   if (matchRow > 0) {
     sheet.getRange(matchRow, 1, 1, 15).setValues([rowData]);
+    try {
+      sheet.getRange(matchRow, 9, 1, 1).setNumberFormat('0');
+    } catch(fErr) {}
   } else {
     sheet.appendRow(rowData);
+    try {
+      sheet.getRange(sheet.getLastRow(), 9, 1, 1).setNumberFormat('0');
+    } catch(fErr) {}
   }
   return rowData;
 }
@@ -1812,8 +2070,8 @@ function upsertDailySummaryRow(sheet, p) {
   if (elapsedSecs >= 604800) {
     elapsedSecs = 0;
   }
-  var sTime = p.firstCheckin || (existingRow && existingRow[5] ? existingRow[5] : Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a'));
-  var eTime = isTracking ? 'Running Live' : (existingRow && existingRow[6] ? existingRow[6] : Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a'));
+  var sTime = formatTimeOnlyCell(p.firstCheckin || (existingRow && existingRow[5] ? existingRow[5] : Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a')));
+  var eTime = isTracking ? 'Running Live' : (existingRow && existingRow[6] ? formatTimeOnlyCell(existingRow[6]) : formatTimeOnlyCell(Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a')));
   var incomingTask = String(p.currentTask || '').trim();
   var taskName = incomingTask || 'General Work';
   if (existingRow && existingRow[4]) {
@@ -1851,8 +2109,14 @@ function upsertDailySummaryRow(sheet, p) {
 
   if (matchRow > 0) {
     sheet.getRange(matchRow, 1, 1, 14).setValues([rowData]);
+    try {
+      sheet.getRange(matchRow, 11, 1, 1).setNumberFormat('0');
+    } catch(fErr) {}
   } else {
     sheet.appendRow(rowData);
+    try {
+      sheet.getRange(sheet.getLastRow(), 11, 1, 1).setNumberFormat('0');
+    } catch(fErr) {}
   }
   return rowData;
 }
@@ -2334,51 +2598,39 @@ function doPost(e) {
         var empCode = matchedUser.employeeCode || t.employeeCode || 'N/A';
         var empName = resolveStaffFullName(empCode, t.userName, matchedUser.name || t.userName, t.userId);
         
-        var rawSecs = typeof t.durationSeconds === 'number' ? Math.max(0, Math.floor(t.durationSeconds)) : 0;
-        if (!rawSecs && t.startTime && t.endTime && t.endTime !== 'Running Live') {
-          try {
-            var diffMs = new Date(t.endTime).getTime() - new Date(t.startTime).getTime();
-            if (!isNaN(diffMs) && diffMs > 0) {
-              rawSecs = Math.floor(diffMs / 1000) - (t.idleSeconds || 0);
-              if (rawSecs < 0) rawSecs = 0;
-            }
-          } catch(e) {}
-        }
-        if (rawSecs === 0 && (t.endTime === 'Running Live' || t.status === 'running' || !t.endTime)) {
+        // Priority 1: Use valid numeric duration seconds if provided
+        var rawSecs = parseDurationSecondsSafe(t.durationSeconds);
+        var isLive = (t.endTime === 'Running Live' || t.status === 'running' || !t.endTime);
+
+        // Priority 2: For active running sessions, use authoritative elapsedSeconds from presence
+        if (isLive) {
           var pUser = presenceMap[t.userId] || presenceMap[empCode] || presenceMap[empName];
-          if (pUser && pUser.elapsedSeconds && pUser.elapsedSeconds > 0) {
-            rawSecs = pUser.elapsedSeconds;
-          } else if (t.startTime) {
-            try {
-              var sMs = new Date(t.startTime).getTime();
-              if (!isNaN(sMs) && nowMs > sMs) {
-                rawSecs = Math.floor((nowMs - sMs) / 1000);
-              }
-            } catch(e) {}
+          if (pUser && pUser.elapsedSeconds) {
+            var pElapsed = parseDurationSecondsSafe(pUser.elapsedSeconds);
+            if (pElapsed > 0) {
+              rawSecs = pElapsed;
+            }
           }
         }
+
+        // Priority 3: Only calculate duration from start/end when rawSecs is 0 and not running live
+        // NEVER subtract an 1899 date from a 2026 timestamp!
+        if (!rawSecs && !isLive && t.startTime && t.endTime) {
+          rawSecs = calculateTimeDifferenceSecsSafe(t.startTime, t.endTime, t.date || todayStr, t.idleSeconds || 0);
+        }
+
+        // Priority 5: Enforce strict bounds - never generate duration >= 604800s (7 days) or negative
+        if (rawSecs >= 604800 || rawSecs < 0 || isNaN(rawSecs)) {
+          rawSecs = 0;
+        }
+
         var totalTimeHuman = formatTotalTime(rawSecs);
         var idleMins = t.idleSeconds ? Math.round(t.idleSeconds / 60) + ' mins' : '0 mins';
 
         // Format start and end times in Philippine Timezone (Asia/Manila GMT+8)
-        var sTime = t.geoLocalStartTime || '';
-        if (!sTime && t.startTime) {
-          try {
-            var sD = new Date(t.startTime);
-            if (!isNaN(sD.getTime())) {
-              sTime = Utilities.formatDate(sD, 'Asia/Manila', 'hh:mm:ss a');
-            }
-          } catch(e) { sTime = t.startTime; }
-        }
-        var eTime = (t.endTime === 'Running Live' || !t.endTime) ? 'Running Live' : (t.geoLocalEndTime || '');
-        if (eTime !== 'Running Live' && !eTime && t.endTime) {
-          try {
-            var eD = new Date(t.endTime);
-            if (!isNaN(eD.getTime())) {
-              eTime = Utilities.formatDate(eD, 'Asia/Manila', 'hh:mm:ss a');
-            }
-          } catch(e) { eTime = t.endTime; }
-        }
+        var sTime = formatTimeOnlyCell(t.geoLocalStartTime || t.startTime);
+        var eTime = isLive ? 'Running Live' : formatTimeOnlyCell(t.geoLocalEndTime || t.endTime);
+        var logDate = formatDateOnlyCell(t.date, todayStr);
 
         activeRows.push([
           t.id || 'N/A',
@@ -2386,7 +2638,7 @@ function doPost(e) {
           empName,
           t.designation || matchedUser.designation || 'Agent',
           t.task || 'General',
-          t.date || '',
+          logDate,
           sTime,
           eTime,
           rawSecs,
@@ -2409,7 +2661,7 @@ function doPost(e) {
         activeSeen[pSessionId] = true;
 
         var elapsed = typeof p.elapsedSeconds === 'number' ? Math.max(0, Math.floor(p.elapsedSeconds)) : 0;
-        var sTime = p.firstCheckin || Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a');
+        var sTime = formatTimeOnlyCell(p.firstCheckin || Utilities.formatDate(new Date(), 'Asia/Manila', 'hh:mm:ss a'));
         activeRows.push([
           pSessionId,
           pCode || 'N/A',
@@ -2442,12 +2694,13 @@ function doPost(e) {
       var activeSheet = ss.getSheetByName('Active_Logs');
       var mergedTimeLogs = [];
 
-      if (timesheetsSheet) {
-        mergedTimeLogs = populateMergedSheet(timesheetsSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
-      }
+      // Primary source: Time_Logs
       if (timeLogsSheet) {
-        var tlMerged = populateMergedSheet(timeLogsSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
-        if (!mergedTimeLogs.length) mergedTimeLogs = tlMerged;
+        mergedTimeLogs = populateMergedSheet(timeLogsSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
+      }
+      if (timesheetsSheet) {
+        var tsMerged = populateMergedSheet(timesheetsSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
+        if (!mergedTimeLogs.length) mergedTimeLogs = tsMerged;
       }
       if (activeSheet) {
         var actMerged = populateMergedSheet(activeSheet, activeHeaders, activeRows, '#047857', 0, 5) || [];
@@ -2486,11 +2739,16 @@ function doPost(e) {
         var empName = String(row[2] || 'Staff').trim();
         var designation = String(row[3] || 'Agent').trim();
         var task = String(row[4] || 'General Work').trim();
-        var d = String(row[5] || '').trim();
-        var sTime = String(row[6] || '').trim();
-        var eTime = String(row[7] || '').trim();
+        var d = formatDateOnlyCell(row[5], todayStr);
+        var sTime = formatTimeOnlyCell(row[6]);
+        var eTime = formatTimeOnlyCell(row[7]);
         var rawDur = row[8];
         var sSecs = parseDurationSecondsSafe(rawDur);
+
+        // Ignore invalid legacy duration values (>= 604800 or invalid)
+        if (sSecs >= 604800 || sSecs < 0 || isNaN(sSecs)) {
+          sSecs = 0;
+        }
 
         var idleStr = String(row[10] || '0').replace(/[^0-9]/g, '');
         var idleSecs = (parseInt(idleStr, 10) || 0) * 60;
@@ -2571,9 +2829,10 @@ function doPost(e) {
               hasLive: true
             };
           } else {
+            // Employee already has Daily_Summary accumulated from valid Time_Logs
+            // Never overwrite or inflate grossSecs with presence shift hours
             dailyMap[dKey].hasLive = true;
             dailyMap[dKey].lastClockOut = 'Running Live';
-            if (mSecs > dailyMap[dKey].grossSecs) dailyMap[dKey].grossSecs = mSecs;
             if (eTask && eTask !== 'Shift Concluded') dailyMap[dKey].tasks[eTask] = true;
           }
         }
@@ -3153,9 +3412,9 @@ function doGet(e) {
           userName: empName,
           designation: String(row[3] || 'Agent').trim(),
           task: String(row[4] || 'General').trim(),
-          date: String(row[5] || '').trim(),
-          startTime: String(row[6] || '').trim(),
-          endTime: String(row[7] || '').trim(),
+          date: formatDateOnlyCell(row[5], ''),
+          startTime: formatTimeOnlyCell(row[6]),
+          endTime: (String(row[7] || '').toLowerCase().indexOf('running') !== -1) ? 'Running Live' : formatTimeOnlyCell(row[7]),
           durationSeconds: durSec,
           durationFormatted: totalTimeStr || formatTotalTime(durSec),
           totalTime: totalTimeStr || formatTotalTime(durSec),
