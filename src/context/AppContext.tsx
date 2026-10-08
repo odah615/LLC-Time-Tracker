@@ -33,6 +33,9 @@ import {
   fetchLivePresenceFromGoogleSheets,
   isValidWebhookUrl,
   resetGoogleSpreadsheetData,
+  normalizeWorkDate,
+  normalizeTimeValue,
+  parseDurationSeconds,
 } from '../lib/googleSheetsSync';
 import { playInactivityChime, playUrgentPulse } from '../lib/soundAlerts';
 import {
@@ -1188,19 +1191,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             existing?.userName ||
             'Employee';
 
-          const rawDur = log.durationSeconds;
-          let durSec = 0;
-          if (typeof rawDur === 'number' && !isNaN(rawDur)) {
-            durSec = Math.max(0, Math.floor(rawDur));
-          } else if (existing?.durationSeconds) {
-            durSec = existing.durationSeconds;
-          }
+          const normDate = normalizeWorkDate(log.date || existing?.date, log.startTime || existing?.startTime);
+          const normStartTime = normalizeTimeValue(log.startTime || existing?.startTime, getManilaTimeString());
+          const normEndTime = normalizeTimeValue(log.endTime || existing?.endTime, '');
 
           const statusStr = String(log.status || existing?.status || 'completed').toLowerCase();
           const isRunning =
             statusStr === 'running' ||
-            log.endTime === 'Running Live' ||
-            log.endTime === 'In Progress (Live)';
+            normEndTime === 'Running Live' ||
+            String(log.endTime || '').includes('Running');
+
+          const parsedSec = parseDurationSeconds(
+            log.durationSeconds,
+            (log as any).totalTime || (log as any).durationFormatted,
+            normStartTime,
+            normEndTime
+          );
+
+          let durSec = 0;
+          if (isRunning) {
+            durSec = Math.max(parsedSec, existing?.durationSeconds || 0);
+          } else if (parsedSec > 0) {
+            durSec = parsedSec;
+          } else if (existing?.durationSeconds) {
+            durSec = existing.durationSeconds;
+          }
 
           map.set(log.id, {
             ...(existing || {}),
@@ -1212,17 +1227,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             userAvatar: log.userAvatar || existing?.userAvatar || matchedUser?.avatar || '',
             designation: log.designation || existing?.designation || matchedUser?.designation || canonical?.designation || 'Agent',
             task: log.task || existing?.task || 'General Work',
-            startTime: log.startTime || existing?.startTime || new Date().toISOString(),
-            endTime: log.endTime || existing?.endTime || (isRunning ? 'Running Live' : ''),
+            startTime: normStartTime,
+            endTime: isRunning ? 'Running Live' : (normEndTime || '--:--'),
             durationSeconds: durSec,
             status: isRunning ? 'running' : 'completed',
             geoTimezone: log.geoTimezone || existing?.geoTimezone || 'Asia/Manila',
-            geoLocalStartTime: log.geoLocalStartTime || log.startTime || existing?.geoLocalStartTime || '',
-            geoLocalEndTime: log.geoLocalEndTime || log.endTime || existing?.geoLocalEndTime || '',
+            geoLocalStartTime: normStartTime,
+            geoLocalEndTime: isRunning ? 'Running Live' : (normEndTime || '--:--'),
             mouseActivityAvg: log.mouseActivityAvg ?? existing?.mouseActivityAvg ?? 95,
             keyboardActivityAvg: log.keyboardActivityAvg ?? existing?.keyboardActivityAvg ?? 95,
             idleSeconds: log.idleSeconds ?? existing?.idleSeconds ?? 0,
-            date: log.date || existing?.date || getManilaDateString(),
+            date: normDate,
             notes: log.notes || existing?.notes || 'Imported from Google Sheets Time_Logs',
             appsUsed: log.appsUsed || existing?.appsUsed || [],
           } as TimeLog);
@@ -2406,9 +2421,9 @@ if (mode === 'software') {
         return updated;
       });
 
-      // Transmit instant login heartbeat to Google Sheets so agent immediately appears online & tracking
+      // Transmit instant login heartbeat to Google Sheets only if running in desktop tracking client
       const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || DEFAULT_WEBHOOK_URL;
-      if (activeHook && isValidWebhookUrl(activeHook)) {
+      if (isDesktop && activeHook && isValidWebhookUrl(activeHook)) {
         syncAgentHeartbeatToSheets(activeHook.trim(), {
           userId: user.id,
           employeeCode: user.employeeCode || '',
@@ -2485,9 +2500,18 @@ if (mode === 'software') {
           )
         );
 
-        // Transmit instant logout heartbeat to Google Sheets so agent immediately appears offline
+        const isDesktopApp =
+          loginMode === 'software' ||
+          (typeof window !== 'undefined' &&
+            Boolean(
+              (window as any).electronAPI ||
+              navigator.userAgent.includes('Electron') ||
+              localStorage.getItem('trackpulse_login_mode') === 'software'
+            ));
+
+        // Transmit instant logout heartbeat to Google Sheets only if logging out from the actual desktop tracking client
         const activeHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || DEFAULT_WEBHOOK_URL;
-        if (activeHook && isValidWebhookUrl(activeHook)) {
+        if (isDesktopApp && activeHook && isValidWebhookUrl(activeHook)) {
           syncAgentHeartbeatToSheets(activeHook.trim(), {
             userId: currentUser.id,
             employeeCode: currentUser.employeeCode || '',
@@ -3125,7 +3149,6 @@ if (mode === 'software') {
         return;
       }
 
-      console.log('[SHEETS HEARTBEAT] CALLING', currentUser.employeeCode);
       const snap = liveTrackingSnapshotRef.current;
 
       const isDesktop =
@@ -3140,17 +3163,21 @@ if (mode === 'software') {
           ));
 
       const isEffTracking = isTracking && !isPaused;
-      const currentElapsed = isEffTracking
-        ? Math.max(getLiveElapsedSeconds(), elapsedSeconds, snap.elapsedSeconds || 0)
-        : 0;
 
-      const statusLabel = isEffTracking
-        ? '🟢 Live Tracking'
-        : isPaused
+      // ARCHITECTURE RULE: Only an actively running tracking client may transmit tracking heartbeats.
+      // A viewer/portal client that is not actively tracking must NEVER transmit isTracking: false / elapsedSeconds: 0,
+      // as this overwrites the Desktop Tracker's active tracking state in Google Sheets.
+      if (!isEffTracking) {
+        return;
+      }
+
+      console.log('[SHEETS HEARTBEAT] CALLING', currentUser.employeeCode);
+
+      const currentElapsed = Math.max(getLiveElapsedSeconds(), elapsedSeconds, snap.elapsedSeconds || 0);
+
+      const statusLabel = isPaused
         ? '🟡 Idle / Break'
-        : isDesktop
-        ? '🔵 Desktop Online'
-        : '🟢 Website Online';
+        : '🟢 Live Tracking';
 
       const startFormatted =
         snap.startTimeIso || startTimeIso

@@ -1,9 +1,300 @@
 import { AuditLog, TimeLog, User, PayrollRecord, DailyAttendanceLog, IdleLog, LeaveRequest, UserPresence } from '../types';
 import { generateUniqueUsername, isPlaceholderName, deduplicateUsers, resolveCanonicalEmployee } from './userUtils';
+import { getManilaDateString } from './dateUtils';
 
 export const DEFAULT_SPREADSHEET_ID = '1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA';
 export const DEFAULT_SPREADSHEET_URL = 'https://docs.google.com/spreadsheets/d/1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA/edit?gid=1299988798#gid=1299988798';
 export const DEFAULT_WEBHOOK_URL = 'https://script.google.com/macros/s/AKfycbyKGMOWV0u5xcv_lOKBk6LXpbjrlgZiuqtCs3_HbqjekoJZdXpdfA_1kDjP7H0ulLsw3Q/exec';
+
+/**
+ * Normalizes work date into stable YYYY-MM-DD format (Asia/Manila).
+ * Removes full JavaScript Date strings (e.g., "Thu Oct 08 2026 00:00:00 GMT+0800")
+ * and prevents 1899 date artifacts from corrupting work dates.
+ */
+export const normalizeWorkDate = (rawDate?: any, fallbackDate?: string): string => {
+  if (!rawDate && !fallbackDate) {
+    return getManilaDateString();
+  }
+  const str = String(rawDate || '').trim();
+
+  // If it's a 1899 date string, it's a time-only cell artifact, ignore and use fallback
+  if (str.includes('1899')) {
+    return fallbackDate ? normalizeWorkDate(fallbackDate) : getManilaDateString();
+  }
+
+  // Exact YYYY-MM-DD format
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+
+  // ISO timestamp (YYYY-MM-DDTHH:mm:ss...)
+  if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
+    const isoDate = str.split('T')[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+      return isoDate;
+    }
+  }
+
+  // Month name map
+  const monthMap: Record<string, string> = {
+    jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+    january: '01', february: '02', march: '03', april: '04', june: '06',
+    july: '07', august: '08', september: '09', october: '10', november: '11', december: '12',
+  };
+
+  // Text date format e.g. "Thu Oct 08 2026 00:00:00 GMT+0800" or "Oct 08 2026" or "October 8, 2026"
+  const textMonthMatch = str.match(/(?:[A-Za-z]+,?\s+)?([A-Za-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})/i);
+  if (textMonthMatch) {
+    const mStr = textMonthMatch[1].toLowerCase();
+    const day = textMonthMatch[2].padStart(2, '0');
+    const year = textMonthMatch[3];
+    const month = monthMap[mStr] || monthMap[mStr.slice(0, 3)];
+    if (month && Number(year) >= 2000) {
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  // Slash or dash format: MM/DD/YYYY or DD/MM/YYYY or YYYY/MM/DD
+  if (str.includes('/') || (str.includes('-') && !str.startsWith('1899'))) {
+    const parts = str.split(/[\/\-]/);
+    if (parts.length === 3) {
+      // YYYY/MM/DD
+      if (parts[0].length === 4 && Number(parts[0]) >= 2000) {
+        return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+      }
+      // MM/DD/YYYY or DD/MM/YYYY
+      if (parts[2].length === 4 && Number(parts[2]) >= 2000) {
+        const p0 = parseInt(parts[0], 10);
+        const p1 = parseInt(parts[1], 10);
+        const y = parts[2];
+        if (p0 > 12) {
+          // DD/MM/YYYY
+          return `${y}-${String(p1).padStart(2, '0')}-${String(p0).padStart(2, '0')}`;
+        }
+        // MM/DD/YYYY
+        return `${y}-${String(p0).padStart(2, '0')}-${String(p1).padStart(2, '0')}`;
+      }
+    }
+  }
+
+  // Google Sheets numeric serial date (e.g. 46303 -> 2026-10-08)
+  if (/^\d{5}(\.\d+)?$/.test(str)) {
+    const serial = parseFloat(str);
+    if (serial >= 30000 && serial <= 60000) {
+      const utcMs = (serial - 25569) * 86400 * 1000;
+      const d = new Date(utcMs);
+      if (!isNaN(d.getTime())) {
+        const y = d.getUTCFullYear();
+        const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(d.getUTCDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+    }
+  }
+
+  // Fallback to Date object parsing if valid year >= 2000
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime()) && parsed.getFullYear() >= 2000) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  if (fallbackDate) {
+    return normalizeWorkDate(fallbackDate);
+  }
+
+  return getManilaDateString();
+};
+
+/**
+ * Normalizes time-only strings, extracting pure 12h/24h time without 1899 date artifacts.
+ * e.g., "Sat Dec 30 1899 23:50:00 GMT+0800" -> "11:50:00 PM"
+ *       "1899-12-30 11:50 AM" -> "11:50 AM"
+ *       "1899-12-30 12:28 PM" -> "12:28 PM"
+ */
+export const normalizeTimeValue = (rawTime?: any, fallbackDefault?: string): string => {
+  if (rawTime === null || rawTime === undefined) {
+    return fallbackDefault || '';
+  }
+  const str = String(rawTime).trim();
+  if (!str) return fallbackDefault || '';
+
+  // Preserve live status keywords
+  if (
+    str.toLowerCase().includes('running') ||
+    str.toLowerCase().includes('in progress') ||
+    str.toLowerCase().includes('active live')
+  ) {
+    return 'Running Live';
+  }
+
+  // Check if string contains 12-hour AM/PM time (e.g. "11:50 AM", "12:28:00 PM", "1899-12-30 11:50 AM")
+  const ampmMatch = str.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap]\.?m\.?)/i);
+  if (ampmMatch) {
+    const hh = parseInt(ampmMatch[1], 10);
+    const mm = ampmMatch[2];
+    const ss = ampmMatch[3];
+    const modifier = ampmMatch[4].toUpperCase().replace(/\./g, '');
+    return ss ? `${hh}:${mm}:${ss} ${modifier}` : `${hh}:${mm} ${modifier}`;
+  }
+
+  // Check if string is a JavaScript Date string with 24-hour time (e.g., "Sat Dec 30 1899 23:50:00 GMT+0800")
+  const gmtTimeMatch = str.match(/(?:1899|\d{4})[^\d]+(\d{1,2}):(\d{2}):(\d{2})/);
+  if (gmtTimeMatch) {
+    const hours = parseInt(gmtTimeMatch[1], 10);
+    const mins = gmtTimeMatch[2];
+    const secs = gmtTimeMatch[3];
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return `${hours12}:${mins}:${secs} ${ampm}`;
+  }
+
+  // Check if string is simple 24-hour time "23:50:00" or "11:50"
+  const time24Match = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (time24Match) {
+    const hours = parseInt(time24Match[1], 10);
+    const mins = time24Match[2];
+    const secs = time24Match[3];
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const hours12 = hours % 12 || 12;
+    return secs ? `${hours12}:${mins}:${secs} ${ampm}` : `${hours12}:${mins} ${ampm}`;
+  }
+
+  // If already clean time
+  if (/^\d{1,2}:\d{2}(?::\d{2})?\s*(AM|PM)$/i.test(str)) {
+    return str;
+  }
+
+  // If ISO string with valid time
+  if (str.includes('T')) {
+    try {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        const hours = d.getHours();
+        const mins = String(d.getMinutes()).padStart(2, '0');
+        const secs = String(d.getSeconds()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const hours12 = hours % 12 || 12;
+        return `${hours12}:${mins}:${secs} ${ampm}`;
+      }
+    } catch {}
+  }
+
+  return str;
+};
+
+/**
+ * Robust Duration Seconds Parser:
+ * Primary: numeric durationSeconds, string digits e.g. "2237", "2,237"
+ * Fallback 1: formatted totalTime e.g. "37m 17s", "1h 15m", "00:37:17"
+ * Fallback 2: Calculate difference between End Time and Start Time (with overnight support)
+ */
+export const parseDurationSeconds = (
+  rawDuration?: any,
+  formattedTotalTime?: any,
+  startTime?: any,
+  endTime?: any
+): number => {
+  // 1. Primary: Numeric or string digits in durationSeconds
+  if (rawDuration !== undefined && rawDuration !== null && rawDuration !== '') {
+    if (typeof rawDuration === 'number' && !isNaN(rawDuration)) {
+      const n = Math.floor(rawDuration);
+      if (n > 0) return n;
+    }
+    const cleanDigits = String(rawDuration).trim().replace(/,/g, '');
+    if (/^\d+$/.test(cleanDigits)) {
+      const parsed = parseInt(cleanDigits, 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+  }
+
+  // 2. Fallback 1: Parse formatted total time (e.g. "37m 17s", "1h 15m", "00:37:17", "37 mins")
+  if (formattedTotalTime !== undefined && formattedTotalTime !== null && formattedTotalTime !== '') {
+    const text = String(formattedTotalTime).trim().toLowerCase();
+
+    // Pattern: "Xh Ym Zs" or "Xh Ym" or "Ym Zs" or "Ys"
+    const hMatch = text.match(/(\d+)\s*h(?:ours?|rs?)?/);
+    const mMatch = text.match(/(\d+)\s*m(?:inutes?|ins?)?/);
+    const sMatch = text.match(/(\d+)\s*s(?:econds?|ecs?)?/);
+
+    if (hMatch || mMatch || sMatch) {
+      const hours = hMatch ? parseInt(hMatch[1], 10) : 0;
+      const mins = mMatch ? parseInt(mMatch[1], 10) : 0;
+      const secs = sMatch ? parseInt(sMatch[1], 10) : 0;
+      const total = hours * 3600 + mins * 60 + secs;
+      if (total > 0) return total;
+    }
+
+    // Pattern: "HH:MM:SS" or "MM:SS" (e.g. "00:37:17", "37:17")
+    const colonMatch = text.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if (colonMatch) {
+      const p1 = parseInt(colonMatch[1], 10);
+      const p2 = parseInt(colonMatch[2], 10);
+      const p3 = colonMatch[3] !== undefined ? parseInt(colonMatch[3], 10) : undefined;
+      if (p3 !== undefined) {
+        // HH:MM:SS
+        const total = p1 * 3600 + p2 * 60 + p3;
+        if (total > 0) return total;
+      } else {
+        // MM:SS
+        const total = p1 * 60 + p2;
+        if (total > 0) return total;
+      }
+    }
+
+    // Decimal hours (e.g. "0.62 hrs" or "2.5h")
+    const decMatch = text.match(/^(\d+(?:\.\d+)?)\s*(?:h|hrs|hours)$/);
+    if (decMatch) {
+      const total = Math.round(parseFloat(decMatch[1]) * 3600);
+      if (total > 0) return total;
+    }
+  }
+
+  // 3. Fallback 2: Calculate difference between End Time and Start Time
+  if (startTime && endTime && typeof startTime === 'string' && typeof endTime === 'string') {
+    const sNorm = normalizeTimeValue(startTime);
+    const eNorm = normalizeTimeValue(endTime);
+
+    if (eNorm && sNorm && eNorm !== 'Running Live' && !eNorm.includes('Running')) {
+      const timeToSecs = (tStr: string): number | null => {
+        const ampmMatch = tStr.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AP]M)/i);
+        if (ampmMatch) {
+          let h = parseInt(ampmMatch[1], 10);
+          const m = parseInt(ampmMatch[2], 10);
+          const s = ampmMatch[3] ? parseInt(ampmMatch[3], 10) : 0;
+          const isPM = ampmMatch[4].toUpperCase() === 'PM';
+          if (isPM && h < 12) h += 12;
+          if (!isPM && h === 12) h = 0;
+          return h * 3600 + m * 60 + s;
+        }
+        const match24 = tStr.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+        if (match24) {
+          const h = parseInt(match24[1], 10);
+          const m = parseInt(match24[2], 10);
+          const s = match24[3] ? parseInt(match24[3], 10) : 0;
+          return h * 3600 + m * 60 + s;
+        }
+        return null;
+      };
+
+      const startSecs = timeToSecs(sNorm);
+      const endSecs = timeToSecs(eNorm);
+      if (startSecs !== null && endSecs !== null) {
+        let diff = endSecs - startSecs;
+        if (diff < 0) {
+          // Overnight session: spans midnight
+          diff += 86400;
+        }
+        if (diff > 0) return diff;
+      }
+    }
+  }
+
+  return 0;
+};
 
 // Expected Google Sheet Tabs and Columns Schema with Dedicated Separated Tabs
 export const maskPassword = (pwd?: string): string => {
@@ -3613,10 +3904,30 @@ export const fetchTimeLogsFromGoogleSheets = async (
       if (proxyRes.ok) {
         const data = await proxyRes.json();
         if (data && Array.isArray(data.timeLogs) && data.timeLogs.length > 0) {
+          const normalizedLogs: Partial<TimeLog>[] = data.timeLogs.map((log: any) => {
+            const normDate = normalizeWorkDate(log.date, log.startTime);
+            const normStart = normalizeTimeValue(log.startTime);
+            const normEnd = normalizeTimeValue(log.endTime);
+            const durSec = parseDurationSeconds(
+              log.durationSeconds,
+              log.totalTime || log.durationFormatted,
+              normStart,
+              normEnd
+            );
+            return {
+              ...log,
+              date: normDate,
+              startTime: normStart,
+              endTime: normEnd,
+              geoLocalStartTime: normStart,
+              geoLocalEndTime: normEnd,
+              durationSeconds: durSec,
+            };
+          });
           return {
             success: true,
-            timeLogs: data.timeLogs,
-            message: `Successfully extracted ${data.timeLogs.length} time logs from Google Sheets!`,
+            timeLogs: normalizedLogs,
+            message: `Successfully extracted ${normalizedLogs.length} time logs from Google Sheets!`,
           };
         }
       }
@@ -3630,10 +3941,30 @@ export const fetchTimeLogsFromGoogleSheets = async (
       if (directRes.ok) {
         const data = await directRes.json();
         if (data && Array.isArray(data.timeLogs) && data.timeLogs.length > 0) {
+          const normalizedLogs: Partial<TimeLog>[] = data.timeLogs.map((log: any) => {
+            const normDate = normalizeWorkDate(log.date, log.startTime);
+            const normStart = normalizeTimeValue(log.startTime);
+            const normEnd = normalizeTimeValue(log.endTime);
+            const durSec = parseDurationSeconds(
+              log.durationSeconds,
+              log.totalTime || log.durationFormatted,
+              normStart,
+              normEnd
+            );
+            return {
+              ...log,
+              date: normDate,
+              startTime: normStart,
+              endTime: normEnd,
+              geoLocalStartTime: normStart,
+              geoLocalEndTime: normEnd,
+              durationSeconds: durSec,
+            };
+          });
           return {
             success: true,
-            timeLogs: data.timeLogs,
-            message: `Successfully extracted ${data.timeLogs.length} time logs directly from Google Sheets Webhook!`,
+            timeLogs: normalizedLogs,
+            message: `Successfully extracted ${normalizedLogs.length} time logs directly from Google Sheets Webhook!`,
           };
         }
       }
@@ -3661,22 +3992,10 @@ export const fetchTimeLogsFromGoogleSheets = async (
               const empName = (r[2] || '').trim();
               if (!id && !empName && !empCode) continue;
 
-              // Parse duration seconds from rawSecs or human string or start/end times
-              let durSec = 0;
-              const rawSecStr = (r[8] || '').trim().replace(/,/g, '');
-              if (rawSecStr && !isNaN(Number(rawSecStr))) {
-                durSec = Math.max(0, parseInt(rawSecStr, 10));
-              }
-              if (durSec === 0 && r[9]) {
-                const humanStr = String(r[9]).trim().toLowerCase();
-                const hMatch = humanStr.match(/(\d+)\s*h/);
-                const mMatch = humanStr.match(/(\d+)\s*m/);
-                const sMatch = humanStr.match(/(\d+)\s*s/);
-                const hours = hMatch ? parseInt(hMatch[1], 10) : 0;
-                const mins = mMatch ? parseInt(mMatch[1], 10) : 0;
-                const secs = sMatch ? parseInt(sMatch[1], 10) : 0;
-                durSec = hours * 3600 + mins * 60 + secs;
-              }
+              const normDate = normalizeWorkDate(r[5], r[6]);
+              const normStart = normalizeTimeValue(r[6]);
+              const normEnd = normalizeTimeValue(r[7]);
+              const durSec = parseDurationSeconds(r[8], r[9], normStart, normEnd);
 
               // Parse mouse and keyboard activity percentages
               let mouseAvg = 95;
@@ -3705,11 +4024,11 @@ export const fetchTimeLogsFromGoogleSheets = async (
                 userName: empName,
                 designation: (r[3] || 'Agent').trim(),
                 task: (r[4] || 'General').trim(),
-                date: (r[5] || '').trim(),
-                startTime: (r[6] || '').trim(),
-                endTime: (r[7] || '').trim(),
-                geoLocalStartTime: (r[6] || '').trim(),
-                geoLocalEndTime: (r[7] || '').trim(),
+                date: normDate,
+                startTime: normStart,
+                endTime: normEnd,
+                geoLocalStartTime: normStart,
+                geoLocalEndTime: normEnd,
                 durationSeconds: durSec,
                 mouseActivityAvg: mouseAvg,
                 keyboardActivityAvg: keyAvg,

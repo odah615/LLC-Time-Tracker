@@ -304,19 +304,6 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
 
       if (!isUserTracking) return;
 
-      const liveElapsed = isCurrentActiveUser
-        ? Math.max(0, elapsedSeconds)
-        : Math.max(0, presence?.elapsedSeconds || 0);
-
-      const activeTask = isCurrentActiveUser
-        ? (currentTask || 'Active Shift')
-        : (presence?.currentTask || attendance?.currentTask || 'Active Shift');
-
-      const liveStartTime =
-        presence?.startTime ||
-        attendance?.checkInTime ||
-        new Date(Date.now() - liveElapsed * 1000).toISOString();
-
       const runningIndex = list.findIndex(
         (l) =>
           (l.userId === u.id ||
@@ -327,6 +314,36 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
             l.endTime === 'Running Live' ||
             l.endTime === 'In Progress (Live)')
       );
+
+      const existingRunningLog = runningIndex >= 0 ? list[runningIndex] : undefined;
+      const persistedDuration = Math.max(0, Number(existingRunningLog?.durationSeconds) || 0);
+      const presenceDuration = Math.max(0, Number(presence?.elapsedSeconds) || 0);
+
+      // TIMESHEET DISPLAY RULE:
+      // 1. If current portal is actual active timer client, its local elapsedSeconds may be used.
+      // 2. Otherwise, use the persisted running TimeLog durationSeconds from Google Sheets.
+      // 3. If Live_Presence has a valid elapsedSeconds > 0 and it is greater than persisted, use it.
+      // 4. NEVER replace a valid persisted duration with zero/undefined merely because presence lacks elapsedSeconds.
+      let liveElapsed = 0;
+      if (isCurrentActiveUser) {
+        liveElapsed = Math.max(elapsedSeconds, persistedDuration);
+      } else if (presenceDuration > 0 && presenceDuration > persistedDuration) {
+        liveElapsed = presenceDuration;
+      } else if (persistedDuration > 0) {
+        liveElapsed = persistedDuration;
+      } else {
+        liveElapsed = presenceDuration;
+      }
+
+      const activeTask = isCurrentActiveUser
+        ? (currentTask || 'Active Shift')
+        : (presence?.currentTask || attendance?.currentTask || existingRunningLog?.task || 'Active Shift');
+
+      const liveStartTime =
+        existingRunningLog?.startTime ||
+        presence?.startTime ||
+        attendance?.checkInTime ||
+        new Date(Date.now() - liveElapsed * 1000).toISOString();
 
       const liveLog: TimeLog = {
         id:
@@ -360,16 +377,17 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
         idleSeconds:
           presence?.idleDeductionSeconds ||
           attendance?.idleDeductionsSeconds ||
-          0,
-        mouseActivityAvg: presence?.mouseActivity ?? 95,
-        keyboardActivityAvg: presence?.keyboardActivity ?? 95,
-        notes: 'Live Active Shift',
+          (existingRunningLog?.idleSeconds || 0),
+        mouseActivityAvg: presence?.mouseActivity ?? existingRunningLog?.mouseActivityAvg ?? 95,
+        keyboardActivityAvg: presence?.keyboardActivity ?? existingRunningLog?.keyboardActivityAvg ?? 95,
+        notes: existingRunningLog?.notes || 'Live Active Shift',
       };
 
       if (runningIndex >= 0) {
         list[runningIndex] = {
           ...list[runningIndex],
           ...liveLog,
+          durationSeconds: Math.max(persistedDuration, liveElapsed),
         };
       } else {
         list.unshift(liveLog);
@@ -574,7 +592,11 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
 
     const runningSeconds = isTracking
       ? Math.max(0, elapsedSeconds || 0)
-      : Math.max(0, Number(presence?.elapsedSeconds || liveLog?.durationSeconds || 0));
+      : Math.max(
+          0,
+          Number(liveLog?.durationSeconds || 0),
+          Number(presence?.elapsedSeconds || 0)
+        );
 
     const idleSeconds = Math.max(
       0,
