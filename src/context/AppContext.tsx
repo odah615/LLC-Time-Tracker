@@ -492,17 +492,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [loginMode, setLoginMode] = useState<'webapp' | 'software'>(() => {
     if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
+      const search = window.location.search;
       if (
-        urlParams.get('mode') === 'desktop' ||
-        urlParams.get('source') === 'software' ||
-        urlParams.get('appMode') === 'desktop' ||
-        window.navigator.userAgent.includes('Electron')
+        search.includes('mode=desktop') ||
+        search.includes('source=software') ||
+        search.includes('appMode=desktop') ||
+        search.includes('mode=software') ||
+        window.navigator.userAgent.includes('Electron') ||
+        (window as any).isElectronApp === true ||
+        Boolean((window as any).electronAPI)
       ) {
         return 'software';
       }
     }
-    return (localStorage.getItem('trackpulse_login_mode') as 'webapp' | 'software') || 'webapp';
+    return 'webapp';
   });
 
   const [timeLogs, setTimeLogs] = useState<TimeLog[]>(() => {
@@ -2175,8 +2178,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [currentUser]);
 
   // Saved Active Tracking Session (restores shift upon minimize, refresh, or process sleep/wake)
+  // ARCHITECTURE RULE: Only an authentic Desktop/Software Tracker runtime may initialize
+  // active tracking from persisted localStorage. The normal Web Portal is a viewer/reader
+  // and must NEVER inherit or activate an active tracking session from shared localStorage.
   const savedActiveTracking = (() => {
     if (typeof window === 'undefined') return null;
+    const search = window.location.search;
+    const isDesktopRuntime = Boolean(
+      search.includes('mode=desktop') ||
+      search.includes('source=software') ||
+      search.includes('appMode=desktop') ||
+      search.includes('mode=software') ||
+      window.navigator.userAgent.includes('Electron') ||
+      (window as any).isElectronApp === true ||
+      Boolean((window as any).electronAPI)
+    );
+    if (!isDesktopRuntime) {
+      return null;
+    }
     try {
       const raw = localStorage.getItem('trackpulse_active_tracking');
       return raw ? JSON.parse(raw) : null;
@@ -2208,18 +2227,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Desktop App Widget vs Web Dashboard Mode
   const [isDesktopDockView, setIsDesktopDockView] = useState(() => {
     if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
+      const search = window.location.search;
       if (
-        urlParams.get('mode') === 'desktop' ||
-        urlParams.get('source') === 'software' ||
-        urlParams.get('appMode') === 'desktop' ||
+        search.includes('mode=desktop') ||
+        search.includes('source=software') ||
+        search.includes('appMode=desktop') ||
+        search.includes('mode=software') ||
         window.navigator.userAgent.includes('Electron') ||
-        (window as any).isElectronApp === true
+        (window as any).isElectronApp === true ||
+        Boolean((window as any).electronAPI)
       ) {
         return true;
       }
     }
-    return localStorage.getItem('trackpulse_login_mode') === 'software';
+    return false;
   });
 
   // 10-Minute Web Session Inactivity Auto-Logout Engine with 5-Minute Inactivity Warning Trigger
@@ -2691,6 +2712,10 @@ if (mode === 'software') {
   const [currentMouseActivity, setCurrentMouseActivity] = useState(0);
   const [currentKeyboardActivity, setCurrentKeyboardActivity] = useState(0);
   const [currentActiveApp, setCurrentActiveApp] = useState('LLC Time Tracker Desktop Software');
+  const currentActiveAppRef = useRef<string>('LLC Time Tracker Desktop Software');
+  useEffect(() => {
+    currentActiveAppRef.current = currentActiveApp;
+  }, [currentActiveApp]);
   const [currentSessionApps, setCurrentSessionApps] = useState<AppUsage[]>([
     { appName: 'LLC Time Tracker Desktop', icon: 'Clock', durationSeconds: 0, category: 'productive' },
     { appName: 'Google Chrome', icon: 'Globe', durationSeconds: 0, category: 'productive' },
@@ -2901,6 +2926,7 @@ if (mode === 'software') {
 
     const handleFocus = () => {
       setCurrentActiveApp('LLC Time Tracker Desktop Software');
+      currentActiveAppRef.current = 'LLC Time Tracker Desktop Software';
       lastMouseActiveTimestampRef.current = Date.now();
       lastKeyboardActiveTimestampRef.current = Date.now();
       setCurrentInactivitySeconds(0);
@@ -2911,6 +2937,7 @@ if (mode === 'software') {
 
     const handleBlur = () => {
       setCurrentActiveApp('Google Chrome / External Application');
+      currentActiveAppRef.current = 'Google Chrome / External Application';
       // Employee switched to external work window or minimized tracker
       lastMouseActiveTimestampRef.current = Date.now();
       lastKeyboardActiveTimestampRef.current = Date.now();
@@ -3154,20 +3181,22 @@ if (mode === 'software') {
       const isDesktop =
         loginMode === 'software' ||
         snap.loginMode === 'software' ||
-        isTracking ||
         (typeof window !== 'undefined' &&
           Boolean(
             (window as any).electronAPI ||
+            (window as any).isElectronApp === true ||
             navigator.userAgent.includes('Electron') ||
-            localStorage.getItem('trackpulse_login_mode') === 'software'
+            window.location.search.includes('mode=desktop') ||
+            window.location.search.includes('source=software') ||
+            window.location.search.includes('appMode=desktop') ||
+            window.location.search.includes('mode=software')
           ));
 
       const isEffTracking = isTracking && !isPaused;
 
-      // ARCHITECTURE RULE: Only an actively running tracking client may transmit tracking heartbeats.
-      // A viewer/portal client that is not actively tracking must NEVER transmit isTracking: false / elapsedSeconds: 0,
-      // as this overwrites the Desktop Tracker's active tracking state in Google Sheets.
-      if (!isEffTracking) {
+      // ARCHITECTURE RULE: Only an actively running Desktop/Software Tracker runtime may transmit tracking heartbeats.
+      // A Web Portal viewer/reader must NEVER transmit tracking heartbeats to Google Sheets.
+      if (!isDesktop || !isEffTracking) {
         return;
       }
 
@@ -3202,7 +3231,7 @@ if (mode === 'software') {
         isPaused: isPaused,
         elapsedSeconds: currentElapsed,
         currentTask: taskName,
-        currentApp: currentActiveApp || (isDesktop ? 'LLC Time Tracker Desktop App' : 'Web Browser'),
+        currentApp: currentActiveAppRef.current || currentActiveApp || (isDesktop ? 'LLC Time Tracker Desktop App' : 'Web Browser'),
         loginPlatform: isDesktop ? 'software' : 'webapp',
         firstCheckin: startFormatted,
         timezone: currentUser.geoTimezone || 'Asia/Manila (GMT+8)',
@@ -3236,7 +3265,6 @@ if (mode === 'software') {
     isTracking,
     isPaused,
     currentTask,
-    currentActiveApp,
     currentDesignation,
     googleSheetsWebhookUrl,
   ]);
@@ -3423,9 +3451,10 @@ if (mode === 'software') {
         keyboardActivityHistoryRef.current.push(keyPercent);
 
         // Update active application duration
+        const activeAppNow = currentActiveAppRef.current || currentActiveApp;
         setCurrentSessionApps((prev) =>
           prev.map((app) =>
-            currentActiveApp.includes(app.appName.split(' ')[0])
+            activeAppNow.includes(app.appName.split(' ')[0])
               ? { ...app, durationSeconds: app.durationSeconds + 1 }
               : app
           )
@@ -3436,7 +3465,7 @@ if (mode === 'software') {
       setCurrentKeyboardActivity(0);
     }
     return () => clearInterval(interval);
-  }, [isTracking, isPaused, currentActiveApp, getLiveElapsedSeconds]);
+  }, [isTracking, isPaused, getLiveElapsedSeconds]);
 
   // Real-time Background Inactivity Detector: 10-Minute Inactivity Prompt with 5-Minute Grace (15m Total Auto-Logout & Deduction)
   useEffect(() => {
