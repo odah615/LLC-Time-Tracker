@@ -1,13 +1,17 @@
+// Cloudflare Pages Advanced Mode Worker
+// Routes /api/sync-sheets directly to Google Apps Script proxy
+// and delegates all other requests to static assets (env.ASSETS).
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
 const GOOGLE_APPS_SCRIPT_WEBHOOK_URL =
   "https://script.google.com/macros/s/AKfycbyKGMOWV0u5xcv_lOKBk6LXpbjrlgZiuqtCs3_HbqjekoJZdXpdfA_1kDjP7H0ulLsw3Q/exec";
 
-function jsonResponse(data: unknown, status = 200) {
+function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -17,21 +21,9 @@ function jsonResponse(data: unknown, status = 200) {
   });
 }
 
-// Handle browser CORS preflight
-export async function onRequestOptions() {
-  return new Response(null, {
-    status: 204,
-    headers: corsHeaders,
-  });
-}
-
-// POST /api/sync-sheets
-export async function onRequestPost(context: any) {
+async function handleSyncSheetsPost(request) {
   try {
-    const request = context.request;
-
     const body = await request.json();
-
     const webhookUrl = body?.webhookUrl || GOOGLE_APPS_SCRIPT_WEBHOOK_URL;
     const payload = body?.payload || body;
 
@@ -49,8 +41,6 @@ export async function onRequestPost(context: any) {
       );
     }
 
-    console.log("Forwarding Google Sheets request to:", webhookUrl);
-
     const googleResponse = await fetch(webhookUrl.trim(), {
       method: "POST",
       headers: {
@@ -61,22 +51,12 @@ export async function onRequestPost(context: any) {
     });
 
     const responseText = await googleResponse.text();
-
-    let googleResult: any;
-
+    let googleResult;
     try {
       googleResult = JSON.parse(responseText);
-    } catch {
-      googleResult = {
-        response: responseText,
-      };
+    } catch (e) {
+      googleResult = { response: responseText };
     }
-
-    console.log(
-      "Google Apps Script response:",
-      googleResponse.status,
-      googleResult
-    );
 
     const isSuccess =
       googleResponse.ok &&
@@ -104,9 +84,7 @@ export async function onRequestPost(context: any) {
       },
       googleResponse.ok ? 200 : googleResponse.status
     );
-  } catch (error: any) {
-    console.error("Cloudflare sync proxy error:", error);
-
+  } catch (error) {
     return jsonResponse(
       {
         success: false,
@@ -117,10 +95,8 @@ export async function onRequestPost(context: any) {
   }
 }
 
-// GET /api/sync-sheets?url=GOOGLE_APPS_SCRIPT_URL
-export async function onRequestGet(context: any) {
+async function handleSyncSheetsGet(request) {
   try {
-    const request = context.request;
     const url = new URL(request.url);
     const webhookUrl = url.searchParams.get("url") || GOOGLE_APPS_SCRIPT_WEBHOOK_URL;
 
@@ -144,21 +120,15 @@ export async function onRequestGet(context: any) {
     });
 
     const responseText = await googleResponse.text();
-
-    let googleResult: unknown;
-
+    let googleResult;
     try {
       googleResult = JSON.parse(responseText);
-    } catch {
-      googleResult = {
-        response: responseText,
-      };
+    } catch (e) {
+      googleResult = { response: responseText };
     }
 
     return jsonResponse(googleResult, googleResponse.status);
-  } catch (error: any) {
-    console.error("Cloudflare Google Sheets GET proxy error:", error);
-
+  } catch (error) {
     return jsonResponse(
       {
         success: false,
@@ -168,3 +138,31 @@ export async function onRequestGet(context: any) {
     );
   }
 }
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/api/sync-sheets") {
+      if (request.method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: corsHeaders,
+        });
+      }
+      if (request.method === "POST") {
+        return handleSyncSheetsPost(request);
+      }
+      if (request.method === "GET") {
+        return handleSyncSheetsGet(request);
+      }
+      return new Response(JSON.stringify({ error: "Method not allowed" }), {
+        status: 405,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
+    // Delegate static assets and SPA routing to Pages Asset server
+    return env.ASSETS.fetch(request);
+  },
+};
