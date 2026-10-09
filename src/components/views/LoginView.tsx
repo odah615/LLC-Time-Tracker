@@ -100,10 +100,19 @@ export const LoginView: React.FC = () => {
       try {
         const cached = localStorage.getItem('trackpulse_users');
         const parsed = cached ? JSON.parse(cached) : null;
-        const combined = [...(Array.isArray(parsed) ? parsed : []), ...users];
+        // Place parsed (local updates with customized passwords) after users so custom passwords take precedence
+        const combined = [...users, ...(Array.isArray(parsed) ? parsed : [])];
         const map = new Map<string, User>();
         for (const u of combined) {
-          if (u && u.id) map.set(u.id, u);
+          if (u && u.id) {
+            const existing = map.get(u.id);
+            // If existing has a customized password (not Password123!), keep it
+            if (existing && existing.password && existing.password !== 'Password123!' && u.password === 'Password123!') {
+              map.set(u.id, { ...u, password: existing.password, mustChangePassword: existing.mustChangePassword });
+            } else {
+              map.set(u.id, u);
+            }
+          }
         }
         return Array.from(map.values());
       } catch {
@@ -155,25 +164,31 @@ export const LoginView: React.FC = () => {
       });
 
       if (canonical) {
+        const existingAuth = authUsers.find(
+          (u) =>
+            (u.employeeCode && u.employeeCode.toUpperCase() === canonical.code.toUpperCase()) ||
+            (u.username && u.username.toLowerCase() === canonical.username.toLowerCase()) ||
+            u.id === `usr-${canonical.code.toLowerCase().replace(/[^a-z0-9]/g, '-')}`
+        );
         foundUser = {
-          id: `usr-${canonical.code.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+          id: existingAuth?.id || `usr-${canonical.code.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
           name: canonical.name,
           email: canonical.email,
           role: canonical.role,
           designation: canonical.designation,
           username: canonical.username,
           employeeCode: canonical.code,
-          department: 'Operations',
-          password: 'Password123!',
-          mustChangePassword: canonical.role !== 'admin',
-          monthlyRate: 0,
-          hourlyRate: 0,
+          department: existingAuth?.department || 'Operations',
+          password: existingAuth?.password || 'Password123!',
+          mustChangePassword: existingAuth ? existingAuth.mustChangePassword : (canonical.role !== 'admin'),
+          monthlyRate: existingAuth?.monthlyRate || 0,
+          hourlyRate: existingAuth?.hourlyRate || 0,
           geoTimezone: 'Asia/Manila',
           geoCity: 'Manila, Philippines',
-          teamId: 'management',
+          teamId: existingAuth?.teamId || 'management',
           status: 'active',
-          joinDate: new Date().toISOString().slice(0, 10),
-          avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250`,
+          joinDate: existingAuth?.joinDate || new Date().toISOString().slice(0, 10),
+          avatar: existingAuth?.avatar || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250`,
         };
         setUsers((prev) => [...prev.filter((u) => u.id !== foundUser!.id), foundUser!]);
       }

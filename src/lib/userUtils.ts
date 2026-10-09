@@ -168,6 +168,35 @@ export const resolveCanonicalEmployee = (input?: {
     'bmaglangiy2': 'LLC-0122',
     'bmaglangit2001': 'LLC-0122',
     'jperez': 'LLC-0129',
+    // Aliases for agent usernames/surnames
+    'apedrito': 'LLC-0036',
+    'ajped': 'LLC-0036',
+    'pedrito': 'LLC-0036',
+    'cfulgencio': 'LLC-0038',
+    'cmful': 'LLC-0038',
+    'fulgencio': 'LLC-0038',
+    'jsantiago': 'LLC-0040',
+    'jcsan': 'LLC-0040',
+    'santiago': 'LLC-0040',
+    'agonzales': 'LLC-0045',
+    'agall': 'LLC-0045',
+    'gonzales': 'LLC-0045',
+    'liquitk': 'LLC-0076',
+    'kliquit': 'LLC-0076',
+    'liquit': 'LLC-0076',
+    'emcalexander': 'LLC-0100',
+    'mcalexander': 'LLC-0100',
+    'jdramos': 'LLC-0101',
+    'jdramos120': 'LLC-0101',
+    'jramos0': 'LLC-0101',
+    'pramos': 'LLC-0098',
+    'jcyamzon': 'LLC-0107',
+    'jcyamzon0118': 'LLC-0107',
+    'jyamzon': 'LLC-0107',
+    'yamzon': 'LLC-0107',
+    'pbulosan': 'LLC-0053',
+    'pjbul': 'LLC-0053',
+    'bulosan': 'LLC-0053',
   };
 
   const aliasTarget = ALIAS_MAP[rawUser] || ALIAS_MAP[rawCode.toLowerCase()] || ALIAS_MAP[rawEmail.split('@')[0]];
@@ -188,9 +217,21 @@ export const resolveCanonicalEmployee = (input?: {
     }
   }
 
-  // Dynamic fallback for any employee so they are never dropped or returned as null
-  if (rawCode || rawName || rawUser) {
-    const cleanCode = rawCode || `LLC-${numCode || '0023'}`;
+  // Token matching for names or surnames (e.g. "pedrito" in "Amy Janine Pedrito", "mcalexander" in "Ernest McAlexander")
+  const rawTokens = [rawUser, rawCode.toLowerCase(), rawName].filter(Boolean);
+  for (const [code, info] of Object.entries(CANONICAL_EMPLOYEE_DIRECTORY)) {
+    const nameLower = info.name.toLowerCase();
+    const nameParts = nameLower.split(/\s+/);
+    for (const tok of rawTokens) {
+      if (tok.length >= 4 && (nameLower.includes(tok) || nameParts.some((p) => p === tok || p.startsWith(tok) || tok.startsWith(p)))) {
+        return { code, ...info };
+      }
+    }
+  }
+
+  // Safe fallback ONLY if input already carries a valid LLC format or numeric code
+  if (numCode && /^LLC[-_]?\d+/i.test(rawCode)) {
+    const cleanCode = `LLC-${numCode.padStart(4, '0')}`;
     const cleanName = rawName || rawUser || cleanCode;
     const cleanUser = rawUser || cleanName.toLowerCase().replace(/[^a-z0-9]/g, '');
     return {

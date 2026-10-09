@@ -101,12 +101,19 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
 
     return nonAdminUsers.map((user) => {
       // Find presence in state by userId, employeeCode, or normalized name
-      const presence = userPresenceList.find(
-        (p) =>
-          p.userId === user.id ||
-          (p.employeeCode && user.employeeCode && p.employeeCode.toUpperCase() === user.employeeCode.toUpperCase()) ||
-          (p.userName && user.name && p.userName.toLowerCase().trim() === user.name.toLowerCase().trim())
-      );
+      const presence = userPresenceList.find((p) => {
+        if (!p) return false;
+        if (p.userId === user.id) return true;
+        const pCode = (p.employeeCode || '').toUpperCase().trim();
+        const uCode = (user.employeeCode || '').toUpperCase().trim();
+        if (pCode && uCode && pCode === uCode) return true;
+        const pName = (p.userName || '').toLowerCase().trim();
+        const uName = (user.name || '').toLowerCase().trim();
+        if (pName && uName && (pName === uName || uName.includes(pName) || pName.includes(uName))) return true;
+        const uUser = (user.username || '').toLowerCase().trim();
+        if (uUser && (pName === uUser || pCode === uUser.toUpperCase())) return true;
+        return false;
+      });
 
       // Calculate if active based on recent heartbeat (< 5 mins)
       const lastHeartbeatMs = presence?.lastHeartbeat ? new Date(presence.lastHeartbeat).getTime() : 0;

@@ -1283,7 +1283,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Two-Way Sync: Pull Live Presence directly from Google Sheets Live_Presence / Live_Sessions tab
   const importPresenceFromGoogleSheets = async (
-    overrideUrl?: string
+    overrideUrl?: string,
+    silent: boolean = false
   ): Promise<{ success: boolean; count: number; message: string }> => {
     const targetUrl = overrideUrl || googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || '';
     const res = await fetchLivePresenceFromGoogleSheets(targetUrl, DEFAULT_SPREADSHEET_ID, users);
@@ -1310,36 +1311,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return merged;
       });
 
-          return {
-      success: true,
-      count: res.presenceList.length,
-      message: res.message,
-    };
+      return {
+        success: true,
+        count: res.presenceList.length,
+        message: res.message,
+      };
     } else {
-      setSaveToast(`âš ï¸ Google Sheets Presence: ${res.message}`);
-      setTimeout(() => setSaveToast(null), 7000);
+      if (!silent) {
+        setSaveToast(`⚠️ Google Sheets Presence: ${res.message}`);
+        setTimeout(() => setSaveToast(null), 7000);
+      }
       return { success: false, count: 0, message: res.message };
     }
   };
 
   // Live dashboard refresh from Google Sheets
-/*useEffect(() => {
-  if (!isAuthenticated) return;
+  useEffect(() => {
+    if (!isAuthenticated) return;
 
-  const refreshLivePresence = async () => {
-    try {
-      await importPresenceFromGoogleSheets();
-    } catch (err) {
-      console.warn('[LIVE PRESENCE] Dashboard refresh failed:', err);
-    }
-  };
+    const refreshLivePresence = async () => {
+      try {
+        await importPresenceFromGoogleSheets(undefined, true);
+      } catch (err) {
+        console.warn('[LIVE PRESENCE] Dashboard refresh failed:', err);
+      }
+    };
 
-  refreshLivePresence();
+    refreshLivePresence();
 
-  const interval = setInterval(refreshLivePresence, 15000);
+    const interval = setInterval(refreshLivePresence, 20000);
 
-  return () => clearInterval(interval);
-}, [isAuthenticated, users]); */
+    return () => clearInterval(interval);
+  }, [isAuthenticated, users]);
 
   // Comprehensive One-Click Two-Way Sync for All Tabs from Google Sheets
   const syncAllFromGoogleSheets = async (overrideUrl?: string): Promise<{ success: boolean; message: string }> => {

@@ -4576,17 +4576,23 @@ export const fetchLivePresenceFromGoogleSheets = async (
               const isDesktop = !isHeartbeatStale && (platformMode.includes('Desktop') || statusStr.includes('Desktop') || isTracking);
               const isOffline = isHeartbeatStale || statusStr.includes('Offline') || (!isTracking && !isIdle && !isDesktop && !isWeb);
 
+              const canonical = resolveCanonicalEmployee({ employeeCode: code, name: name });
+              const effectiveCode = canonical?.code || code;
+              const effectiveName = canonical?.name || name;
+
               const matchedUser =
+                (effectiveCode && userMap.get(effectiveCode.toUpperCase())) ||
                 (code && userMap.get(code.toUpperCase())) ||
+                (effectiveName && userMap.get(effectiveName.toLowerCase())) ||
                 (name && userMap.get(name.toLowerCase())) ||
                 null;
 
               parsedList.push({
-                userId: matchedUser?.id || `usr-${code || i}`,
-                userName: name || matchedUser?.name || 'Employee',
-                employeeCode: code || matchedUser?.employeeCode || '',
-                role: (matchedUser?.role || role || 'agent') as any,
-                designation: matchedUser?.designation || designation || 'Agent',
+                userId: matchedUser?.id || `usr-${effectiveCode || code || i}`,
+                userName: effectiveName || name || matchedUser?.name || 'Employee',
+                employeeCode: effectiveCode || code || matchedUser?.employeeCode || '',
+                role: (matchedUser?.role || canonical?.role || role || 'agent') as any,
+                designation: matchedUser?.designation || canonical?.designation || designation || 'Agent',
                 department: matchedUser?.department || 'Operations',
                 teamLeaderId: matchedUser?.teamLeaderId || '',
                 isOnline: !isOffline,
@@ -4604,10 +4610,35 @@ export const fetchLivePresenceFromGoogleSheets = async (
             }
 
             if (parsedList.length > 0) {
+              // Deduplicate presence records by employeeCode / userId so active records are never hidden by stale duplicate rows
+              const presenceMap = new Map<string, UserPresence>();
+              for (const item of parsedList) {
+                const key = item.employeeCode?.toUpperCase() || item.userId;
+                const existing = presenceMap.get(key);
+                if (!existing) {
+                  presenceMap.set(key, item);
+                } else {
+                  if ((item.isTracking || item.isOnline) && !existing.isTracking && !existing.isOnline) {
+                    presenceMap.set(key, item);
+                  } else if (existing.isTracking || existing.isOnline) {
+                    if (item.isTracking && !existing.isTracking) {
+                      presenceMap.set(key, item);
+                    }
+                  } else {
+                    const itemHb = new Date(item.lastHeartbeat).getTime() || 0;
+                    const existHb = new Date(existing.lastHeartbeat).getTime() || 0;
+                    if (itemHb > existHb) {
+                      presenceMap.set(key, item);
+                    }
+                  }
+                }
+              }
+              const dedupedList = Array.from(presenceMap.values());
+
               return {
                 success: true,
-                presenceList: parsedList,
-                message: `Successfully extracted ${parsedList.length} live presence records from Google Sheets tab "${tab}"!`,
+                presenceList: dedupedList,
+                message: `Successfully extracted ${dedupedList.length} live presence records from Google Sheets tab "${tab}"!`,
               };
             }
           }
