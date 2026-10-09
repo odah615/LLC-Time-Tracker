@@ -522,6 +522,7 @@ app.post('/api/sync-sheets', async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       redirect: 'follow',
+      signal: AbortSignal.timeout(5000),
     });
 
     const text = await fetchResponse.text();
@@ -570,6 +571,7 @@ app.get('/api/sync-sheets', async (req, res) => {
     const fetchResponse = await fetch(webhookUrl, {
       method: 'GET',
       redirect: 'follow',
+      signal: AbortSignal.timeout(5000),
     });
 
     const text = await fetchResponse.text();

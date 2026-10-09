@@ -211,11 +211,16 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     return dateStr;
   };
 
-  // Helper: Format seconds into readable "Xh Ym" or "0h 0m"
-  const formatHoursMins = (totalSeconds: number): string => {
-    if (!totalSeconds || totalSeconds <= 0) return '0h 0m';
+  // Helper: Format seconds into readable "Xh Ym Zs" or "Xh Ym"
+  const formatHoursMins = (totalSeconds: number, includeSeconds = false): string => {
+    if (!totalSeconds || totalSeconds <= 0) return includeSeconds ? '0h 0m 0s' : '0h 0m';
     const h = Math.floor(totalSeconds / 3600);
     const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = Math.floor(totalSeconds % 60);
+    if (includeSeconds) {
+      if (h === 0) return `${m}m ${s}s`;
+      return `${h}h ${m}m ${s}s`;
+    }
     if (h === 0) return `${m}m`;
     return `${h}h ${m}m`;
   };
@@ -279,7 +284,15 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     const today = getManilaDateString();
 
     users.forEach((u) => {
-      const isCurrentActiveUser = currentUser?.id === u.id && isTracking;
+      const isCurrentActiveUser = Boolean(
+        isTracking &&
+        currentUser &&
+        (
+          currentUser.id === u.id ||
+          (currentUser.employeeCode && u.employeeCode && currentUser.employeeCode.toUpperCase() === u.employeeCode.toUpperCase()) ||
+          (currentUser.name && u.name && currentUser.name.toLowerCase().trim() === u.name.toLowerCase().trim())
+        )
+      );
 
       const presence = userPresenceList.find(
         (p) =>
@@ -1102,9 +1115,20 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
           {/* Stat Cards Grid for Personal Timesheet */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="bg-slate-800/60 border border-slate-700 p-3.5 rounded-xl">
-              <span className="text-[10px] uppercase font-bold text-slate-300 tracking-wider">Total Logged Time</span>
-              <div className="font-mono text-xl font-bold text-white mt-1">{formatHoursMins(totalGrossSeconds)}</div>
-              <span className="text-[10px] text-slate-400">Gross tracked shift time</span>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-slate-300 tracking-wider">Total Logged Time</span>
+                {isTracking && (
+                  <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-1.5 py-0.5 rounded-full uppercase">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> LIVE
+                  </span>
+                )}
+              </div>
+              <div className="font-mono text-xl font-bold text-white mt-1">
+                {formatHoursMins(totalGrossSeconds, isTracking)}
+              </div>
+              <span className="text-[10px] text-slate-400">
+                Gross tracked shift time {isTracking ? '(updating live)' : ''}
+              </span>
             </div>
 
             <div className="bg-slate-800/60 border border-slate-700 p-3.5 rounded-xl">
@@ -1114,9 +1138,20 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
             </div>
 
             <div className="bg-slate-800/60 border border-slate-700 p-3.5 rounded-xl">
-              <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">Net Recorded Time</span>
-              <div className="font-mono text-2xl font-black text-emerald-400 mt-1">{formatHoursMins(totalNetSeconds)}</div>
-              <span className="text-[10px] text-emerald-300 font-semibold">Net Active Work Time</span>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">Net Recorded Time</span>
+                {isTracking && (
+                  <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-1.5 py-0.5 rounded-full uppercase">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> ACTIVE
+                  </span>
+                )}
+              </div>
+              <div className="font-mono text-2xl font-black text-emerald-400 mt-1">
+                {formatHoursMins(totalNetSeconds, isTracking)}
+              </div>
+              <span className="text-[10px] text-emerald-300 font-semibold">
+                Net Active Work Time {isTracking ? '(updating live)' : ''}
+              </span>
             </div>
 
             <div className="bg-slate-800/60 border border-slate-700 p-3.5 rounded-xl">

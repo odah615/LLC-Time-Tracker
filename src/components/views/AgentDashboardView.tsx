@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { downloadDesktopSoftwarePackage, DesktopOS } from '../../lib/desktopDownloader';
+import { getManilaDateString } from '../../lib/dateUtils';
 import { UserAvatar } from '../UserAvatar';
 import {
   Clock,
@@ -83,6 +84,17 @@ export const AgentDashboardView: React.FC<AgentDashboardViewProps> = ({
   }, [agentLogs, liveExtraSeconds]);
 
   const totalHoursFormatted = (totalTrackedSec / 3600).toFixed(1);
+
+  // Today shift hours calculation
+  const todayStr = getManilaDateString();
+  const todayTrackedSec = useMemo(() => {
+    const finishedToday = agentLogs
+      .filter((l) => (l.date === todayStr || (l.startTime && l.startTime.startsWith(todayStr))))
+      .reduce((acc, l) => acc + (Math.max(0, Number(l.durationSeconds) || 0)), 0);
+    return finishedToday + liveExtraSeconds;
+  }, [agentLogs, todayStr, liveExtraSeconds]);
+
+  const todayHoursFormatted = (todayTrackedSec / 3600).toFixed(1);
 
   const avgMouse = useMemo(() => {
     if (agentLogs.length === 0) return 95;
@@ -214,18 +226,35 @@ export const AgentDashboardView: React.FC<AgentDashboardViewProps> = ({
 
       {/* Overview Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Hours Tracked */}
+        {/* Total Hours Tracked (All-Time Career Total) */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-semibold text-slate-600">Total Hours Tracked</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-slate-700">Total Hours Tracked</span>
+              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 uppercase">
+                All-Time
+              </span>
+            </div>
             <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
               <Clock className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-extrabold text-slate-900 font-mono">{totalHoursFormatted} hrs</div>
-          <p className="text-[11px] text-emerald-600 font-medium mt-1 flex items-center gap-1">
-            <TrendingUp className="w-3 h-3 text-emerald-600" /> Active period hours log
+          <div className="flex items-baseline gap-2">
+            <div className="text-2xl font-extrabold text-slate-900 font-mono">{totalHoursFormatted} hrs</div>
+            <span className="text-xs text-slate-400 font-medium font-mono">cumulative</span>
+          </div>
+          <p className="text-[11px] text-slate-500 font-medium mt-1.5 leading-snug">
+            Total cumulative hours you've used the time tracker across all completed shifts & active sessions.
           </p>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+            <span className="text-slate-500 font-medium">Today's Shift:</span>
+            <span className="font-mono font-bold text-emerald-600 flex items-center gap-1">
+              {todayHoursFormatted} hrs
+              {isTracking && (
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Timer actively running" />
+              )}
+            </span>
+          </div>
         </div>
 
         {/* Avg Activity Score */}

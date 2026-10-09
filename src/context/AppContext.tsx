@@ -3213,9 +3213,9 @@ setIsIdleAlertActive(false);
 
       const isEffTracking = isTracking && !isPaused;
 
-      // ARCHITECTURE RULE: Only an actively running Desktop/Software Tracker runtime may transmit tracking heartbeats.
-      // A Web Portal viewer/reader must NEVER transmit tracking heartbeats to Google Sheets.
-      if (!isDesktop || !isEffTracking) {
+      // Transmit tracking heartbeats whenever an employee is actively tracking (desktop or web tracker).
+      // When on standby (not tracking), only desktop software transmits standby presence.
+      if (!isEffTracking && !isDesktop) {
         return;
       }
 
@@ -4195,8 +4195,16 @@ setIsIdleAlertActive(false);
     }
 
     const interval = setInterval(() => {
-      const currentNetworkOffline = typeof navigator !== 'undefined' ? !navigator.onLine : false;
-      const effectiveOffline = isOffline || currentNetworkOffline;
+      const isBrowserOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      if (isBrowserOnline && isOffline) {
+        setIsOffline(false);
+        setOfflineSinceTimestamp(null);
+        setOfflineSecondsRemaining(TOTAL_OFFLINE_LIMIT_SECONDS);
+        setOfflineStatusStage('online');
+        return;
+      }
+
+      const effectiveOffline = !isBrowserOnline;
 
       if (effectiveOffline) {
         if (!isOffline) setIsOffline(true);

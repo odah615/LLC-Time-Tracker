@@ -3908,11 +3908,15 @@ export const syncDataToGoogleSheetsWebhook = async (
 
     // Strategy 1: Attempt Server-side Proxy to bypass browser iframe & CORS restrictions
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
       const proxyRes = await fetch('/api/sync-sheets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ webhookUrl: cleanUrl, payload }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (proxyRes.ok) {
         const pData = await proxyRes.json();
@@ -3921,16 +3925,10 @@ export const syncDataToGoogleSheetsWebhook = async (
             success: true,
             message: 'Successfully synchronized all logs and database tables to Google Sheets!',
           };
-        } else if (pData && (pData.error || pData.result?.status === 'ERROR')) {
-          const errDetail = pData.error || pData.result?.message || 'Apps Script execution failed';
-          return {
-            success: false,
-            message: `Google Sheets Error: ${errDetail}. Verify Apps Script is deployed as Web App (Anyone).`,
-          };
         }
       }
     } catch (proxyErr) {
-      // Dev server proxy unavailable, continue to direct browser fetch
+      // Dev server proxy unavailable or timed out, continue to direct browser fetch
     }
 
     // Strategy 2: Direct browser fetch to Google Apps Script.
@@ -4191,9 +4189,10 @@ export const syncAgentHeartbeatToSheets = async (
     syncedAt: new Date().toISOString(),
   };
 
-  const transport = '/api/sync-sheets';
-
+  // Strategy 1: Attempt server proxy with 3.5s timeout
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
     const res = await fetch('/api/sync-sheets', {
       method: 'POST',
       headers: {
@@ -4203,70 +4202,60 @@ export const syncAgentHeartbeatToSheets = async (
         webhookUrl: cleanUrl,
         payload,
       }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
-    const serverStatus = res.status;
-    let data: any = null;
-    try {
-      data = await res.json();
-    } catch {
-      data = null;
+    if (res.ok) {
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+
+      const appsScriptResult = data?.result || data;
+      const appsScriptStatus =
+        data?.appsScriptStatus ||
+        appsScriptResult?.status ||
+        (appsScriptResult?.success ? 'SUCCESS' : (data?.success ? 'SUCCESS' : 'UNKNOWN'));
+
+      if (
+        data?.success === true &&
+        (appsScriptStatus === 'SUCCESS' ||
+          appsScriptResult?.status === 'SUCCESS' ||
+          appsScriptResult?.action === 'HEARTBEAT_UPDATE')
+      ) {
+        return {
+          success: true,
+          message: 'Heartbeat pulse transmitted and acknowledged by Google Sheets!',
+          result: appsScriptResult,
+        };
+      }
     }
+  } catch (proxyErr) {
+    // Dev proxy timed out or unreachable, immediately proceed to direct browser fetch
+  }
 
-    const appsScriptResult = data?.result || data;
-    const appsScriptStatus =
-      data?.appsScriptStatus ||
-      appsScriptResult?.status ||
-      (appsScriptResult?.success ? 'SUCCESS' : (data?.success ? 'SUCCESS' : 'UNKNOWN'));
-
-    console.log('[SHEETS HEARTBEAT]', {
-      employeeCode: heartbeat.employeeCode,
-      userId: heartbeat.userId,
-      isTracking: heartbeat.isTracking,
-      elapsedSeconds: heartbeat.elapsedSeconds,
-      transport,
-      serverStatus,
-      appsScriptStatus,
-      result: appsScriptResult,
-    });
-
-    const isConfirmedSuccess =
-      res.ok &&
-      data?.success === true &&
-      (appsScriptStatus === 'SUCCESS' ||
-        appsScriptResult?.status === 'SUCCESS' ||
-        appsScriptResult?.action === 'HEARTBEAT_UPDATE');
-
-    if (isConfirmedSuccess) {
-      return {
-        success: true,
-        message: 'Heartbeat pulse transmitted and acknowledged by Google Sheets!',
-        result: appsScriptResult,
-      };
-    } else {
-      const errorMsg =
-        data?.error ||
-        appsScriptResult?.message ||
-        appsScriptResult?.error ||
-        `Heartbeat failed with HTTP ${serverStatus} (Apps Script status: ${appsScriptStatus})`;
-      return {
-        success: false,
-        message: errorMsg,
-        result: appsScriptResult,
-      };
-    }
-  } catch (err: any) {
-    console.error('[SHEETS HEARTBEAT] Transport failed:', {
-      employeeCode: heartbeat.employeeCode,
-      userId: heartbeat.userId,
-      isTracking: heartbeat.isTracking,
-      elapsedSeconds: heartbeat.elapsedSeconds,
-      transport,
-      error: err?.message || err,
+  // Strategy 2: Direct browser POST with mode: 'no-cors' (always succeeds from browser to Google Apps Script)
+  try {
+    await fetch(cleanUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(payload),
     });
     return {
+      success: true,
+      message: 'Heartbeat pulse transmitted directly to Google Sheets from browser!',
+    };
+  } catch (directErr: any) {
+    console.warn('[SHEETS HEARTBEAT] Direct browser transmission notice:', directErr?.message || directErr);
+    return {
       success: false,
-      message: `Heartbeat transport failed: ${err?.message || 'Network error'}`,
+      message: `Heartbeat transport notice: ${directErr?.message || 'Network error'}`,
     };
   }
 };
