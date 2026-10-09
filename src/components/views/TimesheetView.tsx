@@ -479,7 +479,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
             (uUsername && logUId && logUId.includes(uUsername))
           );
           const matchesByName = Boolean(
-            uName && logUName && (uName === logUName || logUName.includes(uName) || uName.includes(logUName))
+            uName && logUName && uName === logUName
           );
 
           const canonicalLogUser = resolveCanonicalEmployee(logEmpCode || logUName || logUId);
@@ -572,7 +572,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
       return (
         (currentUserId && pUserId === currentUserId) ||
         (currentEmployeeCode && (pCode === currentEmployeeCode || pUserId === currentEmployeeCode)) ||
-        (currentName && pName && (pName === currentName || pName.includes(currentName) || currentName.includes(pName)))
+        (currentName && pName && pName === currentName)
       );
     });
 

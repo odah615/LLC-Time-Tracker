@@ -199,52 +199,48 @@ export const parseDurationSeconds = (
   endTime?: any
 ): number => {
   // 1. Primary: Numeric or string digits in durationSeconds, or recovered from Date object
-  // If rawDuration is a Date object (e.g. from previously date-formatted Duration column),
-  // recover underlying Google Sheets serial days * 86400 = duration seconds.
+  // If rawDuration is a Date object (e.g. from previously date-formatted Duration column):
+  // - Year 1899: time-of-day fractional duration (diff in ms / 1000 = seconds)
+  // - Year 1900..2010: numeric seconds formatted as Date (serial days since 1899-12-30 = original duration seconds)
+  // - Year > 2010 (e.g. 2026): modern calendar dates are rejected
   if (rawDuration !== undefined && rawDuration !== null && rawDuration !== '') {
     const isDateObj = rawDuration instanceof Date || Object.prototype.toString.call(rawDuration) === '[object Date]';
     if (isDateObj) {
       try {
         const sheetEpoch = new Date(1899, 11, 30, 0, 0, 0);
-        const serialDays = (rawDuration.getTime() - sheetEpoch.getTime()) / (86400 * 1000);
-        const recoveredSecs = Math.round(serialDays * 86400);
-        // Strictly bound to legitimate shift duration [1, 604799] (< 7 days)
-        // Rejects corrupted ~4,000,584,097s from modern dates
-        if (!isNaN(recoveredSecs) && recoveredSecs > 0 && recoveredSecs < 604800) {
-          return recoveredSecs;
+        const yr = rawDuration.getFullYear();
+        if (yr === 1899) {
+          const ms = rawDuration.getTime() - sheetEpoch.getTime();
+          const secs = Math.round(ms / 1000);
+          if (!isNaN(secs) && secs > 0 && secs < 604800) return secs;
+        } else if (yr >= 1900 && yr <= 2010) {
+          const days = Math.round((rawDuration.getTime() - sheetEpoch.getTime()) / (86400 * 1000));
+          if (!isNaN(days) && days > 0 && days < 604800) return days;
         }
       } catch (e) {}
     } else {
       if (typeof rawDuration === 'number' && !isNaN(rawDuration)) {
         const n = Math.floor(rawDuration);
-        // Valid shift/session duration must be positive and under reasonable threshold (< 7 days = 604800s).
-        // Rejects billions of seconds, epoch timestamps (e.g. 4000584097), or date serials.
-        if (n > 0 && n < 86400 * 7) return n;
+        if (n > 0 && n < 604800) return n;
       }
       const rawStr = String(rawDuration).trim();
-      // Only process string if it does NOT look like a date/timestamp representation (no GMT, colons, slashes, or dashes)
-      if (
-        !rawStr.includes('GMT') &&
-        !rawStr.includes('-') &&
-        !rawStr.includes('/') &&
-        !rawStr.includes(':') &&
-        !rawStr.toLowerCase().includes('dec') &&
-        !rawStr.toLowerCase().includes('oct')
-      ) {
-        const cleanDigits = rawStr.replace(/,/g, '');
-        if (/^\d+$/.test(cleanDigits)) {
-          const parsed = parseInt(cleanDigits, 10);
-          if (!isNaN(parsed) && parsed > 0 && parsed < 86400 * 7) return parsed;
-        }
-      } else if (rawStr.includes('1899')) {
+      const cleanDigits = rawStr.replace(/,/g, '');
+      if (/^\d+$/.test(cleanDigits)) {
+        const parsed = parseInt(cleanDigits, 10);
+        if (!isNaN(parsed) && parsed > 0 && parsed < 604800) return parsed;
+      } else if (rawStr.includes('/') || rawStr.includes('-') || rawStr.includes('GMT')) {
         try {
           const dParsed = new Date(rawStr);
           if (!isNaN(dParsed.getTime())) {
             const sheetEpoch = new Date(1899, 11, 30, 0, 0, 0);
-            const serialDays = (dParsed.getTime() - sheetEpoch.getTime()) / (86400 * 1000);
-            const recoveredSecs = Math.round(serialDays * 86400);
-            if (!isNaN(recoveredSecs) && recoveredSecs > 0 && recoveredSecs < 604800) {
-              return recoveredSecs;
+            const yr = dParsed.getFullYear();
+            if (yr === 1899) {
+              const ms = dParsed.getTime() - sheetEpoch.getTime();
+              const secs = Math.round(ms / 1000);
+              if (!isNaN(secs) && secs > 0 && secs < 604800) return secs;
+            } else if (yr >= 1900 && yr <= 2010) {
+              const days = Math.round((dParsed.getTime() - sheetEpoch.getTime()) / (86400 * 1000));
+              if (!isNaN(days) && days > 0 && days < 604800) return days;
             }
           }
         } catch (e) {}
@@ -266,7 +262,7 @@ export const parseDurationSeconds = (
       const mins = mMatch ? parseInt(mMatch[1], 10) : 0;
       const secs = sMatch ? parseInt(sMatch[1], 10) : 0;
       const total = hours * 3600 + mins * 60 + secs;
-      if (total > 0 && total < 86400 * 7) return total;
+      if (total > 0 && total < 604800) return total;
     }
 
     // Pattern: "HH:MM:SS" or "MM:SS" (e.g. "00:37:17", "37:17")
@@ -278,11 +274,11 @@ export const parseDurationSeconds = (
       if (p3 !== undefined) {
         // HH:MM:SS
         const total = p1 * 3600 + p2 * 60 + p3;
-        if (total > 0 && total < 86400 * 7) return total;
+        if (total > 0 && total < 604800) return total;
       } else {
         // MM:SS
         const total = p1 * 60 + p2;
-        if (total > 0 && total < 86400 * 7) return total;
+        if (total > 0 && total < 604800) return total;
       }
     }
 
@@ -290,7 +286,7 @@ export const parseDurationSeconds = (
     const decMatch = text.match(/^(\d+(?:\.\d+)?)\s*(?:h|hrs|hours)$/);
     if (decMatch) {
       const total = Math.round(parseFloat(decMatch[1]) * 3600);
-      if (total > 0 && total < 86400 * 7) return total;
+      if (total > 0 && total < 604800) return total;
     }
   }
 
@@ -775,19 +771,22 @@ function maskPassword(pwd) {
  */
 function parseDurationSecondsSafe(val) {
   if (val === undefined || val === null || val === '') return 0;
-  
+  var sheetEpoch = new Date(1899, 11, 30, 0, 0, 0);
+
   // 1. When val is a JavaScript Date object in the Duration (Seconds) column:
-  // Recover its underlying Google Sheets serial value and convert that serial to seconds:
-  // Google Sheets serial days * 86400 = duration seconds.
+  // - Year 1899: time-of-day / fractional duration (ms diff / 1000 = seconds)
+  // - Year 1900..2010: numeric seconds formatted as Date (serial days since 1899-12-30 = original duration seconds)
+  // - Year > 2010 (e.g. modern dates 2026): rejected as calendar timestamps
   if (val instanceof Date || Object.prototype.toString.call(val) === '[object Date]') {
     try {
-      var sheetEpoch = new Date(1899, 11, 30, 0, 0, 0);
-      var serialDays = (val.getTime() - sheetEpoch.getTime()) / (86400 * 1000);
-      var recoveredSecs = Math.round(serialDays * 86400);
-      // Strictly enforce valid shift bounds [1, 604799] (< 7 days).
-      // Rejects non-positive, NaN, or corrupted values >= 604800 (e.g. ~4,000,584,097 seconds from modern timestamps).
-      if (!isNaN(recoveredSecs) && recoveredSecs > 0 && recoveredSecs < 604800) {
-        return recoveredSecs;
+      var yr = val.getFullYear();
+      if (yr === 1899) {
+        var ms = val.getTime() - sheetEpoch.getTime();
+        var s = Math.round(ms / 1000);
+        if (!isNaN(s) && s > 0 && s < 604800) return s;
+      } else if (yr >= 1900 && yr <= 2010) {
+        var days = Math.round((val.getTime() - sheetEpoch.getTime()) / (86400 * 1000));
+        if (!isNaN(days) && days > 0 && days < 604800) return days;
       }
     } catch (e) {}
     return 0;
@@ -799,27 +798,33 @@ function parseDurationSecondsSafe(val) {
     n = Math.floor(val);
   } else {
     var str = String(val).trim();
-    // Reject modern date strings, timestamps, or strings containing date indicators
-    if (
-      str.indexOf('GMT') !== -1 ||
-      str.indexOf('-') !== -1 ||
-      str.indexOf('/') !== -1 ||
-      str.indexOf('T') !== -1 ||
-      /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(str)
-    ) {
-      if (str.indexOf('1899') !== -1) {
-        try {
-          var dParsed = new Date(str);
-          if (!isNaN(dParsed.getTime())) {
-            var sEpoch = new Date(1899, 11, 30, 0, 0, 0);
-            var sDays = (dParsed.getTime() - sEpoch.getTime()) / (86400 * 1000);
-            var rSecs = Math.round(sDays * 86400);
-            if (!isNaN(rSecs) && rSecs > 0 && rSecs < 604800) return rSecs;
-          }
-        } catch (e2) {}
-      }
+    if (!str) return 0;
+
+    var cleanDigits = str.replace(/,/g, '');
+    if (/^\d+$/.test(cleanDigits)) {
+      var pNum = parseInt(cleanDigits, 10);
+      if (!isNaN(pNum) && pNum > 0 && pNum < 604800) return pNum;
       return 0;
     }
+
+    if (str.indexOf('/') !== -1 || str.indexOf('-') !== -1 || str.indexOf('GMT') !== -1) {
+      try {
+        var dParsed = new Date(str);
+        if (!isNaN(dParsed.getTime())) {
+          var yParsed = dParsed.getFullYear();
+          if (yParsed === 1899) {
+            var msP = dParsed.getTime() - sheetEpoch.getTime();
+            var sP = Math.round(msP / 1000);
+            if (!isNaN(sP) && sP > 0 && sP < 604800) return sP;
+          } else if (yParsed >= 1900 && yParsed <= 2010) {
+            var daysP = Math.round((dParsed.getTime() - sheetEpoch.getTime()) / (86400 * 1000));
+            if (!isNaN(daysP) && daysP > 0 && daysP < 604800) return daysP;
+          }
+        }
+      } catch (e2) {}
+      return 0;
+    }
+
     // Formatted time strings e.g. "2h 24m 0s", "37m 17s", "45s"
     var hMatch = str.match(/^(\d+)\s*h(?:ours?|rs?)?(?:\s*(\d+)\s*m(?:inutes?|ins?)?)?(?:\s*(\d+)\s*s(?:econds?|ecs?)?)?$/i);
     var mMatch = str.match(/^(\d+)\s*m(?:inutes?|ins?)?(?:\s*(\d+)\s*s(?:econds?|ecs?)?)?$/i);
@@ -836,7 +841,6 @@ function parseDurationSecondsSafe(val) {
     } else if (sMatch) {
       n = parseInt(sMatch[1], 10) || 0;
     } else if (str.indexOf(':') !== -1) {
-      // Possible "HH:MM:SS" or "MM:SS" (reject any AM/PM or non-duration)
       var colonMatch = str.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
       if (colonMatch) {
         var p1 = parseInt(colonMatch[1], 10);
@@ -851,12 +855,9 @@ function parseDurationSecondsSafe(val) {
         return 0;
       }
     } else {
-      var clean = str.replace(/,/g, '');
-      if (!/^\d+$/.test(clean)) return 0;
-      n = parseInt(clean, 10);
+      return 0;
     }
   }
-  // Reject non-positive, NaN, or values >= 604800 (7 days)
   if (isNaN(n) || n <= 0 || n >= 604800) return 0;
   return n;
 }
@@ -1118,6 +1119,14 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
             if (c === durColIdx) {
               // Sanitize legacy or corrupt duration values: convert Date objects or bad values to clean numeric seconds
               rawVal = parseDurationSecondsSafe(rawVal);
+              if (!rawVal && exRow[c + 1]) {
+                rawVal = parseDurationSecondsSafe(exRow[c + 1]);
+              }
+            } else if (c === durColIdx + 1) {
+              if (rawVal && String(rawVal).indexOf('1111') !== -1) {
+                var sSecs = parseDurationSecondsSafe(exRow[durColIdx]);
+                rawVal = sSecs > 0 ? formatTotalTime(sSecs) : '0s';
+              }
             } else if (c === 5) {
               rawVal = formatDateOnlyCell(rawVal, '');
             } else if (c === 6 || c === 7) {
@@ -1190,6 +1199,14 @@ function populateMergedSheet(sheet, headers, incomingRows, headerColor, keyColId
       if (mr > 0) {
         if (mc === durColIdx) {
           cellMVal = parseDurationSecondsSafe(cellMVal);
+          if (!cellMVal && allData[mr][mc + 1]) {
+            cellMVal = parseDurationSecondsSafe(allData[mr][mc + 1]);
+          }
+        } else if (mc === durColIdx + 1) {
+          if (cellMVal && String(cellMVal).indexOf('1111') !== -1) {
+            var cSecs = parseDurationSecondsSafe(allData[mr][durColIdx]);
+            cellMVal = cSecs > 0 ? formatTotalTime(cSecs) : '0s';
+          }
         } else if (mc === 5) {
           cellMVal = formatDateOnlyCell(cellMVal, '');
         } else if (mc === 6 || mc === 7) {
@@ -3382,10 +3399,16 @@ function doGet(e) {
         if (!id && !empName) return;
 
         var durSec = parseDurationSecondsSafe(row[8]);
+        if (!durSec && row[9]) {
+          durSec = parseDurationSecondsSafe(row[9]);
+        }
 
-        var totalTimeStr = String(row[9] || '').trim();
-        if (!totalTimeStr && durSec > 0) {
+        var totalTimeStr = '';
+        if (durSec > 0) {
           totalTimeStr = formatTotalTime(durSec);
+        } else if (row[9]) {
+          var tRaw = String(row[9] || '').trim();
+          if (tRaw.indexOf('1111') === -1) totalTimeStr = tRaw;
         }
 
         var idleSec = 0;

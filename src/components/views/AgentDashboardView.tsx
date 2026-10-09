@@ -51,7 +51,7 @@ export const AgentDashboardView: React.FC<AgentDashboardViewProps> = ({
         return (
           (logUId && (logUId === uId || (uCode && logUId === uCode) || (uUsername && logUId === uUsername))) ||
           (logEmpCode && (logEmpCode === uCode || logEmpCode === uId)) ||
-          (logUName && uName && (logUName === uName || logUName.includes(uName) || uName.includes(logUName)))
+          (logUName && uName && logUName === uName)
         );
       })
       .sort((a, b) => {

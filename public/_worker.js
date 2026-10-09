@@ -163,6 +163,11 @@ export default {
     }
 
     // Delegate static assets and SPA routing to Pages Asset server
-    return env.ASSETS.fetch(request);
+    const assetResponse = await env.ASSETS.fetch(request);
+    if (assetResponse.status === 404 && request.method === "GET" && !url.pathname.startsWith("/api/")) {
+      const indexRequest = new Request(new URL("/index.html", request.url), request);
+      return env.ASSETS.fetch(indexRequest);
+    }
+    return assetResponse;
   },
 };
