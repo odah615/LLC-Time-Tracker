@@ -78,21 +78,26 @@ export function sanitizeForFirestore<T>(val: T): T {
   return result as T;
 }
 
+// Storage engine mode & Firestore quota detection
 let isQuotaExhaustedGlobal = (() => {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') return true;
   try {
     const savedEngine = localStorage.getItem('trackpulse_storage_engine');
-    if (savedEngine === 'unlimited_bridge') {
-      return false;
+    // Default to 'unlimited_bridge' or honor explicitly saved 'unlimited_bridge'
+    if (savedEngine === 'unlimited_bridge' || !savedEngine) {
+      return true;
     }
     const savedQuotaDate = localStorage.getItem('trackpulse_quota_exhausted_date');
     const today = new Date().toISOString().slice(0, 10);
     if (savedQuotaDate && savedQuotaDate === today) {
       return true;
     }
-    return sessionStorage.getItem('trackpulse_quota_exhausted') === 'true';
-  } catch {
+    if (sessionStorage.getItem('trackpulse_quota_exhausted') === 'true') {
+      return true;
+    }
     return false;
+  } catch {
+    return true;
   }
 })();
 
@@ -107,25 +112,53 @@ if (isQuotaExhaustedGlobal) {
 }
 
 export const setCloudQuotaExhausted = () => {
-  if (!isQuotaExhaustedGlobal) {
-    isQuotaExhaustedGlobal = true;
-    console.warn('[Storage] Quota limit reached or high-capacity bridge activated. Operating in permanent unlimited Central Server & Google Sheets Bridge mode (Zero Firestore Quota Consumption).');
-    try {
-      if (typeof window !== 'undefined') {
-        const today = new Date().toISOString().slice(0, 10);
-        sessionStorage.setItem('trackpulse_quota_exhausted', 'true');
-        localStorage.setItem('trackpulse_quota_exhausted_date', today);
-        localStorage.setItem('trackpulse_storage_engine', 'unlimited_bridge');
-      }
-    } catch {}
-    try {
-      disableNetwork(db).catch(() => {});
-    } catch {}
+  isQuotaExhaustedGlobal = true;
+  console.warn('[Storage] Quota limit reached or high-capacity bridge activated. Operating in unlimited Central Server & Google Sheets Bridge mode (Zero Firestore Quota Consumption).');
+  try {
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('firestore_quota_status_change'));
+      const today = new Date().toISOString().slice(0, 10);
+      sessionStorage.setItem('trackpulse_quota_exhausted', 'true');
+      localStorage.setItem('trackpulse_quota_exhausted_date', today);
+      localStorage.setItem('trackpulse_storage_engine', 'unlimited_bridge');
     }
+  } catch {}
+  try {
+    disableNetwork(db).catch(() => {});
+  } catch {}
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('firestore_quota_status_change'));
   }
 };
+
+// Global error traps to gracefully absorb and silence Firestore resource-exhausted events
+if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (event) => {
+    const err = event?.reason;
+    if (
+      err?.code === 'resource-exhausted' ||
+      err?.message?.includes('Quota limit exceeded') ||
+      err?.message?.includes('Quota exceeded') ||
+      err?.message?.includes('resource-exhausted')
+    ) {
+      event.preventDefault();
+      setCloudQuotaExhausted();
+    }
+  });
+  window.addEventListener('error', (event) => {
+    const err = event?.error;
+    if (
+      err?.code === 'resource-exhausted' ||
+      err?.message?.includes('Quota limit exceeded') ||
+      err?.message?.includes('Quota exceeded') ||
+      err?.message?.includes('resource-exhausted') ||
+      event?.message?.includes('Quota limit exceeded') ||
+      event?.message?.includes('resource-exhausted')
+    ) {
+      event.preventDefault();
+      setCloudQuotaExhausted();
+    }
+  });
+}
 
 const safeSetDoc = async (docRef: any, data: any, options?: any) => {
   if (isQuotaExhaustedGlobal) {
@@ -137,6 +170,7 @@ const safeSetDoc = async (docRef: any, data: any, options?: any) => {
   } catch (err: any) {
     const isQuota = err?.code === 'resource-exhausted' ||
                     err?.message?.includes('Quota exceeded') ||
+                    err?.message?.includes('Quota limit exceeded') ||
                     err?.message?.includes('resource-exhausted');
     if (isQuota) {
       setCloudQuotaExhausted();
@@ -156,6 +190,7 @@ const safeDeleteDoc = async (docRef: any) => {
   } catch (err: any) {
     const isQuota = err?.code === 'resource-exhausted' ||
                     err?.message?.includes('Quota exceeded') ||
+                    err?.message?.includes('Quota limit exceeded') ||
                     err?.message?.includes('resource-exhausted');
     if (isQuota) {
       setCloudQuotaExhausted();
@@ -662,6 +697,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [isCloudQuotaExhausted, setIsCloudQuotaExhausted] = useState(isQuotaExhaustedGlobal);
+
+  // Storage Engine Mode ('unlimited_bridge' | 'firestore') - Default to unlimited_bridge to eliminate quota limits
+  const [storageEngineMode, setStorageEngineModeState] = useState<'unlimited_bridge' | 'firestore'>(() => {
+    if (typeof window === 'undefined') return 'unlimited_bridge';
+    const saved = localStorage.getItem('trackpulse_storage_engine');
+    return (saved === 'firestore' ? 'firestore' : 'unlimited_bridge') as 'unlimited_bridge' | 'firestore';
+  });
+
+  const setStorageEngineMode = (mode: 'unlimited_bridge' | 'firestore') => {
+    setStorageEngineModeState(mode);
+    localStorage.setItem('trackpulse_storage_engine', mode);
+    if (mode === 'unlimited_bridge') {
+      isQuotaExhaustedGlobal = true;
+      setIsCloudQuotaExhausted(true);
+      try {
+        disableNetwork(db).catch(() => {});
+      } catch {}
+      setSaveToast('⚡ Unlimited High-Capacity Server Bridge Active (Zero Quota Limits for 100+ Agents)');
+    } else {
+      localStorage.removeItem('trackpulse_quota_exhausted_date');
+      sessionStorage.removeItem('trackpulse_quota_exhausted');
+      isQuotaExhaustedGlobal = false;
+      setIsCloudQuotaExhausted(false);
+      try {
+        enableNetwork(db).catch(() => {});
+      } catch {}
+      setSaveToast('Cloud Firestore Direct Mode Active');
+    }
+    setTimeout(() => setSaveToast(null), 3500);
+  };
 
   useEffect(() => {
     const handleQuotaChange = () => {
@@ -1271,7 +1336,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try {
           localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
         } catch {}
-        safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: merged }).catch(() => {});
+        if (!isQuotaExhaustedGlobal) {
+          safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: merged }).catch(() => {});
+        }
         return merged;
       });
 
@@ -1297,7 +1364,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const existing = map.get(p.userId);
             const updatedItem = { ...(existing || p), ...p };
             map.set(p.userId, updatedItem);
-            safeSetDoc(doc(db, 'user_presence', p.userId), updatedItem, { merge: true }).catch(() => {});
+            if (!isQuotaExhaustedGlobal) {
+              safeSetDoc(doc(db, 'user_presence', p.userId), updatedItem, { merge: true }).catch(() => {});
+            }
             fetch('/api/presence', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1307,7 +1376,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         const merged = Array.from(map.values());
         localStorage.setItem('trackpulse_presence', JSON.stringify(merged));
-        safeSetDoc(doc(db, 'system_state', 'presence'), { data: merged }).catch(() => {});
+        if (!isQuotaExhaustedGlobal) {
+          safeSetDoc(doc(db, 'system_state', 'presence'), { data: merged }).catch(() => {});
+        }
         return merged;
       });
 
@@ -1599,7 +1670,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Load and subscribe to real-time Firestore updates
   useEffect(() => {
-    if (isQuotaExhaustedGlobal) {
+    if (isQuotaExhaustedGlobal || storageEngineMode === 'unlimited_bridge') {
       setIsFirestoreLoaded(true);
       return;
     }
@@ -1858,7 +1929,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubPerms();
       unsubConfig();
     };
-  }, []);
+  }, [storageEngineMode]);
 
   // Central Sync Bridge & Google Sheets Auto-Hydration on Mount
   useEffect(() => {
@@ -2772,36 +2843,6 @@ setIsIdleAlertActive(false);
     return trackingAccumulatedSecondsRef.current + Math.max(0, currentSegmentSec);
   }, [isTracking, isPaused]);
 
-  // Storage Engine Mode ('unlimited_bridge' | 'firestore')
-  const [storageEngineMode, setStorageEngineModeState] = useState<'unlimited_bridge' | 'firestore'>(() => {
-    if (typeof window === 'undefined') return 'firestore';
-    const saved = localStorage.getItem('trackpulse_storage_engine');
-    return (saved === 'unlimited_bridge' ? 'unlimited_bridge' : 'firestore') as 'unlimited_bridge' | 'firestore';
-  });
-
-  const setStorageEngineMode = (mode: 'unlimited_bridge' | 'firestore') => {
-    setStorageEngineModeState(mode);
-    localStorage.setItem('trackpulse_storage_engine', mode);
-    if (mode === 'unlimited_bridge') {
-      isQuotaExhaustedGlobal = true;
-      setIsCloudQuotaExhausted(true);
-      try {
-        disableNetwork(db).catch(() => {});
-      } catch {}
-      setSaveToast('âš¡ Unlimited High-Capacity Server Bridge Active (Zero Quota Limits for 100+ Agents)');
-    } else {
-      localStorage.removeItem('trackpulse_quota_exhausted_date');
-      sessionStorage.removeItem('trackpulse_quota_exhausted');
-      isQuotaExhaustedGlobal = false;
-      setIsCloudQuotaExhausted(false);
-      try {
-        enableNetwork(db).catch(() => {});
-      } catch {}
-      setSaveToast('Cloud Firestore Direct Mode Active');
-    }
-    setTimeout(() => setSaveToast(null), 3500);
-  };
-
   // Dual Monitor & Multi-Window Mode State (Default ON to prevent false idle popups)
   const [isDualMonitorMode, setIsDualMonitorMode] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
@@ -3066,7 +3107,9 @@ setIsIdleAlertActive(false);
         currentTask: 'Shift Concluded',
         lastHeartbeat: nowIso,
       };
-      safeSetDoc(doc(db, 'user_presence', snap.currentUser.id), offlineDoc, { merge: true }).catch(() => {});
+      if (!isQuotaExhaustedGlobal && storageEngineMode !== 'unlimited_bridge') {
+        safeSetDoc(doc(db, 'user_presence', snap.currentUser.id), offlineDoc, { merge: true }).catch(() => {});
+      }
       fetch('/api/presence', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3076,7 +3119,9 @@ setIsIdleAlertActive(false);
         const updated = prev.map((p) =>
           p.userId === snap.currentUser.id ? { ...p, ...offlineDoc } : p
         );
-        safeSetDoc(doc(db, 'system_state', 'presence'), { data: updated }).catch(() => {});
+        if (!isQuotaExhaustedGlobal && storageEngineMode !== 'unlimited_bridge') {
+          safeSetDoc(doc(db, 'system_state', 'presence'), { data: updated }).catch(() => {});
+        }
         return updated;
       });
       return;
@@ -3125,8 +3170,10 @@ setIsIdleAlertActive(false);
       loginPlatform: isDesktop ? 'software' : 'webapp',
     };
 
-    // Always sync presence to Firestore so Trainer and Admins see live status in real-time
-    safeSetDoc(doc(db, 'user_presence', snap.currentUser.id), presenceDoc, { merge: true }).catch(() => {});
+    // Sync presence to Central Server Bridge & Firestore
+    if (!isQuotaExhaustedGlobal && storageEngineMode !== 'unlimited_bridge') {
+      safeSetDoc(doc(db, 'user_presence', snap.currentUser.id), presenceDoc, { merge: true }).catch(() => {});
+    }
     fetch('/api/presence', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3137,7 +3184,9 @@ setIsIdleAlertActive(false);
       const updated = exists
         ? prev.map((p) => (p.userId === snap.currentUser.id ? { ...p, ...presenceDoc } : p))
         : [presenceDoc, ...prev];
-      safeSetDoc(doc(db, 'system_state', 'presence'), { data: updated }).catch(() => {});
+      if (!isQuotaExhaustedGlobal && storageEngineMode !== 'unlimited_bridge') {
+        safeSetDoc(doc(db, 'system_state', 'presence'), { data: updated }).catch(() => {});
+      }
       return updated;
     });
   }, [isAuthenticated]);

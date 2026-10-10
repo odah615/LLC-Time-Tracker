@@ -1003,7 +1003,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
               onClick={() => setShowWebhookSetup(!showWebhookSetup)}
               className="text-blue-600 hover:text-blue-800 font-bold underline flex items-center gap-1 shrink-0"
             >
-              {showWebhookSetup ? 'Hide Webhook Setup â–²' : (googleSheetsWebhookUrl ? 'âš™ï¸ Webhook Settings â–¼' : 'ðŸ“‹ Connect Google Spreadsheet Webhook â–¼')}
+              {showWebhookSetup ? 'Hide Webhook Setup ▲' : (googleSheetsWebhookUrl ? '⚙️ Webhook Settings ▼' : '📋 Connect Google Spreadsheet Webhook ▼')}
             </button>
           )}
         </div>
@@ -1025,18 +1025,18 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                 className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[11px] flex items-center gap-1.5 shadow-sm transition-all"
               >
                 {copiedScript ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedScript ? 'âœ“ Copied Script Code!' : 'Copy Apps Script Code'}</span>
+                <span>{copiedScript ? '✓ Copied Script Code!' : 'Copy Apps Script Code'}</span>
               </button>
             </div>
 
             <p className="text-slate-600 text-[11px] leading-relaxed">
               To automatically record employee timesheets and live sessions directly into your Google Sheet (Spreadsheet ID: <code>{DEFAULT_SPREADSHEET_ID}</code>):
               <br />
-              1. Open your Google Sheet â†’ Click <b>Extensions</b> â†’ <b>Apps Script</b>.
+              1. Open your Google Sheet → Click <b>Extensions</b> → <b>Apps Script</b>.
               <br />
-              2. Paste the copied code and click <b>Save</b> (ðŸ’¾).
+              2. Paste the copied code and click <b>Save</b> (💾).
               <br />
-              3. Click <b>Deploy</b> â†’ <b>New deployment</b> â†’ Select <b>Web app</b> (Execute as: <b>Me</b>, Who has access: <b>Anyone</b>) â†’ <b>Deploy</b>.
+              3. Click <b>Deploy</b> → <b>New deployment</b> → Select <b>Web app</b> (Execute as: <b>Me</b>, Who has access: <b>Anyone</b>) → <b>Deploy</b>.
               <br />
               4. Paste the resulting Web App URL below and click <b>Save & Test Connection</b>.
             </p>
