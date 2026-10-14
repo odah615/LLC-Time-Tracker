@@ -19,7 +19,8 @@ import {
 } from '../types';
 import { doc, setDoc, deleteDoc, onSnapshot, collection, getDoc, disableNetwork, enableNetwork } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import { getManilaDateString, getManilaTimeString, formatLogStartTime, formatLogEndTime } from '../lib/dateUtils';
+import { getManilaDateString, getManilaTimeString, formatLogStartTime, formatLogEndTime, formatLastUpdatedTime, formatLastSeen } from '../lib/dateUtils';
+import { getJitteredPollInterval } from '../lib/fetchUtils';
 import { generateUniqueUsername, deduplicateUsers, resolveCanonicalEmployee } from '../lib/userUtils';
 import {
   syncDataToGoogleSheetsWebhook,
@@ -38,16 +39,6 @@ import {
   parseDurationSeconds,
 } from '../lib/googleSheetsSync';
 import { playInactivityChime, playUrgentPulse } from '../lib/soundAlerts';
-import {
-  safeSetItem,
-  safeGetItem,
-  safeRemoveItem,
-  persistTimeLogsLocally,
-  loadTimeLogsFromStorage,
-  persistScreenshotsLocally,
-  persistAuditLogsLocally,
-  persistAttendanceLocally,
-} from '../lib/storageDb';
 import {
   INITIAL_USERS,
   INITIAL_TIME_LOGS,
@@ -88,38 +79,13 @@ export function sanitizeForFirestore<T>(val: T): T {
   return result as T;
 }
 
-// Storage engine mode & Firestore quota detection
-let isQuotaExhaustedGlobal = (() => {
-  if (typeof window === 'undefined') return true;
-  try {
-    const savedEngine = localStorage.getItem('trackpulse_storage_engine');
-    // Default to 'unlimited_bridge' or honor explicitly saved 'unlimited_bridge'
-    if (savedEngine === 'unlimited_bridge' || !savedEngine) {
-      return true;
-    }
-    const savedQuotaDate = localStorage.getItem('trackpulse_quota_exhausted_date');
-    const today = new Date().toISOString().slice(0, 10);
-    if (savedQuotaDate && savedQuotaDate === today) {
-      return true;
-    }
-    if (sessionStorage.getItem('trackpulse_quota_exhausted') === 'true') {
-      return true;
-    }
-    return false;
-  } catch {
-    return true;
-  }
-})();
+// Storage engine mode: Central Server & Google Sheets Bridge is authoritative.
+// Firestore runtime dependency is safely disabled per master specification.
+let isQuotaExhaustedGlobal = true;
 
-if (isQuotaExhaustedGlobal) {
-  try {
-    disableNetwork(db).catch(() => {});
-  } catch {}
-} else {
-  try {
-    enableNetwork(db).catch(() => {});
-  } catch {}
-}
+try {
+  disableNetwork(db).catch(() => {});
+} catch {}
 
 export const setCloudQuotaExhausted = () => {
   isQuotaExhaustedGlobal = true;
@@ -233,8 +199,6 @@ interface AppContextType {
   isSessionWarningActive: boolean;
   webSessionWarningCountdown: number;
   refreshWebSession: () => void;
-  lastDataUpdatedAt: string;
-  refreshWebData: () => Promise<void>;
   sessionExpiredReason: string | null;
   clearSessionExpiredReason: () => void;
   // Offline Connection Loss & 30-Minute Grace Period Engine
@@ -250,6 +214,8 @@ interface AppContextType {
   currentDesignation: Designation;
   currentTask: TaskCategory;
   elapsedSeconds: number;
+  todayTotalSeconds: number;
+  getTodayTrackedSeconds: () => number;
   currentSessionApps: AppUsage[];
   currentMouseActivity: number;
   currentKeyboardActivity: number;
@@ -525,7 +491,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    return Boolean(isAuth && hasUser);
+    if (typeof window !== 'undefined') {
+      const isExpired = localStorage.getItem('trackpulse_session_expired_reason') === 'inactivity_10min';
+      if (!isExpired) {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('user') || urlParams.get('userId')) {
+          return true;
+        }
+      }
+    }
+
+    return isAuth && hasUser;
   });
   const [loginMode, setLoginMode] = useState<'webapp' | 'software'>(() => {
     if (typeof window !== 'undefined') {
@@ -546,28 +522,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [timeLogs, setTimeLogs] = useState<TimeLog[]>(() => {
-    const saved = safeGetItem('trackpulse_timelogs');
+    const saved = localStorage.getItem('trackpulse_timelogs');
     return saved ? JSON.parse(saved) : [];
   });
-
-  // Hydrate full historical time logs from IndexedDB on application startup
-  useEffect(() => {
-    loadTimeLogsFromStorage().then((loaded) => {
-      if (Array.isArray(loaded) && loaded.length > 0) {
-        setTimeLogs((prev) => {
-          const map = new Map<string, TimeLog>();
-          prev.forEach((l) => map.set(l.id, l));
-          loaded.forEach((l) => {
-            const existing = map.get(l.id);
-            if (!existing || (l.durationSeconds || 0) > (existing.durationSeconds || 0)) {
-              map.set(l.id, l);
-            }
-          });
-          return Array.from(map.values());
-        });
-      }
-    }).catch(() => {});
-  }, []);
 
   const [screenshots, setScreenshots] = useState<ScreenshotLog[]>(() => {
     const saved = localStorage.getItem('trackpulse_screenshots');
@@ -763,6 +720,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem('trackpulse_sheets_webhook') || '';
     if (saved && isValidWebhookUrl(saved)) {
       return saved;
+    }
+    if (saved) {
+      localStorage.removeItem('trackpulse_sheets_webhook');
     }
     return DEFAULT_WEBHOOK_URL;
   });
@@ -982,7 +942,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const apiRes = await fetch('/api/config');
         if (apiRes.ok) {
-          const apiCfg = await apiRes.json();
+          const apiCfg: any = await apiRes.json();
           if (apiCfg?.webhookUrl && isValidWebhookUrl(apiCfg.webhookUrl)) {
             targetUrl = apiCfg.webhookUrl.trim();
             setGoogleSheetsWebhookUrlState(targetUrl);
@@ -1355,7 +1315,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const merged = Array.from(map.values());
         try {
-          persistTimeLogsLocally(merged);
+          localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
         } catch {}
         if (!isQuotaExhaustedGlobal) {
           safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: merged }).catch(() => {});
@@ -1564,7 +1524,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setTimeLogs((prev) => {
       const merged = [newLog, ...prev];
-      persistTimeLogsLocally(merged);
+      localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
       safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: merged }).catch(() => {});
       fetch('/api/timelogs', {
         method: 'POST',
@@ -1638,7 +1598,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return l;
       });
-      persistTimeLogsLocally(updated);
+      localStorage.setItem('trackpulse_timelogs', JSON.stringify(updated));
       safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updated }).catch(() => {});
       fetch('/api/timelogs', {
         method: 'POST',
@@ -1767,7 +1727,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const tB = new Date(b.date + ' ' + (b.startTime || '00:00')).getTime();
                 return tB - tA;
               });
-              persistTimeLogsLocally(merged);
+              localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
               return merged;
             });
           }
@@ -1781,7 +1741,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const remoteAudit: AuditLog[] = snapshot.data().data;
           if (Array.isArray(remoteAudit)) {
             setAuditLogs(remoteAudit);
-            persistAuditLogsLocally(remoteAudit);
+            localStorage.setItem('trackpulse_auditlogs', JSON.stringify(remoteAudit));
           }
         }
       }, (err) => handleSnapshotError('auditlogs', err));
@@ -1966,7 +1926,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const res = await fetch('/api/config');
         if (res.ok) {
-          const cfg = await res.json();
+          const cfg: any = await res.json();
           if (cfg?.webhookUrl && typeof cfg.webhookUrl === 'string' && isValidWebhookUrl(cfg.webhookUrl)) {
             activeWebhookUrl = cfg.webhookUrl.trim();
             setGoogleSheetsWebhookUrlState(activeWebhookUrl);
@@ -2075,7 +2035,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
               if (hasChanges) {
                 const merged = Array.from(map.values());
-                persistTimeLogsLocally(merged);
+                localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
                 return merged;
               }
               return prev;
@@ -2152,95 +2112,197 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Read-only Central Bridge presence polling so the web portal can see Desktop Tracker live status.
+  // Traffic Rule 4 & 5: Check and close stale tracking sessions (> 12 mins without heartbeat) at last heartbeat time with status "interrupted"
+  const checkAndCloseInterruptedSessions = useCallback((presenceList: UserPresence[]) => {
+    const now = Date.now();
+    const STALE_THRESHOLD_MS = 12 * 60 * 1000; // 12 minutes
+
+    const interruptedUserMap = new Map<string, string>(); // userId -> lastHeartbeat ISO
+
+    presenceList.forEach((p) => {
+      if (!p.userId) return;
+      const lastMs = p.lastHeartbeat ? new Date(p.lastHeartbeat).getTime() : 0;
+      if (lastMs > 0 && now - lastMs > STALE_THRESHOLD_MS) {
+        interruptedUserMap.set(p.userId, p.lastHeartbeat);
+      }
+    });
+
+    if (interruptedUserMap.size > 0) {
+      setTimeLogs((prevLogs) => {
+        let changed = false;
+        const updated = prevLogs.map((l) => {
+          if (l.status === 'running' && interruptedUserMap.has(l.userId)) {
+            changed = true;
+            const lastHbIso = interruptedUserMap.get(l.userId) || new Date().toISOString();
+            const hbMs = new Date(lastHbIso).getTime();
+            const startMs = new Date(l.startTime).getTime();
+            const durSec = startMs > 0 && hbMs > startMs ? Math.floor((hbMs - startMs) / 1000) : Math.max(0, l.durationSeconds);
+            const endLocal = getManilaTimeString(new Date(lastHbIso));
+            return {
+              ...l,
+              endTime: lastHbIso,
+              geoLocalEndTime: endLocal,
+              durationSeconds: durSec,
+              status: 'interrupted' as const,
+              notes: `${l.notes || 'Task Segment'} [Interrupted: Session stopped sending heartbeats]`,
+            };
+          }
+          return l;
+        });
+
+        if (changed) {
+          localStorage.setItem('trackpulse_timelogs', JSON.stringify(updated));
+          fetch('/api/timelogs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updated),
+          }).catch(() => {});
+        }
+        return updated;
+      });
+    }
+  }, []);
+
+  // Traffic Rules 2, 6, 7: Web Portal Background Data Sync Loop
+  // Reads presence every 300s (±30s jitter) ONLY while tab is visible.
+  // Exponential backoff starting at 30s doubling up to 300s max on failure.
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const syncRemotePresence = async () => {
+    let timeoutId: any = null;
+    let currentBackoffMs = 30000;
+
+    const syncWebPortalPresence = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        timeoutId = setTimeout(syncWebPortalPresence, 30000);
+        return;
+      }
+
       try {
         const res = await fetch('/api/presence', { cache: 'no-store' });
-        if (!res.ok) return;
-        const payload = await res.json();
-        const remotePresence: UserPresence[] = Array.isArray(payload)
-          ? payload
-          : Array.isArray(payload?.presence)
-            ? payload.presence
-            : [];
-        if (!Array.isArray(remotePresence)) return;
+        if (res.ok) {
+          const payload: any = await res.json().catch(() => null);
+          const remotePresence: UserPresence[] = Array.isArray(payload)
+            ? payload
+            : Array.isArray(payload?.presence)
+              ? payload.presence
+              : [];
 
-        setUserPresenceList((prev) => {
-          const map = new Map<string, UserPresence>(prev.map((p) => [p.userId, p]));
-          for (const p of remotePresence) {
-            if (!p?.userId) continue;
-            const canon = resolveCanonicalEmployee({
-              employeeCode: p.employeeCode,
-              username: p.userName,
-              name: p.userName,
-              id: p.userId,
+          if (Array.isArray(remotePresence)) {
+            setUserPresenceList((prev) => {
+              const map = new Map<string, UserPresence>(prev.map((p) => [p.userId, p]));
+              const now = Date.now();
+              const STALE_MS = 12 * 60 * 1000;
+
+              for (const p of remotePresence) {
+                if (!p?.userId) continue;
+                const canon = resolveCanonicalEmployee({
+                  employeeCode: p.employeeCode,
+                  username: p.userName,
+                  name: p.userName,
+                  id: p.userId,
+                });
+                const lastMs = p.lastHeartbeat ? new Date(p.lastHeartbeat).getTime() : 0;
+                const isStale = lastMs > 0 && now - lastMs > STALE_MS;
+
+                const sanitizedPresence: UserPresence = {
+                  ...p,
+                  userName:
+                    canon?.name ||
+                    (p.userName && p.userName !== p.userId ? p.userName : 'Agent'),
+                  employeeCode: canon?.code || p.employeeCode || '',
+                  isOnline: isStale ? false : p.isOnline,
+                  status: isStale ? ('offline' as const) : p.status,
+                  isTracking: isStale ? false : p.isTracking,
+                };
+                const existing = map.get(p.userId);
+                map.set(p.userId, { ...(existing || {}), ...sanitizedPresence });
+              }
+              const merged = Array.from(map.values());
+              checkAndCloseInterruptedSessions(merged);
+              return merged;
             });
-            const sanitizedPresence: UserPresence = {
-              ...p,
-              userName:
-                canon?.name ||
-                (p.userName && p.userName !== p.userId ? p.userName : 'Agent'),
-              employeeCode: canon?.code || p.employeeCode || '',
-            };
-            const existing = map.get(p.userId);
-            map.set(p.userId, { ...(existing || {}), ...sanitizedPresence });
           }
-          return Array.from(map.values());
-        });
-      } catch {}
+
+          // Reset exponential backoff on success and set jittered 300s timer
+          currentBackoffMs = 30000;
+          const nextIntervalMs = getJitteredPollInterval(300000, 30000);
+          timeoutId = setTimeout(syncWebPortalPresence, nextIntervalMs);
+          return;
+        }
+
+        // On failure: exponential backoff starting at 30s up to 300s max
+        currentBackoffMs = Math.min(300000, currentBackoffMs * 2);
+        timeoutId = setTimeout(syncWebPortalPresence, currentBackoffMs);
+      } catch {
+        currentBackoffMs = Math.min(300000, currentBackoffMs * 2);
+        timeoutId = setTimeout(syncWebPortalPresence, currentBackoffMs);
+      }
     };
 
-    syncRemotePresence();
-    const interval = setInterval(syncRemotePresence, 15000);
-    return () => clearInterval(interval);
+    syncWebPortalPresence();
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        syncWebPortalPresence();
+      }
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+    };
   }, [isAuthenticated]);
 
-  // Save changes safely to IndexedDB and localStorage
+  // Save changes to localStorage
   useEffect(() => {
-    safeSetItem('trackpulse_users', JSON.stringify(users));
+    localStorage.setItem('trackpulse_users', JSON.stringify(users));
   }, [users]);
 
   useEffect(() => {
-    persistTimeLogsLocally(timeLogs);
+    localStorage.setItem('trackpulse_timelogs', JSON.stringify(timeLogs));
   }, [timeLogs]);
 
   useEffect(() => {
-    persistScreenshotsLocally(screenshots);
+    localStorage.setItem('trackpulse_screenshots', JSON.stringify(screenshots));
   }, [screenshots]);
 
   useEffect(() => {
-    safeSetItem('trackpulse_idlelogs', JSON.stringify(idleLogs));
+    localStorage.setItem('trackpulse_idlelogs', JSON.stringify(idleLogs));
   }, [idleLogs]);
 
   useEffect(() => {
-    safeSetItem('trackpulse_leaverequests', JSON.stringify(leaveRequests));
+    localStorage.setItem('trackpulse_leaverequests', JSON.stringify(leaveRequests));
   }, [leaveRequests]);
 
   useEffect(() => {
-    safeSetItem('trackpulse_manualrequests', JSON.stringify(manualTimeRequests));
+    localStorage.setItem('trackpulse_manualrequests', JSON.stringify(manualTimeRequests));
   }, [manualTimeRequests]);
 
   useEffect(() => {
-    safeSetItem('trackpulse_payroll', JSON.stringify(payrollRecords));
+    localStorage.setItem('trackpulse_payroll', JSON.stringify(payrollRecords));
   }, [payrollRecords]);
 
   useEffect(() => {
-    persistAttendanceLocally(dailyAttendanceLogs);
+    localStorage.setItem('trackpulse_attendance', JSON.stringify(dailyAttendanceLogs));
   }, [dailyAttendanceLogs]);
 
   useEffect(() => {
-    safeSetItem('trackpulse_presence', JSON.stringify(userPresenceList));
+    localStorage.setItem('trackpulse_presence', JSON.stringify(userPresenceList));
   }, [userPresenceList]);
 
   useEffect(() => {
-    safeSetItem('trackpulse_worldclocks', JSON.stringify(worldClocks));
+    localStorage.setItem('trackpulse_worldclocks', JSON.stringify(worldClocks));
   }, [worldClocks]);
 
   useEffect(() => {
-    persistAuditLogsLocally(auditLogs);
+    localStorage.setItem('trackpulse_auditlogs', JSON.stringify(auditLogs));
   }, [auditLogs]);
 
   const addAuditLog = useCallback(
@@ -2336,53 +2398,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(() => {
     if (!savedActiveTracking || !savedActiveTracking.isTracking) return 0;
     if (savedActiveTracking.isPaused) return savedActiveTracking.accumulatedSec || 0;
-    const lastActive = savedActiveTracking.lastActiveMs || savedActiveTracking.startMs || Date.now();
-    const gapMs = Date.now() - lastActive;
-    if (gapMs > 12 * 60 * 1000) {
-      // Per Rule 5: Do not accumulate giant gap if heartbeats stopped
-      return savedActiveTracking.accumulatedSec || 0;
-    }
-    const additional = lastActive > 0 ? Math.floor((Date.now() - lastActive) / 1000) : 0;
+    const additional = savedActiveTracking.lastActiveMs > 0 ? Math.floor((Date.now() - savedActiveTracking.lastActiveMs) / 1000) : 0;
     return (savedActiveTracking.accumulatedSec || 0) + Math.max(0, additional);
   });
-
-  // Rule 5: Auto-close tracking session if heartbeats stopped for >12 minutes (close at last heartbeat time with status 'interrupted')
-  useEffect(() => {
-    if (!savedActiveTracking || !savedActiveTracking.isTracking) return;
-    const lastActive = savedActiveTracking.lastActiveMs || savedActiveTracking.startMs || Date.now();
-    const gapMs = Date.now() - lastActive;
-    if (gapMs > 12 * 60 * 1000) {
-      console.warn('[SESSION RECOVERY] Session stopped receiving heartbeats. Closing session at last heartbeat time as interrupted.');
-      const endIso = new Date(lastActive).toISOString();
-      const interruptedLog: TimeLog = {
-        id: savedActiveTracking.sessionId || `interrupted_${Date.now()}`,
-        userId: currentUser.id,
-        employeeCode: currentUser.employeeCode || '',
-        userName: currentUser.name,
-        userAvatar: currentUser.avatar || '',
-        designation: savedActiveTracking.designation || currentUser.designation || 'Agent',
-        task: savedActiveTracking.task || 'Email Reachout',
-        startTime: savedActiveTracking.startTimeIso || new Date(savedActiveTracking.startMs || lastActive).toISOString(),
-        endTime: endIso,
-        durationSeconds: savedActiveTracking.accumulatedSec || 0,
-        status: 'interrupted',
-        geoTimezone: currentUser.geoTimezone || 'Asia/Manila (GMT+8)',
-        geoLocalStartTime: formatLogStartTime(savedActiveTracking.startTimeIso || new Date(savedActiveTracking.startMs || lastActive).toISOString(), 'Asia/Manila'),
-        geoLocalEndTime: formatLogStartTime(endIso, 'Asia/Manila'),
-        mouseActivityAvg: 80,
-        keyboardActivityAvg: 80,
-        appsUsed: [],
-        idleSeconds: 0,
-        notes: 'Session closed automatically due to interrupted heartbeat pulse',
-        date: getManilaDateString(new Date(savedActiveTracking.startMs || lastActive)),
-      };
-      setTimeLogs((prev) => [interruptedLog, ...prev.filter((l) => l.id !== interruptedLog.id)]);
-      setIsTracking(false);
-      setIsPaused(false);
-      setElapsedSeconds(0);
-      localStorage.removeItem('trackpulse_active_tracking');
-    }
-  }, []);
 
   // Desktop App Widget vs Web Dashboard Mode
   const [isDesktopDockView, setIsDesktopDockView] = useState(() => {
@@ -2435,11 +2453,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setWebSessionWarningCountdown(300);
   }, []);
 
-  const login = (user: User, mode: 'webapp' | 'software' = 'webapp') => {
+  const login = (user: User, mode: 'webapp' | 'software' = 'webapp', token?: string) => {
     setCurrentUser(user);
     setIsAuthenticated(true);
     setLoginMode(mode);
     setIsDesktopDockView(mode === 'software');
+    if (token) {
+      localStorage.setItem('trackpulse_token', token);
+    }
     localStorage.setItem('trackpulse_auth', 'true');
     localStorage.setItem('trackpulse_login_mode', mode);
     localStorage.setItem('trackpulse_current_user', JSON.stringify(user));
@@ -2705,6 +2726,7 @@ setIsIdleAlertActive(false);
     }
     setIsAuthenticated(false);
     setIsSessionWarningActive(false);
+    setElapsedSeconds(0);
     localStorage.removeItem('trackpulse_auth');
     localStorage.removeItem('trackpulse_current_user');
     localStorage.removeItem('trackpulse_login_session_id');
@@ -2907,6 +2929,55 @@ setIsIdleAlertActive(false);
     const currentSegmentSec = Math.floor((Date.now() - lastActiveIntervalStartMsRef.current) / 1000);
     return trackingAccumulatedSecondsRef.current + Math.max(0, currentSegmentSec);
   }, [isTracking, isPaused]);
+
+  // Authoritative Mini Daily Total:
+  // Represents the sum of valid work sessions for the employee's current local workday.
+  // Continues accumulating across separate logins and work periods on the same day.
+  // Survives Stop, logout, and subsequent login.
+  // Resets at the next local workday without deleting historical records.
+  const getTodayTrackedSeconds = useCallback((): number => {
+    if (!currentUser) return 0;
+    const todayStr = getManilaDateString();
+    const canon = resolveCanonicalEmployee(currentUser);
+    const uId = (currentUser.id || '').trim().toLowerCase();
+    const uCode = (canon?.code || currentUser.employeeCode || '').trim().toLowerCase();
+    const uName = (canon?.name || currentUser.name || '').trim().toLowerCase();
+
+    const seenLogKeys = new Set<string>();
+    const finishedToday = timeLogs
+      .filter((l) => {
+        const logUId = (l.userId || '').trim().toLowerCase();
+        const logEmpCode = ((l as any).employeeCode || '').trim().toLowerCase();
+        const logUName = (l.userName || '').trim().toLowerCase();
+        const isUserMatch =
+          (logUId && (logUId === uId || (uCode && logUId === uCode))) ||
+          (logEmpCode && (logEmpCode === uCode || logEmpCode === uId)) ||
+          (logUName && uName && logUName === uName);
+
+        const isDateMatch = l.date === todayStr || (l.startTime && l.startTime.startsWith(todayStr));
+        const isCompleted = l.status !== 'running' && l.endTime !== 'Running Live' && String(l.status || '').toLowerCase() !== 'running';
+        return isUserMatch && isDateMatch && isCompleted;
+      })
+      .reduce((acc, l) => {
+        const key = l.id ? l.id : `${l.userId || (l as any).employeeCode}-${l.date}-${l.startTime}-${l.task}`;
+        if (seenLogKeys.has(key)) return acc;
+        seenLogKeys.add(key);
+        return acc + Math.max(0, Number(l.durationSeconds) || 0);
+      }, 0);
+
+    // Today's Total = sum of completed task segments + elapsed time of currently active task segment ONLY
+    let liveCurrentTaskSegmentSec = 0;
+    if (isTracking && !isPaused) {
+      const segStartMs = currentTaskSegmentStartMsRef.current;
+      if (segStartMs > 0) {
+        liveCurrentTaskSegmentSec = Math.max(0, Math.floor((Date.now() - segStartMs) / 1000));
+      }
+    }
+
+    return finishedToday + liveCurrentTaskSegmentSec;
+  }, [currentUser, timeLogs, isTracking, isPaused]);
+
+  const todayTotalSeconds = getTodayTrackedSeconds();
 
   // Dual Monitor & Multi-Window Mode State (Default ON to prevent false idle popups)
   const [isDualMonitorMode, setIsDualMonitorMode] = useState<boolean>(() => {
@@ -3256,97 +3327,51 @@ setIsIdleAlertActive(false);
     });
   }, [isAuthenticated]);
 
-  // Last data updated timestamp for Web Portal Display
-  const [lastDataUpdatedAt, setLastDataUpdatedAt] = useState<string>(() => {
-    const d = new Date();
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-  });
-
-  const updateLastDataTimestamp = useCallback(() => {
-    const d = new Date();
-    setLastDataUpdatedAt(d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
-  }, []);
-
-  const refreshWebData = useCallback(async () => {
-    try {
-      await importPresenceFromGoogleSheets(undefined, true).catch(() => {});
-      updateLastDataTimestamp();
-    } catch (err) {
-      console.warn('[WEB DATA REFRESH] Error:', err);
-    }
-  }, [updateLastDataTimestamp]);
-
-  // Rule 2: Web Portal Auto-Fetch Engine (300 seconds ± 30 seconds random jitter while tab is visible)
+  // Traffic Rule 1: ONLY the desktop app sends heartbeats. Website portal never sends heartbeats.
   useEffect(() => {
-    if (!isAuthenticated || loginMode === 'software' || isDesktopDockView) {
-      return;
-    }
+    if (!isAuthenticated || !currentUser || loginMode !== 'software') return;
 
-    refreshWebData();
+    // Initial presence broadcast on desktop app load
+    broadcastPresence();
 
-    let timeoutId: any = null;
-
-    const scheduleNextWebFetch = () => {
-      const jitterMs = Math.floor(Math.random() * 60000 - 30000);
-      const delayMs = Math.max(180000, 300000 + jitterMs); // 300s ± 30s jitter
-
-      timeoutId = setTimeout(async () => {
-        if (document.visibilityState === 'visible') {
-          await refreshWebData();
-        }
-        scheduleNextWebFetch();
-      }, delayMs);
+    // On window unload / close, notify immediately that user went offline
+    const handleUnload = () => {
+      broadcastPresence(true);
     };
 
-    scheduleNextWebFetch();
+    window.addEventListener('beforeunload', handleUnload);
 
     return () => {
-      if (timeoutId) clearTimeout(timeoutId);
+      window.removeEventListener('beforeunload', handleUnload);
     };
-  }, [isAuthenticated, loginMode, isDesktopDockView, refreshWebData]);
+  }, [isAuthenticated, currentUser?.id, loginMode, broadcastPresence]);
 
-  // Rule 1 & Rule 6: Desktop App ONE Combined Heartbeat Engine (every 300s with exponential backoff on retry)
-  const desktopBackoffDelayMs = useRef<number>(30000);
+  // Immediate presence broadcast when desktop tracking state changes (start, stop, pause, resume, task change)
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser || loginMode !== 'software') return;
+    broadcastPresence();
+  }, [isAuthenticated, currentUser?.id, loginMode, isTracking, isPaused, currentTask, broadcastPresence]);
 
-  const sendDesktopCombinedHeartbeat = useCallback(async () => {
-    if (!isAuthenticated || !currentUser) return;
+  // Traffic Rule 1: ONLY the desktop app sends heartbeats (ONE combined heartbeat every 300 seconds)
+  // Plus immediate sends on login, logout, start, stop, task change, break start/end.
+  // The website portal NEVER sends heartbeats.
+  useEffect(() => {
+    if (!isAuthenticated || !currentUser || loginMode !== 'software') return;
 
-    const snap = liveTrackingSnapshotRef.current;
-    const isDesktop =
-      loginMode === 'software' ||
-      isDesktopDockView ||
-      snap.loginMode === 'software' ||
-      (typeof window !== 'undefined' &&
-        Boolean(
-          (window as any).electronAPI ||
-          (window as any).isElectronApp === true ||
-          navigator.userAgent.includes('Electron') ||
-          window.location.search.includes('mode=desktop') ||
-          window.location.search.includes('source=software') ||
-          window.location.search.includes('appMode=desktop') ||
-          window.location.search.includes('mode=software')
-        ));
+    const sendGoogleSheetsAgentHeartbeat = () => {
+      const activeUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || DEFAULT_WEBHOOK_URL;
+      if (!activeUrl || !isValidWebhookUrl(activeUrl)) return;
 
-    if (!isDesktop) return;
+      const snap = liveTrackingSnapshotRef.current || {};
+      const isEffTracking = isTracking;
+      const currentElapsed = elapsedSeconds || snap.accumulatedSec || 0;
 
-    // 1. Broadcast Presence (presence document with elapsedSeconds)
-    broadcastPresence(false, false);
+      const statusLabel = isPaused
+        ? '🟡 Idle / On Break'
+        : isEffTracking
+        ? '🟢 Live Tracking'
+        : '🟢 Desktop Standby';
 
-    // 2. Transmit Google Sheets Agent Heartbeat (combined pulse)
-    let activeUrl =
-      googleSheetsWebhookUrl ||
-      localStorage.getItem('trackpulse_sheets_webhook') ||
-      DEFAULT_WEBHOOK_URL;
-
-    if (!activeUrl || !isValidWebhookUrl(activeUrl)) {
-      activeUrl = DEFAULT_WEBHOOK_URL;
-    }
-
-    if (activeUrl && isValidWebhookUrl(activeUrl)) {
-      const isEffTracking = isTracking && !isPaused;
-      const currentElapsed = Math.max(getLiveElapsedSeconds(), elapsedSeconds, snap.elapsedSeconds || 0);
-
-      const statusLabel = isPaused ? '🟡 Idle / Break' : '🟢 Live Tracking';
       const startFormatted =
         snap.startTimeIso || startTimeIso
           ? formatLogStartTime(snap.startTimeIso || startTimeIso, 'Asia/Manila')
@@ -3356,116 +3381,59 @@ setIsIdleAlertActive(false);
         ? (currentTask || snap.currentTask || 'Active Work')
         : 'Desktop Standby';
 
-      try {
-        const res = await syncAgentHeartbeatToSheets(activeUrl, {
-          userId: currentUser.id,
-          employeeCode: currentUser.employeeCode || '',
-          userName: currentUser.name,
-          role: currentUser.role,
-          designation: currentDesignation || currentUser.designation || 'Agent',
-          platformMode: 'Desktop Tracker',
-          status: isPaused ? 'idle' : 'online',
-          statusLabel,
-          isOnline: true,
-          isTracking: isEffTracking,
-          isPaused: isPaused,
-          elapsedSeconds: currentElapsed,
-          sessionId: currentSessionIdRef.current || snap.sessionId || '',
-          loginSessionId: loginSessionIdRef.current || '',
-          currentTask: taskName,
-          currentApp: currentActiveAppRef.current || currentActiveApp || 'LLC Time Tracker Desktop App',
-          loginPlatform: 'software',
-          firstCheckin: startFormatted,
-          timezone: currentUser.geoTimezone || 'Asia/Manila (GMT+8)',
-          lastHeartbeat: new Date().toISOString(),
-          mouseActivity: isEffTracking ? (snap.mouseActivity || 95) : 0,
-          keyboardActivity: isEffTracking ? (snap.keyboardActivity || 95) : 0,
-        });
-
-        if (res.success) {
-          desktopBackoffDelayMs.current = 30000;
-        } else {
-          // Exponential backoff (Rule 6: 30s up to 5 mins)
-          desktopBackoffDelayMs.current = Math.min(300000, desktopBackoffDelayMs.current * 2);
-        }
-      } catch {
-        desktopBackoffDelayMs.current = Math.min(300000, desktopBackoffDelayMs.current * 2);
-      }
-    }
-  }, [
-    isAuthenticated,
-    currentUser,
-    loginMode,
-    isDesktopDockView,
-    broadcastPresence,
-    googleSheetsWebhookUrl,
-    isTracking,
-    isPaused,
-    elapsedSeconds,
-    startTimeIso,
-    currentTask,
-    currentDesignation,
-    currentActiveApp,
-  ]);
-
-  // Desktop App 300-second combined heartbeat recurring loop (Rule 1 & Rule 7)
-  useEffect(() => {
-    const isDesktop =
-      loginMode === 'software' ||
-      isDesktopDockView ||
-      (typeof window !== 'undefined' &&
-        Boolean(
-          (window as any).electronAPI ||
-          (window as any).isElectronApp === true ||
-          navigator.userAgent.includes('Electron') ||
-          window.location.search.includes('mode=desktop') ||
-          window.location.search.includes('source=software') ||
-          window.location.search.includes('appMode=desktop') ||
-          window.location.search.includes('mode=software')
-        ));
-
-    if (!isAuthenticated || !currentUser || !isDesktop) return;
-
-    // Initial pulse on startup / login
-    sendDesktopCombinedHeartbeat();
-
-    // 300-second interval (5 minutes)
-    const interval = setInterval(() => {
-      sendDesktopCombinedHeartbeat();
-    }, 300000);
-
-    const handleUnload = () => {
-      broadcastPresence(true);
+      syncAgentHeartbeatToSheets(activeUrl, {
+        userId: currentUser.id,
+        employeeCode: currentUser.employeeCode || '',
+        userName: currentUser.name,
+        role: currentUser.role,
+        designation: currentDesignation || currentUser.designation || 'Agent',
+        platformMode: 'Desktop Tracker',
+        status: isPaused ? 'idle' : 'online',
+        statusLabel,
+        isOnline: true,
+        isTracking: isEffTracking,
+        isPaused: isPaused,
+        elapsedSeconds: currentElapsed,
+        sessionId: currentSessionIdRef.current || snap.sessionId || '',
+        loginSessionId: loginSessionIdRef.current || '',
+        currentTask: taskName,
+        currentApp: currentActiveAppRef.current || currentActiveApp || 'LLC Time Tracker Desktop App',
+        loginPlatform: 'software',
+        firstCheckin: startFormatted,
+        timezone: currentUser.geoTimezone || 'Asia/Manila (GMT+8)',
+        lastHeartbeat: new Date().toISOString(),
+        mouseActivity: isEffTracking ? (snap.mouseActivity || 95) : 0,
+        keyboardActivity: isEffTracking ? (snap.keyboardActivity || 95) : 0,
+      }).catch((err) => {
+        console.warn('[DESKTOP HEARTBEAT] Failed:', err);
+      });
     };
 
-    window.addEventListener('beforeunload', handleUnload);
+    // Initial pulse after 1.5 seconds
+    const initialTimer = setTimeout(sendGoogleSheetsAgentHeartbeat, 1500);
+
+    // Rule 1: ONE combined heartbeat every 300 seconds (5 minutes)
+    const sheetHbInterval = setInterval(sendGoogleSheetsAgentHeartbeat, 300000);
 
     return () => {
-      clearInterval(interval);
-      window.removeEventListener('beforeunload', handleUnload);
+      clearTimeout(initialTimer);
+      clearInterval(sheetHbInterval);
     };
-  }, [isAuthenticated, currentUser?.id, loginMode, isDesktopDockView, sendDesktopCombinedHeartbeat, broadcastPresence]);
-
-  // Immediate heartbeat pulse on major session events: start, stop, task change, break start/end (Rule 1)
-  useEffect(() => {
-    const isDesktop =
-      loginMode === 'software' ||
-      isDesktopDockView ||
-      (typeof window !== 'undefined' &&
-        Boolean(
-          (window as any).electronAPI ||
-          (window as any).isElectronApp === true ||
-          navigator.userAgent.includes('Electron') ||
-          window.location.search.includes('mode=desktop') ||
-          window.location.search.includes('source=software') ||
-          window.location.search.includes('appMode=desktop') ||
-          window.location.search.includes('mode=software')
-        ));
-
-    if (!isAuthenticated || !currentUser || !isDesktop) return;
-
-    sendDesktopCombinedHeartbeat();
-  }, [isTracking, isPaused, currentTask, sendDesktopCombinedHeartbeat]);
+  }, [
+    isAuthenticated,
+    loginMode,
+    currentUser?.id,
+    currentUser?.employeeCode,
+    currentUser?.name,
+    currentUser?.role,
+    currentUser?.designation,
+    currentUser?.geoTimezone,
+    isTracking,
+    isPaused,
+    currentTask,
+    currentDesignation,
+    googleSheetsWebhookUrl,
+  ]);
 
   // Task Switch Confirmation Modal state
   const [taskSwitchPending, setTaskSwitchPending] = useState<TaskSwitchPending | null>(null);
@@ -4049,14 +4017,18 @@ setIsIdleAlertActive(false);
       : '';
 
     const currentPres = userPresenceList.find((p) => p.userId === currentUser.id);
+    const canonUser = resolveCanonicalEmployee(currentUser);
+    const empCode = canonUser?.code || currentUser.employeeCode || '';
+    const empName = canonUser?.name || currentUser.name;
+
     const newLog: TimeLog = {
       id: `log-${Date.now()}`,
       sessionId: currentSessionIdRef.current || `sess-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       loginSessionId: loginSessionIdRef.current || undefined,
       loginTime: currentPres?.loginTime || undefined,
       userId: currentUser.id,
-      employeeCode: currentUser.employeeCode || '',
-      userName: currentUser.name,
+      employeeCode: empCode,
+      userName: empName,
       userAvatar: currentUser.avatar,
       designation: currentDesignation,
       task: currentTask,
@@ -4114,8 +4086,8 @@ setIsIdleAlertActive(false);
 
     const updatedLogs = [newLog, ...timeLogs];
     const updatedScreenshots = [newScreenshot, ...screenshots];
-    persistTimeLogsLocally(updatedLogs);
-    persistScreenshotsLocally(updatedScreenshots);
+    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+    localStorage.setItem('trackpulse_screenshots', JSON.stringify(updatedScreenshots));
 
     // Instantly sync to Central Bridge across desktop & web clients
     fetch('/api/timelogs', {
@@ -4232,7 +4204,8 @@ setIsIdleAlertActive(false);
     localStorage.removeItem('trackpulse_active_tracking');
     setIsTracking(false);
     setIsPaused(false);
-    setElapsedSeconds(0);
+    // Freezes the displayed task duration at its final value upon Stop
+    setElapsedSeconds(finalSegmentSec);
     setStartTimeIso(null);
     setSessionIdleDeductionSeconds(0);
     setCurrentInactivitySeconds(0);
@@ -4486,6 +4459,10 @@ setIsIdleAlertActive(false);
       : (currentKeyboardActivity || 100);
 
     const currentPres = userPresenceList.find((p) => p.userId === currentUser.id);
+    const canonUser = resolveCanonicalEmployee(currentUser);
+    const empCode = canonUser?.code || currentUser.employeeCode || '';
+    const empName = canonUser?.name || currentUser.name;
+
     // 2. Record previous task as a distinct completed row in Timesheets & Database Spreadsheet
     const newLog: TimeLog = {
       id: `log-${Date.now()}`,
@@ -4493,8 +4470,8 @@ setIsIdleAlertActive(false);
       loginSessionId: loginSessionIdRef.current || undefined,
       loginTime: currentPres?.loginTime || undefined,
       userId: currentUser.id,
-      employeeCode: currentUser.employeeCode || '',
-      userName: currentUser.name,
+      employeeCode: empCode,
+      userName: empName,
       userAvatar: currentUser.avatar,
       designation: currentDesignation || currentUser.designation || 'Agent',
       task: prevTask,
@@ -4517,7 +4494,7 @@ setIsIdleAlertActive(false);
 
     const updatedLogs = [newLog, ...timeLogs];
     setTimeLogs(updatedLogs);
-    persistTimeLogsLocally(updatedLogs);
+    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
 
     // Save to Central Bridge & Firestore
     safeSetDoc(doc(db, 'timelogs', newLog.id), newLog).catch(() => {});
@@ -4693,37 +4670,47 @@ setIsIdleAlertActive(false);
     setAuditLogs(updatedAudit);
 
     localStorage.setItem('trackpulse_users', JSON.stringify(updatedUsers));
+
+    // Strip password fields when creating new employee
+    const { password, accountPassword, passwordHash, ...cleanNewUser } = newUser as any;
+
+    const getAuthHeaders = (): Record<string, string> => {
+      const token = localStorage.getItem('trackpulse_token') || '';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      return headers;
+    };
+
     fetch('/api/users', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newUser),
-    }).catch(() => {});
+      headers: getAuthHeaders(),
+      body: JSON.stringify(cleanNewUser),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const errData: any = await res.json().catch(() => ({}));
+          const errMsg = errData.error || errData.message || `HTTP ${res.status}`;
+          console.error('[Employee Save] Persistence failed on server:', errMsg);
+          setSaveToast(`⚠️ Google Sheets write failed: ${errMsg}`);
+          // Roll back optimistic addition so UI state stays true to authoritative storage
+          setUsers((prev) => prev.filter((u) => u.id !== newUser.id));
+          localStorage.setItem('trackpulse_users', JSON.stringify(users));
+        } else {
+          setSaveToast(`✓ Saved new employee "${newUser.name}" to Employee_Directory in Google Sheets!`);
+          setTimeout(() => setSaveToast(null), 6000);
+        }
+      })
+      .catch((err) => {
+        console.error('[Employee Save] Network error:', err);
+        setSaveToast(`⚠️ Network error saving employee: ${err?.message || err}`);
+        setUsers((prev) => prev.filter((u) => u.id !== newUser.id));
+        localStorage.setItem('trackpulse_users', JSON.stringify(users));
+      });
+
     safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
       console.warn('Users save err:', err)
-    );
-
-    // Fast-path immediate sync to Google Sheets Employee_Directory
-    const targetHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
-    if (targetHook && isValidWebhookUrl(targetHook)) {
-      syncEmployeesToGoogleSheetsWebhook(targetHook, updatedUsers).catch((err) => {
-        console.warn('Direct employee push notice:', err);
-      });
-    }
-
-    setSaveToast(`âœ“ Saved new employee "${newUser.name}" to Database & Google Sheets!`);
-    setTimeout(() => setSaveToast(null), 6000);
-
-    triggerAutoSync(
-      updatedUsers,
-      timeLogs,
-      updatedAudit,
-      updatedPayroll,
-      dailyAttendanceLogs,
-      idleLogs,
-      leaveRequests,
-      designationTasks,
-      rolePermissions,
-      true
     );
   };
 
@@ -4733,19 +4720,19 @@ setIsIdleAlertActive(false);
     setUsers(updatedUsers);
     localStorage.setItem('trackpulse_users', JSON.stringify(updatedUsers));
 
-    // Instantly sync updated user record to Central Bridge
-    fetch('/api/users', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedUsers.find((u) => u.id === id)),
-    }).catch(() => {});
+    // Send only profile fields for the single employee being edited (Requirement 4)
+    const singleUser = updatedUsers.find((u) => u.id === id);
+    if (singleUser) {
+      const { password, accountPassword, passwordHash, mustChangePassword, isPasswordChanged, ...cleanUser } = singleUser;
+      const token = localStorage.getItem('trackpulse_token') || '';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    // Fast-path immediate sync to Google Sheets Employee_Directory
-    const targetHook = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook');
-    if (targetHook && isValidWebhookUrl(targetHook)) {
-      syncEmployeesToGoogleSheetsWebhook(targetHook, updatedUsers).catch((err) => {
-        console.warn('Direct employee push notice:', err);
-      });
+      fetch('/api/users', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(cleanUser),
+      }).catch(() => {});
     }
 
     safeSetDoc(doc(db, 'system_state', 'users'), { data: updatedUsers }).catch((err) =>
@@ -4861,10 +4848,35 @@ setIsIdleAlertActive(false);
     );
   };
 
-  const resetUserPassword = (userId: string, newPass: string, requireChangeOnNextLogin?: boolean) => {
+  const resetUserPassword = (userId: string, newPass: string) => {
     const targetUser = users.find((u) => u.id === userId);
-    const mustChange = requireChangeOnNextLogin !== undefined ? requireChangeOnNextLogin : (newPass === 'Password123!');
-    updateUser(userId, { password: newPass, mustChangePassword: mustChange });
+    const tempPass = newPass || 'Password123!';
+    const token = localStorage.getItem('trackpulse_token') || '';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    fetch('/api/users', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        action: 'ADMIN_RESET_PASSWORD',
+        userId,
+        temporaryPassword: tempPass,
+      }),
+    })
+      .then(async (res) => {
+        if (res.ok) {
+          setSaveToast(`✓ Password reset command for ${targetUser?.name || userId} sent to Google Sheets!`);
+          setTimeout(() => setSaveToast(null), 5000);
+        } else {
+          const errData: any = await res.json().catch(() => ({}));
+          setSaveToast(`⚠️ Password reset failed: ${errData.error || 'Google Sheets error'}`);
+        }
+      })
+      .catch((err) => {
+        setSaveToast(`⚠️ Network error resetting password: ${err?.message || err}`);
+      });
+
     addAuditLog({
       actorId: currentUser.id,
       actorName: currentUser.name,
@@ -4872,7 +4884,7 @@ setIsIdleAlertActive(false);
       category: 'Password Reset',
       targetEmployeeId: userId,
       targetEmployeeName: targetUser?.name || userId,
-      details: `Reset portal password for employee ${targetUser?.name || userId} (#${targetUser?.employeeCode || 'N/A'}) to ${newPass === 'Password123!' ? 'default "Password123!" (Requires password change on next login)' : 'custom password'}. Saved to Database & Google Sheets.`,
+      details: `Admin ${currentUser.name} dispatched ADMIN_RESET_PASSWORD to Google Sheets for employee ${targetUser?.name || userId}.`,
     });
   };
 
@@ -4928,7 +4940,7 @@ setIsIdleAlertActive(false);
     if (!targetReq) return;
 
     // 1. Reset employee's password to default Password123! with forced change on next login
-    resetUserPassword(targetReq.targetUserId, 'Password123!', true);
+    resetUserPassword(targetReq.targetUserId, 'Password123!');
 
     // 2. Mark request as approved
     const updated = passwordResetRequests.map((r) =>
@@ -5003,7 +5015,7 @@ setIsIdleAlertActive(false);
     const newLog: TimeLog = { ...logData, id: `log-${Date.now()}` };
     const updatedLogs = [newLog, ...timeLogs];
     setTimeLogs(updatedLogs);
-    persistTimeLogsLocally(updatedLogs);
+    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
 
     // Instantly sync to Central Bridge across desktop & web clients
     fetch('/api/timelogs', {
@@ -5039,7 +5051,7 @@ setIsIdleAlertActive(false);
     const targetLog = timeLogs.find((l) => l.id === id);
     const updatedLogs = timeLogs.map((l) => (l.id === id ? { ...l, ...data } : l));
     setTimeLogs(updatedLogs);
-    persistTimeLogsLocally(updatedLogs);
+    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
     safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
       console.warn('TimeLog update sync error:', err)
     );
@@ -5064,7 +5076,7 @@ setIsIdleAlertActive(false);
     const targetLog = timeLogs.find((l) => l.id === id);
     const updatedLogs = timeLogs.filter((l) => l.id !== id);
     setTimeLogs(updatedLogs);
-    persistTimeLogsLocally(updatedLogs);
+    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
     safeDeleteDoc(doc(db, 'timelogs', id)).catch(() => {});
     safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
       console.warn('TimeLog delete sync error:', err)
@@ -5093,7 +5105,7 @@ setIsIdleAlertActive(false);
 
     const updatedRequests = manualTimeRequests.map((r) => (r.id === id ? { ...r, status: 'approved' as const } : r));
     setManualTimeRequests(updatedRequests);
-    safeSetItem('trackpulse_manualrequests', JSON.stringify(updatedRequests));
+    localStorage.setItem('trackpulse_manualrequests', JSON.stringify(updatedRequests));
     safeSetDoc(doc(db, 'system_state', 'manualrequests'), { data: updatedRequests }).catch((err) =>
       console.warn('Manual time approve sync error:', err)
     );
@@ -5122,7 +5134,7 @@ setIsIdleAlertActive(false);
     };
     const updatedLogs = [newLog, ...timeLogs];
     setTimeLogs(updatedLogs);
-    persistTimeLogsLocally(updatedLogs);
+    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
     safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
       console.warn('Manual time to timelog sync error:', err)
     );
@@ -5844,8 +5856,6 @@ setIsIdleAlertActive(false);
         isSessionWarningActive,
         webSessionWarningCountdown,
         refreshWebSession,
-        lastDataUpdatedAt,
-        refreshWebData,
         sessionExpiredReason,
         clearSessionExpiredReason,
         isOffline,
@@ -5860,6 +5870,8 @@ setIsIdleAlertActive(false);
         currentDesignation,
         currentTask,
         elapsedSeconds,
+        todayTotalSeconds,
+        getTodayTrackedSeconds,
         currentSessionApps,
         currentMouseActivity,
         currentKeyboardActivity,
