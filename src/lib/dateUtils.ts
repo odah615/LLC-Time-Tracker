@@ -190,3 +190,37 @@ export function formatDurationHHMMSS(totalSec: number): string {
   const secs = totalSec % 60;
   return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
+
+/**
+ * Formats a timestamp / date as a last updated time string (e.g., "11:40:51 AM")
+ */
+export function formatLastUpdatedTime(date: Date | string | number = new Date(), timeZone: string = DEFAULT_TIMEZONE): string {
+  try {
+    const d = typeof date === 'string' || typeof date === 'number' ? new Date(date) : date;
+    if (isNaN(d.getTime())) return '';
+    return getManilaTimeWithSeconds(d, timeZone);
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Formats a timestamp / ISO string / number as a human friendly "last seen" relative or formatted time
+ */
+export function formatLastSeen(timestamp?: string | number | Date | null): string {
+  if (!timestamp) return 'Never';
+  const d = typeof timestamp === 'string' || typeof timestamp === 'number' ? new Date(timestamp) : timestamp;
+  if (isNaN(d.getTime())) return 'Never';
+
+  const diffMs = Date.now() - d.getTime();
+  if (diffMs < 0) return 'Just now';
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}h ago`;
+
+  return getManilaTimeString(d);
+}
+
