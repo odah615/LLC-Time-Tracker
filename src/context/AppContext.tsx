@@ -34,6 +34,7 @@ import {
   fetchLivePresenceFromGoogleSheets,
   isValidWebhookUrl,
   resetGoogleSpreadsheetData,
+  updatePasswordInGoogleSheets,
   normalizeWorkDate,
   normalizeTimeValue,
   parseDurationSeconds,
@@ -4848,44 +4849,66 @@ setIsIdleAlertActive(false);
     );
   };
 
-  const resetUserPassword = (userId: string, newPass: string) => {
+  const resetUserPassword = async (userId: string, newPass: string) => {
     const targetUser = users.find((u) => u.id === userId);
+    if (!targetUser) {
+      setSaveToast(`⚠️ Cannot reset password: User not found.`);
+      setTimeout(() => setSaveToast(null), 5000);
+      return;
+    }
+
     const tempPass = newPass || 'Password123!';
-    const token = localStorage.getItem('trackpulse_token') || '';
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    fetch('/api/users', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        action: 'ADMIN_RESET_PASSWORD',
-        userId,
-        temporaryPassword: tempPass,
-      }),
-    })
-      .then(async (res) => {
-        if (res.ok) {
-          setSaveToast(`✓ Password reset command for ${targetUser?.name || userId} sent to Google Sheets!`);
-          setTimeout(() => setSaveToast(null), 5000);
-        } else {
-          const errData: any = await res.json().catch(() => ({}));
-          setSaveToast(`⚠️ Password reset failed: ${errData.error || 'Google Sheets error'}`);
-        }
-      })
-      .catch((err) => {
-        setSaveToast(`⚠️ Network error resetting password: ${err?.message || err}`);
-      });
+    const activeWebhookUrl = googleSheetsWebhookUrl || localStorage.getItem('trackpulse_sheets_webhook') || undefined;
 
-    addAuditLog({
-      actorId: currentUser.id,
-      actorName: currentUser.name,
-      actorRole: currentUser.role,
-      category: 'Password Reset',
-      targetEmployeeId: userId,
-      targetEmployeeName: targetUser?.name || userId,
-      details: `Admin ${currentUser.name} dispatched ADMIN_RESET_PASSWORD to Google Sheets for employee ${targetUser?.name || userId}.`,
-    });
+    try {
+      const res = await updatePasswordInGoogleSheets(
+        {
+          id: targetUser.id,
+          employeeCode: targetUser.employeeCode,
+          username: targetUser.username,
+          email: targetUser.email,
+          name: targetUser.name,
+        },
+        tempPass,
+        activeWebhookUrl
+      );
+
+      if (res.success && res.verified) {
+        // Update local state and persistent user cache with the reset password and set mustChangePassword flag
+        const updatedUsers = users.map((u) => {
+          if (u.id === userId) {
+            return {
+              ...u,
+              password: tempPass,
+              forceChangeRequired: true,
+              mustChangePassword: true,
+            };
+          }
+          return u;
+        });
+        setUsers(updatedUsers);
+
+        setSaveToast(`✓ Password reset for ${targetUser.name || userId} verified in Employee_Directory!`);
+        setTimeout(() => setSaveToast(null), 5000);
+
+        addAuditLog({
+          actorId: currentUser.id,
+          actorName: currentUser.name,
+          actorRole: currentUser.role,
+          category: 'Password Reset',
+          targetEmployeeId: userId,
+          targetEmployeeName: targetUser.name || userId,
+          details: `Admin ${currentUser.name} reset password for employee ${targetUser.name || userId} in Employee_Directory.`,
+        });
+      } else {
+        setSaveToast(`⚠️ Password reset failed: ${res.message || res.error || 'Google Sheets error'}`);
+        setTimeout(() => setSaveToast(null), 5000);
+      }
+    } catch (err: any) {
+      setSaveToast(`⚠️ Network error resetting password: ${err?.message || String(err)}`);
+      setTimeout(() => setSaveToast(null), 5000);
+    }
   };
 
   const requestPasswordReset = (targetUserId: string, reason?: string) => {

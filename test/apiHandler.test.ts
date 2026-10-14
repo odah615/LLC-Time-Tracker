@@ -209,6 +209,52 @@ async function runTests() {
     }
   }
 
+  // Test 10: Admin password reset via updatePasswordInGoogleSheets requires verified status and valid payload
+  {
+    const originalFetch = globalThis.fetch;
+    try {
+      // Import updatePasswordInGoogleSheets dynamically
+      const { updatePasswordInGoogleSheets } = await import('../src/lib/googleSheetsSync');
+
+      let capturedPayload: any = null;
+      globalThis.fetch = (async (url: any, init?: any) => {
+        if (typeof url === 'string' && url.includes('/api/sync-sheets')) {
+          const bodyObj = JSON.parse(init.body);
+          capturedPayload = bodyObj.payload;
+          return new Response(
+            JSON.stringify({
+              success: true,
+              result: {
+                status: 'SUCCESS',
+                verified: true,
+                message: 'Password updated and verified in Employee_Directory successfully!',
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        return new Response(JSON.stringify({ error: 'Not found' }), { status: 404 });
+      }) as any;
+
+      const user = {
+        id: 'usr-admin-test',
+        employeeCode: 'EMP-007',
+        username: 'test.admin',
+        email: 'test.admin@company.com',
+        name: 'Test Admin',
+      };
+
+      const res = await updatePasswordInGoogleSheets(user, 'NewAdminPass123!');
+      assert(res.success === true, 'Password reset succeeded');
+      assert(res.verified === true, 'Password reset was verified in Employee_Directory');
+      assert(capturedPayload?.action === 'UPDATE_PASSWORD', 'Action is UPDATE_PASSWORD');
+      assert(capturedPayload?.username === 'test.admin', 'Username mapped correctly');
+      assert(capturedPayload?.newPassword === 'NewAdminPass123!', 'New password passed correctly');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
   console.log(`\n--- TEST SUMMARY: ${passed} PASSED, ${failed} FAILED ---`);
   if (failed > 0) {
     process.exit(1);
