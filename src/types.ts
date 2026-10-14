@@ -89,7 +89,7 @@ export interface TimeLog {
   startTime: string; // ISO string
   endTime?: string; // ISO string
   durationSeconds: number;
-  status: 'running' | 'completed' | 'paused' | 'idle';
+  status: 'running' | 'completed' | 'paused' | 'idle' | 'interrupted';
   geoTimezone: string;
   geoLocalStartTime: string; // formatted time e.g. "06:12 AM"
   geoLocalEndTime?: string; // formatted time e.g. "08:12 AM"

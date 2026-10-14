@@ -223,6 +223,8 @@ interface AppContextType {
   isSessionWarningActive: boolean;
   webSessionWarningCountdown: number;
   refreshWebSession: () => void;
+  lastDataUpdatedAt: string;
+  refreshWebData: () => Promise<void>;
   sessionExpiredReason: string | null;
   clearSessionExpiredReason: () => void;
   // Offline Connection Loss & 30-Minute Grace Period Engine
@@ -2315,9 +2317,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(() => {
     if (!savedActiveTracking || !savedActiveTracking.isTracking) return 0;
     if (savedActiveTracking.isPaused) return savedActiveTracking.accumulatedSec || 0;
-    const additional = savedActiveTracking.lastActiveMs > 0 ? Math.floor((Date.now() - savedActiveTracking.lastActiveMs) / 1000) : 0;
+    const lastActive = savedActiveTracking.lastActiveMs || savedActiveTracking.startMs || Date.now();
+    const gapMs = Date.now() - lastActive;
+    if (gapMs > 12 * 60 * 1000) {
+      // Per Rule 5: Do not accumulate giant gap if heartbeats stopped
+      return savedActiveTracking.accumulatedSec || 0;
+    }
+    const additional = lastActive > 0 ? Math.floor((Date.now() - lastActive) / 1000) : 0;
     return (savedActiveTracking.accumulatedSec || 0) + Math.max(0, additional);
   });
+
+  // Rule 5: Auto-close tracking session if heartbeats stopped for >12 minutes (close at last heartbeat time with status 'interrupted')
+  useEffect(() => {
+    if (!savedActiveTracking || !savedActiveTracking.isTracking) return;
+    const lastActive = savedActiveTracking.lastActiveMs || savedActiveTracking.startMs || Date.now();
+    const gapMs = Date.now() - lastActive;
+    if (gapMs > 12 * 60 * 1000) {
+      console.warn('[SESSION RECOVERY] Session stopped receiving heartbeats. Closing session at last heartbeat time as interrupted.');
+      const endIso = new Date(lastActive).toISOString();
+      const interruptedLog: TimeLog = {
+        id: savedActiveTracking.sessionId || `interrupted_${Date.now()}`,
+        userId: currentUser.id,
+        employeeCode: currentUser.employeeCode || '',
+        userName: currentUser.name,
+        userAvatar: currentUser.avatar || '',
+        designation: savedActiveTracking.designation || currentUser.designation || 'Agent',
+        task: savedActiveTracking.task || 'Email Reachout',
+        startTime: savedActiveTracking.startTimeIso || new Date(savedActiveTracking.startMs || lastActive).toISOString(),
+        endTime: endIso,
+        durationSeconds: savedActiveTracking.accumulatedSec || 0,
+        status: 'interrupted',
+        geoTimezone: currentUser.geoTimezone || 'Asia/Manila (GMT+8)',
+        geoLocalStartTime: formatLogStartTime(savedActiveTracking.startTimeIso || new Date(savedActiveTracking.startMs || lastActive).toISOString(), 'Asia/Manila'),
+        geoLocalEndTime: formatLogStartTime(endIso, 'Asia/Manila'),
+        mouseActivityAvg: 80,
+        keyboardActivityAvg: 80,
+        appsUsed: [],
+        idleSeconds: 0,
+        notes: 'Session closed automatically due to interrupted heartbeat pulse',
+        date: getManilaDateString(new Date(savedActiveTracking.startMs || lastActive)),
+      };
+      setTimeLogs((prev) => [interruptedLog, ...prev.filter((l) => l.id !== interruptedLog.id)]);
+      setIsTracking(false);
+      setIsPaused(false);
+      setElapsedSeconds(0);
+      localStorage.removeItem('trackpulse_active_tracking');
+    }
+  }, []);
 
   // Desktop App Widget vs Web Dashboard Mode
   const [isDesktopDockView, setIsDesktopDockView] = useState(() => {
@@ -3191,19 +3237,184 @@ setIsIdleAlertActive(false);
     });
   }, [isAuthenticated]);
 
-  // 15-second periodic presence heartbeat to sync live presence, current task, and elapsed seconds
+  // Last data updated timestamp for Web Portal Display
+  const [lastDataUpdatedAt, setLastDataUpdatedAt] = useState<string>(() => {
+    const d = new Date();
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  });
+
+  const updateLastDataTimestamp = useCallback(() => {
+    const d = new Date();
+    setLastDataUpdatedAt(d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));
+  }, []);
+
+  const refreshWebData = useCallback(async () => {
+    try {
+      await importPresenceFromGoogleSheets(undefined, true).catch(() => {});
+      updateLastDataTimestamp();
+    } catch (err) {
+      console.warn('[WEB DATA REFRESH] Error:', err);
+    }
+  }, [updateLastDataTimestamp]);
+
+  // Rule 2: Web Portal Auto-Fetch Engine (300 seconds ± 30 seconds random jitter while tab is visible)
   useEffect(() => {
+    if (!isAuthenticated || loginMode === 'software' || isDesktopDockView) {
+      return;
+    }
+
+    refreshWebData();
+
+    let timeoutId: any = null;
+
+    const scheduleNextWebFetch = () => {
+      const jitterMs = Math.floor(Math.random() * 60000 - 30000);
+      const delayMs = Math.max(180000, 300000 + jitterMs); // 300s ± 30s jitter
+
+      timeoutId = setTimeout(async () => {
+        if (document.visibilityState === 'visible') {
+          await refreshWebData();
+        }
+        scheduleNextWebFetch();
+      }, delayMs);
+    };
+
+    scheduleNextWebFetch();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [isAuthenticated, loginMode, isDesktopDockView, refreshWebData]);
+
+  // Rule 1 & Rule 6: Desktop App ONE Combined Heartbeat Engine (every 300s with exponential backoff on retry)
+  const desktopBackoffDelayMs = useRef<number>(30000);
+
+  const sendDesktopCombinedHeartbeat = useCallback(async () => {
     if (!isAuthenticated || !currentUser) return;
 
-    // Initial broadcast on login / load
-    broadcastPresence();
+    const snap = liveTrackingSnapshotRef.current;
+    const isDesktop =
+      loginMode === 'software' ||
+      isDesktopDockView ||
+      snap.loginMode === 'software' ||
+      (typeof window !== 'undefined' &&
+        Boolean(
+          (window as any).electronAPI ||
+          (window as any).isElectronApp === true ||
+          navigator.userAgent.includes('Electron') ||
+          window.location.search.includes('mode=desktop') ||
+          window.location.search.includes('source=software') ||
+          window.location.search.includes('appMode=desktop') ||
+          window.location.search.includes('mode=software')
+        ));
 
-    // 15-second recurring heartbeat
+    if (!isDesktop) return;
+
+    // 1. Broadcast Presence (presence document with elapsedSeconds)
+    broadcastPresence(false, false);
+
+    // 2. Transmit Google Sheets Agent Heartbeat (combined pulse)
+    let activeUrl =
+      googleSheetsWebhookUrl ||
+      localStorage.getItem('trackpulse_sheets_webhook') ||
+      DEFAULT_WEBHOOK_URL;
+
+    if (!activeUrl || !isValidWebhookUrl(activeUrl)) {
+      activeUrl = DEFAULT_WEBHOOK_URL;
+    }
+
+    if (activeUrl && isValidWebhookUrl(activeUrl)) {
+      const isEffTracking = isTracking && !isPaused;
+      const currentElapsed = Math.max(getLiveElapsedSeconds(), elapsedSeconds, snap.elapsedSeconds || 0);
+
+      const statusLabel = isPaused ? '🟡 Idle / Break' : '🟢 Live Tracking';
+      const startFormatted =
+        snap.startTimeIso || startTimeIso
+          ? formatLogStartTime(snap.startTimeIso || startTimeIso, 'Asia/Manila')
+          : '--:--';
+
+      const taskName = isEffTracking
+        ? (currentTask || snap.currentTask || 'Active Work')
+        : 'Desktop Standby';
+
+      try {
+        const res = await syncAgentHeartbeatToSheets(activeUrl, {
+          userId: currentUser.id,
+          employeeCode: currentUser.employeeCode || '',
+          userName: currentUser.name,
+          role: currentUser.role,
+          designation: currentDesignation || currentUser.designation || 'Agent',
+          platformMode: 'Desktop Tracker',
+          status: isPaused ? 'idle' : 'online',
+          statusLabel,
+          isOnline: true,
+          isTracking: isEffTracking,
+          isPaused: isPaused,
+          elapsedSeconds: currentElapsed,
+          sessionId: currentSessionIdRef.current || snap.sessionId || '',
+          loginSessionId: loginSessionIdRef.current || '',
+          currentTask: taskName,
+          currentApp: currentActiveAppRef.current || currentActiveApp || 'LLC Time Tracker Desktop App',
+          loginPlatform: 'software',
+          firstCheckin: startFormatted,
+          timezone: currentUser.geoTimezone || 'Asia/Manila (GMT+8)',
+          lastHeartbeat: new Date().toISOString(),
+          mouseActivity: isEffTracking ? (snap.mouseActivity || 95) : 0,
+          keyboardActivity: isEffTracking ? (snap.keyboardActivity || 95) : 0,
+        });
+
+        if (res.success) {
+          desktopBackoffDelayMs.current = 30000;
+        } else {
+          // Exponential backoff (Rule 6: 30s up to 5 mins)
+          desktopBackoffDelayMs.current = Math.min(300000, desktopBackoffDelayMs.current * 2);
+        }
+      } catch {
+        desktopBackoffDelayMs.current = Math.min(300000, desktopBackoffDelayMs.current * 2);
+      }
+    }
+  }, [
+    isAuthenticated,
+    currentUser,
+    loginMode,
+    isDesktopDockView,
+    broadcastPresence,
+    googleSheetsWebhookUrl,
+    isTracking,
+    isPaused,
+    elapsedSeconds,
+    startTimeIso,
+    currentTask,
+    currentDesignation,
+    currentActiveApp,
+  ]);
+
+  // Desktop App 300-second combined heartbeat recurring loop (Rule 1 & Rule 7)
+  useEffect(() => {
+    const isDesktop =
+      loginMode === 'software' ||
+      isDesktopDockView ||
+      (typeof window !== 'undefined' &&
+        Boolean(
+          (window as any).electronAPI ||
+          (window as any).isElectronApp === true ||
+          navigator.userAgent.includes('Electron') ||
+          window.location.search.includes('mode=desktop') ||
+          window.location.search.includes('source=software') ||
+          window.location.search.includes('appMode=desktop') ||
+          window.location.search.includes('mode=software')
+        ));
+
+    if (!isAuthenticated || !currentUser || !isDesktop) return;
+
+    // Initial pulse on startup / login
+    sendDesktopCombinedHeartbeat();
+
+    // 300-second interval (5 minutes)
     const interval = setInterval(() => {
-      broadcastPresence(false, false);
-    }, 15000);
+      sendDesktopCombinedHeartbeat();
+    }, 300000);
 
-    // On window unload / close, notify immediately that user went offline
     const handleUnload = () => {
       broadcastPresence(true);
     };
@@ -3214,130 +3425,28 @@ setIsIdleAlertActive(false);
       clearInterval(interval);
       window.removeEventListener('beforeunload', handleUnload);
     };
-  }, [isAuthenticated, currentUser?.id, broadcastPresence]);
+  }, [isAuthenticated, currentUser?.id, loginMode, isDesktopDockView, sendDesktopCombinedHeartbeat, broadcastPresence]);
 
-  // Immediate presence broadcast when major tracking state changes (start, stop, pause, resume, task change)
+  // Immediate heartbeat pulse on major session events: start, stop, task change, break start/end (Rule 1)
   useEffect(() => {
-    if (!isAuthenticated || !currentUser) return;
-    broadcastPresence();
-  }, [isAuthenticated, currentUser?.id, isTracking, isPaused, currentTask, broadcastPresence]);
+    const isDesktop =
+      loginMode === 'software' ||
+      isDesktopDockView ||
+      (typeof window !== 'undefined' &&
+        Boolean(
+          (window as any).electronAPI ||
+          (window as any).isElectronApp === true ||
+          navigator.userAgent.includes('Electron') ||
+          window.location.search.includes('mode=desktop') ||
+          window.location.search.includes('source=software') ||
+          window.location.search.includes('appMode=desktop') ||
+          window.location.search.includes('mode=software')
+        ));
 
-  // Dedicated 60-second individual agent heartbeat loop to Google Sheets (action: 'HEARTBEAT_UPDATE')
-  // Transmits targeted individual tracking pulses while user runs the tracker app
-  useEffect(() => {
-    if (!isAuthenticated || !currentUser) {
-      return;
-    }
+    if (!isAuthenticated || !currentUser || !isDesktop) return;
 
-    const sendGoogleSheetsAgentHeartbeat = async () => {
-      let activeUrl =
-        googleSheetsWebhookUrl ||
-        localStorage.getItem('trackpulse_sheets_webhook') ||
-        DEFAULT_WEBHOOK_URL;
-
-      if (!activeUrl || !isValidWebhookUrl(activeUrl)) {
-        activeUrl = DEFAULT_WEBHOOK_URL;
-      }
-
-      if (!activeUrl || !isValidWebhookUrl(activeUrl)) {
-        console.warn('[SHEETS HEARTBEAT] No valid webhook URL');
-        return;
-      }
-
-      const snap = liveTrackingSnapshotRef.current;
-
-      const isDesktop =
-        loginMode === 'software' ||
-        snap.loginMode === 'software' ||
-        (typeof window !== 'undefined' &&
-          Boolean(
-            (window as any).electronAPI ||
-            (window as any).isElectronApp === true ||
-            navigator.userAgent.includes('Electron') ||
-            window.location.search.includes('mode=desktop') ||
-            window.location.search.includes('source=software') ||
-            window.location.search.includes('appMode=desktop') ||
-            window.location.search.includes('mode=software')
-          ));
-
-      const isEffTracking = isTracking && !isPaused;
-
-      // Transmit tracking heartbeats whenever an employee is actively tracking (desktop or web tracker).
-      // When on standby (not tracking), only desktop software transmits standby presence.
-      if (!isEffTracking && !isDesktop) {
-        return;
-      }
-
-      console.log('[SHEETS HEARTBEAT] CALLING', currentUser.employeeCode);
-
-      const currentElapsed = Math.max(getLiveElapsedSeconds(), elapsedSeconds, snap.elapsedSeconds || 0);
-
-      const statusLabel = isPaused
-        ? '🟡 Idle / Break'
-        : '🟢 Live Tracking';
-
-      const startFormatted =
-        snap.startTimeIso || startTimeIso
-          ? formatLogStartTime(snap.startTimeIso || startTimeIso, 'Asia/Manila')
-          : '--:--';
-
-      const taskName = isEffTracking
-        ? (currentTask || snap.currentTask || 'Active Work')
-        : (isDesktop ? 'Desktop Standby' : 'Website Session');
-
-      syncAgentHeartbeatToSheets(activeUrl, {
-        userId: currentUser.id,
-        employeeCode: currentUser.employeeCode || '',
-        userName: currentUser.name,
-        role: currentUser.role,
-        designation: currentDesignation || currentUser.designation || 'Agent',
-        platformMode: isDesktop ? 'Desktop Tracker' : 'Website',
-        status: isPaused ? 'idle' : 'online',
-        statusLabel,
-        isOnline: true,
-        isTracking: isEffTracking,
-        isPaused: isPaused,
-        elapsedSeconds: currentElapsed,
-        sessionId: currentSessionIdRef.current || snap.sessionId || '',
-        loginSessionId: loginSessionIdRef.current || '',
-        currentTask: taskName,
-        currentApp: currentActiveAppRef.current || currentActiveApp || (isDesktop ? 'LLC Time Tracker Desktop App' : 'Web Browser'),
-        loginPlatform: isDesktop ? 'software' : 'webapp',
-        firstCheckin: startFormatted,
-        timezone: currentUser.geoTimezone || 'Asia/Manila (GMT+8)',
-        lastHeartbeat: new Date().toISOString(),
-        mouseActivity: isEffTracking ? (snap.mouseActivity || 95) : 0,
-        keyboardActivity: isEffTracking ? (snap.keyboardActivity || 95) : 0,
-      }).catch((err) => {
-        console.warn('[SHEETS HEARTBEAT] Failed:', err);
-      });
-    };
-
-    // Initial pulse after 1.5 seconds
-    const initialTimer = setTimeout(sendGoogleSheetsAgentHeartbeat, 1500);
-
-    // Recurring heartbeat (every 20s while tracking, 45s when on standby)
-    const intervalMs = isTracking && !isPaused ? 20000 : 45000;
-    const sheetHbInterval = setInterval(sendGoogleSheetsAgentHeartbeat, intervalMs);
-
-    return () => {
-      clearTimeout(initialTimer);
-      clearInterval(sheetHbInterval);
-    };
-  }, [
-    isAuthenticated,
-    currentUser?.id,
-    currentUser?.employeeCode,
-    currentUser?.name,
-    currentUser?.role,
-    currentUser?.designation,
-    currentUser?.geoTimezone,
-    isTracking,
-    isPaused,
-    currentTask,
-    currentDesignation,
-    googleSheetsWebhookUrl,
-  ]);
+    sendDesktopCombinedHeartbeat();
+  }, [isTracking, isPaused, currentTask, sendDesktopCombinedHeartbeat]);
 
   // Task Switch Confirmation Modal state
   const [taskSwitchPending, setTaskSwitchPending] = useState<TaskSwitchPending | null>(null);
@@ -5716,6 +5825,8 @@ setIsIdleAlertActive(false);
         isSessionWarningActive,
         webSessionWarningCountdown,
         refreshWebSession,
+        lastDataUpdatedAt,
+        refreshWebData,
         sessionExpiredReason,
         clearSessionExpiredReason,
         isOffline,

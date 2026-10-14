@@ -1,5 +1,5 @@
 import { AuditLog, TimeLog, User, PayrollRecord, DailyAttendanceLog, IdleLog, LeaveRequest, UserPresence } from '../types';
-import { generateUniqueUsername, isPlaceholderName, deduplicateUsers, resolveCanonicalEmployee } from './userUtils';
+import { generateUniqueUsername, isPlaceholderName, deduplicateUsers, resolveCanonicalEmployee, resolveSupervisorFullName } from './userUtils';
 import { getManilaDateString } from './dateUtils';
 
 export const DEFAULT_SPREADSHEET_ID = '1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA';
@@ -1418,11 +1418,15 @@ function syncEmployeeDirectoryInternal(ss, directoryUsers, userMap) {
 
         var hireDate = u.joinDate || (existingMatch ? existingMatch.row[6] : '2020-01-01');
         var supervisorName = 'None / Direct Executive';
-        if (u.teamLeaderId && userMap) {
-          var sv = userMap[u.teamLeaderId] || userMap[String(u.teamLeaderId).toUpperCase()];
-          supervisorName = sv ? sv.name + ' (' + (sv.designation || sv.role) + ')' : u.teamLeaderId;
-        } else if (existingMatch && existingMatch.row[9]) {
-          supervisorName = existingMatch.row[9];
+        var rawSupervisor = u.teamLeaderId || (existingMatch ? existingMatch.row[9] : '');
+        if (rawSupervisor) {
+          if (userMap && (userMap[rawSupervisor] || userMap[String(rawSupervisor).toUpperCase()])) {
+            var sv = userMap[rawSupervisor] || userMap[String(rawSupervisor).toUpperCase()];
+            supervisorName = sv ? sv.name : rawSupervisor;
+          } else {
+            supervisorName = rawSupervisor;
+          }
+          supervisorName = resolveSupervisorFullName(supervisorName, list);
         }
 
         var mRate = (u.monthlyRate !== undefined && u.monthlyRate !== null && !isNaN(Number(u.monthlyRate))) ? Number(u.monthlyRate) : (existingMatch ? Number(existingMatch.row[7] || 0) : 0);
@@ -2304,6 +2308,19 @@ function doPost(e) {
       data = { action: 'SYNC_ALL' };
     }
 
+    // Verify shared secret against Apps Script Script Properties if APPS_SCRIPT_SHARED_SECRET is configured
+    var requiredSecret = PropertiesService.getScriptProperties().getProperty('APPS_SCRIPT_SHARED_SECRET');
+    if (requiredSecret) {
+      var providedSecret = data.secret || (e && e.parameter && e.parameter.secret);
+      if (providedSecret !== requiredSecret) {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: 'ERROR',
+          success: false,
+          error: 'Unauthorized: Invalid or missing shared secret.'
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
     // ==========================================
     // ACTION: AUTH_LOGIN / AUTHENTICATE
     // ==========================================
@@ -2611,7 +2628,8 @@ function doPost(e) {
         if (activeSeen[dedupeKey]) return;
         activeSeen[dedupeKey] = true;
 
-        var matchedUser = userMap[t.userId] || userMap[t.userName] || {};
+        var tCode = String(t.employeeCode || '').trim().toUpperCase();
+        var matchedUser = userMap[t.userId] || (tCode ? userMap[tCode] : null) || userMap[t.userName] || userMap[String(t.userName || '').toLowerCase()] || {};
         var empCode = matchedUser.employeeCode || t.employeeCode || 'N/A';
         var empName = resolveStaffFullName(empCode, t.userName, matchedUser.name || t.userName, t.userId);
         
@@ -4232,30 +4250,20 @@ export const syncAgentHeartbeatToSheets = async (
           result: appsScriptResult,
         };
       }
+      return {
+        success: false,
+        message: data?.message || 'Server bridge did not acknowledge heartbeat',
+      };
     }
-  } catch (proxyErr) {
-    // Dev proxy timed out or unreachable, immediately proceed to direct browser fetch
-  }
-
-  // Strategy 2: Direct browser POST with mode: 'no-cors' (always succeeds from browser to Google Apps Script)
-  try {
-    await fetch(cleanUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: JSON.stringify(payload),
-    });
-    return {
-      success: true,
-      message: 'Heartbeat pulse transmitted directly to Google Sheets from browser!',
-    };
-  } catch (directErr: any) {
-    console.warn('[SHEETS HEARTBEAT] Direct browser transmission notice:', directErr?.message || directErr);
     return {
       success: false,
-      message: `Heartbeat transport notice: ${directErr?.message || 'Network error'}`,
+      message: `Server returned HTTP ${res.status}`,
+    };
+  } catch (proxyErr: any) {
+    // Rule 6: No fallback request on failure; retry with exponential backoff handled by caller
+    return {
+      success: false,
+      message: `Heartbeat transport notice: ${proxyErr?.message || 'Network error'}`,
     };
   }
 };
@@ -4549,11 +4557,11 @@ export const fetchLivePresenceFromGoogleSheets = async (
 
               const isWeb = platformMode.includes('Website') || statusStr.includes('Website');
 
-              // If last heartbeat was more than 5 minutes ago, mark agent as offline
+              // Rule 4: If last heartbeat was more than 12 minutes ago, mark agent as offline
               let isHeartbeatStale = false;
               if (isoHb) {
                 const hbTime = new Date(isoHb).getTime();
-                if (!isNaN(hbTime) && (Date.now() - hbTime) > 5 * 60 * 1000) {
+                if (!isNaN(hbTime) && (Date.now() - hbTime) > 12 * 60 * 1000) {
                   isHeartbeatStale = true;
                 }
               }

@@ -2,6 +2,12 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
+import {
+  handleExpressSyncSheetsPost,
+  handleExpressSyncSheetsGet,
+  sanitizeOutput,
+  validateAppsScriptConfig,
+} from './src/server/apiHandler.js';
 
 const app = express();
 const PORT = 3000;
@@ -39,7 +45,7 @@ let bridgeState: BridgeData = {
   attendance: [],
   auditlogs: [],
   config: {
-    webhookUrl: 'https://script.google.com/macros/s/AKfycbyKGMOWV0u5xcv_lOKBk6LXpbjrlgZiuqtCs3_HbqjekoJZdXpdfA_1kDjP7H0ulLsw3Q/exec',
+    webhookUrl: process.env.LIVE_APPS_SCRIPT_URL || 'https://script.google.com/macros/s/AKfycbyKGMOWV0u5xcv_lOKBk6LXpbjrlgZiuqtCs3_HbqjekoJZdXpdfA_1kDjP7H0ulLsw3Q/exec',
     spreadsheetId: '1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA',
   },
 };
@@ -47,7 +53,7 @@ let bridgeState: BridgeData = {
 const CANONICAL_STAFF: Record<string, string> = {
   'SUPERADMIN': 'Admin',
   'LLC-0001': 'Agent_Admin',
-  'LLC-0002': 'Team_Leader1',
+  'LLC-0002': 'Marco Polo',
   'LLC-0003': 'Pia',
   'LLC-0004': 'Alexa Gabrielle Bardaje',
   'LLC-0005': 'April Sam Dimaano',
@@ -293,18 +299,31 @@ app.get('/api/health', (req, res) => {
 
 // Config Endpoints
 app.get('/api/config', (req, res) => {
-  res.json(bridgeState.config);
+  const url = process.env.LIVE_APPS_SCRIPT_URL || bridgeState.config.webhookUrl;
+  res.json({
+    webhookUrl: url,
+    spreadsheetId: bridgeState.config.spreadsheetId,
+    isConfigured: !!(process.env.LIVE_APPS_SCRIPT_URL && process.env.LIVE_APPS_SCRIPT_SECRET),
+  });
 });
 
 app.post('/api/config', (req, res) => {
   if (req.body && typeof req.body === 'object') {
+    const sanitizedBody = sanitizeOutput(req.body);
     bridgeState.config = {
       ...bridgeState.config,
-      ...req.body,
+      ...sanitizedBody,
     };
     persistBridgeState();
   }
-  res.json({ success: true, config: bridgeState.config });
+  res.json({
+    success: true,
+    config: {
+      webhookUrl: process.env.LIVE_APPS_SCRIPT_URL || bridgeState.config.webhookUrl,
+      spreadsheetId: bridgeState.config.spreadsheetId,
+      isConfigured: !!(process.env.LIVE_APPS_SCRIPT_URL && process.env.LIVE_APPS_SCRIPT_SECRET),
+    },
+  });
 });
 
 // Presence Endpoints
@@ -352,9 +371,92 @@ app.post('/api/presence/batch', (req, res) => {
   res.json({ success: true, count: Object.keys(bridgeState.presence).length });
 });
 
-// TimeLogs Endpoints
+// TimeLogs Endpoints with Server-Side Scope Authorization
 app.get('/api/timelogs', (req, res) => {
-  res.json(bridgeState.timelogs);
+  const reqUserId = String(req.query.userId || req.headers['x-user-id'] || '').trim();
+  const reqEmpCode = String(req.query.employeeCode || req.headers['x-employee-code'] || '').trim().toUpperCase();
+  const reqRole = String(req.query.role || req.headers['x-user-role'] || '').trim().toLowerCase();
+
+  // If no specific requesting identity provided or full admin/hr/payroll role, return all timelogs
+  if (!reqUserId && !reqEmpCode && !reqRole) {
+    return res.json(bridgeState.timelogs);
+  }
+  if (reqRole === 'admin' || reqRole === 'superadmin' || reqRole === 'hr' || reqRole === 'payroll' || reqRole === 'va_admin') {
+    return res.json(bridgeState.timelogs);
+  }
+
+  // Find requesting user record in bridgeState.users
+  const reqUser = bridgeState.users.find((u: any) => {
+    if (!u) return false;
+    const uCode = String(u.employeeCode || '').trim().toUpperCase();
+    const uId = String(u.id || '').trim();
+    return (
+      (reqEmpCode && uCode === reqEmpCode) ||
+      (reqUserId && (uId === reqUserId || uId.toLowerCase() === reqUserId.toLowerCase()))
+    );
+  });
+
+  const effectiveRole = reqRole || (reqUser ? String(reqUser.role || '').toLowerCase() : 'agent');
+  const userCode = reqEmpCode || (reqUser ? String(reqUser.employeeCode || '').toUpperCase() : '');
+  const userId = reqUserId || (reqUser ? String(reqUser.id || '') : '');
+  const userName = reqUser ? String(reqUser.name || '').trim().toLowerCase() : '';
+
+  if (effectiveRole === 'team_lead' || effectiveRole === 'trainer') {
+    // Find all assigned employees for this Team Leader or Trainer
+    const assignedEmpCodes = new Set<string>();
+    const assignedUserIds = new Set<string>();
+    const assignedUserNames = new Set<string>();
+
+    if (userCode) assignedEmpCodes.add(userCode);
+    if (userId) assignedUserIds.add(userId.toLowerCase());
+    if (userName) assignedUserNames.add(userName);
+
+    bridgeState.users.forEach((u: any) => {
+      if (!u) return;
+      const sv = String(u.teamLeaderId || u.supervisor || '').trim().toLowerCase();
+      const isAssigned =
+        (userId && sv.includes(userId.toLowerCase())) ||
+        (userCode && sv.includes(userCode.toLowerCase())) ||
+        (userName && sv.includes(userName));
+
+      if (isAssigned) {
+        if (u.employeeCode) assignedEmpCodes.add(String(u.employeeCode).trim().toUpperCase());
+        if (u.id) assignedUserIds.add(String(u.id).trim().toLowerCase());
+        if (u.name) assignedUserNames.add(String(u.name).trim().toLowerCase());
+      }
+    });
+
+    const authorizedLogs = bridgeState.timelogs.filter((l: any) => {
+      if (!l) return false;
+      const lCode = String(l.employeeCode || '').trim().toUpperCase();
+      const lId = String(l.userId || '').trim().toLowerCase();
+      const lName = String(l.userName || '').trim().toLowerCase();
+
+      return (
+        (lCode && assignedEmpCodes.has(lCode)) ||
+        (lId && assignedUserIds.has(lId)) ||
+        (lName && assignedUserNames.has(lName))
+      );
+    });
+
+    return res.json(authorizedLogs);
+  }
+
+  // Agent / standard employee: return only own time logs
+  const ownLogs = bridgeState.timelogs.filter((l: any) => {
+    if (!l) return false;
+    const lCode = String(l.employeeCode || '').trim().toUpperCase();
+    const lId = String(l.userId || '').trim().toLowerCase();
+    const lName = String(l.userName || '').trim().toLowerCase();
+
+    return (
+      (userCode && lCode === userCode) ||
+      (userId && lId === userId.toLowerCase()) ||
+      (userName && lName === userName)
+    );
+  });
+
+  return res.json(ownLogs);
 });
 
 app.post('/api/timelogs', (req, res) => {
@@ -506,56 +608,13 @@ app.post('/api/auditlogs', (req, res) => {
 // Google Sheets Sync Proxy (bypasses CORS restrictions)
 app.post('/api/sync-sheets', async (req, res) => {
   try {
-    const webhookUrl = req.body?.webhookUrl || bridgeState.config.webhookUrl;
-    if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('https://')) {
-      return res.status(400).json({ success: false, error: 'Invalid or missing Google Apps Script webhook URL' });
-    }
-
-    if (webhookUrl && webhookUrl !== bridgeState.config.webhookUrl) {
-      bridgeState.config.webhookUrl = webhookUrl;
-      persistBridgeState();
-    }
-
-    const payload = req.body?.payload || req.body;
-    const fetchResponse = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      redirect: 'follow',
-      signal: AbortSignal.timeout(5000),
-    });
-
-    const text = await fetchResponse.text();
-    let googleResult: any;
-    try {
-      googleResult = JSON.parse(text);
-    } catch {
-      googleResult = { response: text };
-    }
-
-    const isSuccess =
-      fetchResponse.ok &&
-      (googleResult?.status === 'SUCCESS' ||
-        googleResult?.success === true ||
-        googleResult?.action === 'HEARTBEAT_UPDATE' ||
-        googleResult?.action === payload?.action);
-
-    return res.status(fetchResponse.ok ? 200 : fetchResponse.status).json({
-      success: isSuccess,
-      status: fetchResponse.status,
-      appsScriptStatus:
-        googleResult?.status ||
-        (googleResult?.success ? 'SUCCESS' : 'UNKNOWN'),
-      action: googleResult?.action || payload?.action,
-      result: googleResult,
-      error: !isSuccess
-        ? googleResult?.message ||
-          googleResult?.error ||
-          (fetchResponse.ok
-            ? 'Apps Script returned non-success response'
-            : `HTTP Error ${fetchResponse.status}`)
-        : undefined,
-    });
+    const customEnv = {
+      ...process.env,
+      LIVE_APPS_SCRIPT_URL: process.env.LIVE_APPS_SCRIPT_URL || req.body?.webhookUrl || bridgeState.config.webhookUrl,
+      LIVE_APPS_SCRIPT_SECRET: process.env.LIVE_APPS_SCRIPT_SECRET || '',
+      JWT_SECRET: process.env.JWT_SECRET || '',
+    };
+    return await handleExpressSyncSheetsPost(req, res, customEnv);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err?.message || String(err) });
   }
@@ -563,26 +622,13 @@ app.post('/api/sync-sheets', async (req, res) => {
 
 app.get('/api/sync-sheets', async (req, res) => {
   try {
-    const webhookUrl = (req.query?.url as string) || bridgeState.config.webhookUrl;
-    if (!webhookUrl || typeof webhookUrl !== 'string' || !webhookUrl.startsWith('https://')) {
-      return res.status(400).json({ success: false, error: 'Invalid or missing Google Apps Script webhook URL' });
-    }
-
-    const fetchResponse = await fetch(webhookUrl, {
-      method: 'GET',
-      redirect: 'follow',
-      signal: AbortSignal.timeout(5000),
-    });
-
-    const text = await fetchResponse.text();
-    let jsonResult;
-    try {
-      jsonResult = JSON.parse(text);
-    } catch {
-      jsonResult = { response: text };
-    }
-
-    res.json(jsonResult);
+    const customEnv = {
+      ...process.env,
+      LIVE_APPS_SCRIPT_URL: process.env.LIVE_APPS_SCRIPT_URL || (req.query?.url as string) || bridgeState.config.webhookUrl,
+      LIVE_APPS_SCRIPT_SECRET: process.env.LIVE_APPS_SCRIPT_SECRET || '',
+      JWT_SECRET: process.env.JWT_SECRET || '',
+    };
+    return await handleExpressSyncSheetsGet(req, res, customEnv);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err?.message || String(err) });
   }

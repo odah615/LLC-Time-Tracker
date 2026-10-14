@@ -53,6 +53,19 @@ import {
   Legend,
 } from 'recharts';
 
+function formatLastSeen(lastHeartbeatIso?: string): string {
+  if (!lastHeartbeatIso) return 'Never';
+  const hbMs = new Date(lastHeartbeatIso).getTime();
+  if (isNaN(hbMs) || hbMs <= 0) return 'Never';
+  const diffSec = Math.floor((Date.now() - hbMs) / 1000);
+  if (diffSec < 60) return 'Just now';
+  const mins = Math.floor(diffSec / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return `${hours}h ${remMins}m ago`;
+}
+
 interface LiveAgentTasksBoardProps {
   title?: string;
   description?: string;
@@ -208,7 +221,7 @@ const getLiveLoginDurationSeconds = (loginTime?: string) => {
       );
       const lastHeartbeatMs = presence?.lastHeartbeat ? new Date(presence.lastHeartbeat).getTime() : 0;
       const diffMs = now - lastHeartbeatMs;
-      const isRecent = diffMs < 5 * 60 * 1000;
+      const isRecent = diffMs < 12 * 60 * 1000;
 
       const isDesktopPlatform =
         presence?.loginPlatform === 'software' ||
@@ -851,8 +864,8 @@ const getLiveLoginDurationSeconds = (loginTime?: string) => {
                           <LogIn className="w-2.5 h-2.5 text-slate-400" />
                           Check-in: <strong className="font-mono text-slate-700">{agent.loginTimeDisplay}</strong>
                         </span>
-                        <span className="text-[9px] font-mono text-slate-400">
-                          {agent.presenceMode === 'tracking' ? `PHT ${manilaCurrentTime}` : 'Manila (GMT+8)'}
+                        <span className="text-[9px] font-mono text-slate-500">
+                          Last seen: {formatLastSeen(agent.presence?.lastHeartbeat)}
                         </span>
                       </div>
                     </div>

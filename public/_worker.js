@@ -8,11 +8,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-const GOOGLE_APPS_SCRIPT_WEBHOOK_URL =
+const DEFAULT_LIVE_APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbyKGMOWV0u5xcv_lOKBk6LXpbjrlgZiuqtCs3_HbqjekoJZdXpdfA_1kDjP7H0ulLsw3Q/exec";
 
 function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
+  return new Response(JSON.stringify(sanitizeOutput(data)), {
     status,
     headers: {
       "Content-Type": "application/json",
@@ -21,11 +21,38 @@ function jsonResponse(data, status = 200) {
   });
 }
 
-async function handleSyncSheetsPost(request) {
+function sanitizeOutput(data) {
+  if (!data || typeof data !== "object") return data;
+  if (Array.isArray(data)) return data.map(sanitizeOutput);
+  const sensitiveKeys = new Set([
+    "secret",
+    "sharedSecret",
+    "LIVE_APPS_SCRIPT_SECRET",
+    "APPS_SCRIPT_SECRET",
+    "JWT_SECRET",
+    "password",
+    "token",
+  ]);
+  const sanitized = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (sensitiveKeys.has(key)) continue;
+    if (value && typeof value === "object") {
+      sanitized[key] = sanitizeOutput(value);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
+async function handleSyncSheetsPost(request, env = {}) {
   try {
+    const liveAppsScriptUrl = env.LIVE_APPS_SCRIPT_URL || DEFAULT_LIVE_APPS_SCRIPT_URL;
+    const liveAppsScriptSecret = env.LIVE_APPS_SCRIPT_SECRET || "";
+
     const body = await request.json();
-    const webhookUrl = body?.webhookUrl || GOOGLE_APPS_SCRIPT_WEBHOOK_URL;
-    const payload = body?.payload || body;
+    const webhookUrl = body?.webhookUrl || liveAppsScriptUrl;
+    const rawPayload = body?.payload || body;
 
     if (
       !webhookUrl ||
@@ -35,16 +62,32 @@ async function handleSyncSheetsPost(request) {
       return jsonResponse(
         {
           success: false,
-          error: "Invalid or missing Google Apps Script webhook URL",
+          error: "Invalid or missing LIVE_APPS_SCRIPT_URL",
         },
         400
       );
     }
 
+    if (!liveAppsScriptSecret) {
+      return jsonResponse(
+        {
+          success: false,
+          error: "Missing required server configuration: LIVE_APPS_SCRIPT_SECRET is not set.",
+        },
+        500
+      );
+    }
+
+    const payload =
+      typeof rawPayload === "object" && rawPayload !== null
+        ? { ...rawPayload, secret: liveAppsScriptSecret }
+        : { payload: rawPayload, secret: liveAppsScriptSecret };
+
     const googleResponse = await fetch(webhookUrl.trim(), {
       method: "POST",
       headers: {
-        "Content-Type": "text/plain;charset=utf-8",
+        "Content-Type": "application/json",
+        "X-Shared-Secret": liveAppsScriptSecret,
       },
       body: JSON.stringify(payload),
       redirect: "follow",
@@ -58,25 +101,27 @@ async function handleSyncSheetsPost(request) {
       googleResult = { response: responseText };
     }
 
+    const sanitizedResult = sanitizeOutput(googleResult);
+
     const isSuccess =
       googleResponse.ok &&
-      (googleResult?.status === "SUCCESS" ||
-        googleResult?.success === true ||
-        googleResult?.action === "HEARTBEAT_UPDATE" ||
-        googleResult?.action === payload?.action);
+      (sanitizedResult?.status === "SUCCESS" ||
+        sanitizedResult?.success === true ||
+        sanitizedResult?.action === "HEARTBEAT_UPDATE" ||
+        sanitizedResult?.action === payload?.action);
 
     return jsonResponse(
       {
         success: isSuccess,
         status: googleResponse.status,
         appsScriptStatus:
-          googleResult?.status ||
-          (googleResult?.success ? "SUCCESS" : "UNKNOWN"),
-        action: googleResult?.action || payload?.action,
-        result: googleResult,
+          sanitizedResult?.status ||
+          (sanitizedResult?.success ? "SUCCESS" : "UNKNOWN"),
+        action: sanitizedResult?.action || payload?.action,
+        result: sanitizedResult,
         error: !isSuccess
-          ? googleResult?.message ||
-            googleResult?.error ||
+          ? sanitizedResult?.message ||
+            sanitizedResult?.error ||
             (googleResponse.ok
               ? "Apps Script returned non-success response"
               : `HTTP Error ${googleResponse.status}`)
@@ -95,10 +140,11 @@ async function handleSyncSheetsPost(request) {
   }
 }
 
-async function handleSyncSheetsGet(request) {
+async function handleSyncSheetsGet(request, env = {}) {
   try {
+    const liveAppsScriptUrl = env.LIVE_APPS_SCRIPT_URL || DEFAULT_LIVE_APPS_SCRIPT_URL;
     const url = new URL(request.url);
-    const webhookUrl = url.searchParams.get("url") || GOOGLE_APPS_SCRIPT_WEBHOOK_URL;
+    const webhookUrl = url.searchParams.get("url") || liveAppsScriptUrl;
 
     if (
       !webhookUrl ||
@@ -108,7 +154,7 @@ async function handleSyncSheetsGet(request) {
       return jsonResponse(
         {
           success: false,
-          error: "Invalid or missing Google Apps Script webhook URL",
+          error: "Invalid or missing LIVE_APPS_SCRIPT_URL",
         },
         400
       );
@@ -127,7 +173,7 @@ async function handleSyncSheetsGet(request) {
       googleResult = { response: responseText };
     }
 
-    return jsonResponse(googleResult, googleResponse.status);
+    return jsonResponse(sanitizeOutput(googleResult), googleResponse.status);
   } catch (error) {
     return jsonResponse(
       {
@@ -151,10 +197,10 @@ export default {
         });
       }
       if (request.method === "POST") {
-        return handleSyncSheetsPost(request);
+        return handleSyncSheetsPost(request, env);
       }
       if (request.method === "GET") {
-        return handleSyncSheetsGet(request);
+        return handleSyncSheetsGet(request, env);
       }
       return new Response(JSON.stringify({ error: "Method not allowed" }), {
         status: 405,

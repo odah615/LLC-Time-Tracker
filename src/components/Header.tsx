@@ -33,6 +33,7 @@ import {
   AlertTriangle,
   Trash2,
   RotateCcw,
+  RefreshCw,
 } from 'lucide-react';
 import { UserRole } from '../types';
 import { getGoogleAppsScriptTemplate, downloadTableCSV, DEFAULT_SPREADSHEET_ID, DEFAULT_SPREADSHEET_URL } from '../lib/googleSheetsSync';
@@ -76,7 +77,21 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
     storageEngineMode,
     setStorageEngineMode,
     resetDatabaseToFreshState,
+    lastDataUpdatedAt,
+    refreshWebData,
   } = useApp();
+  const [isRefreshingData, setIsRefreshingData] = useState(false);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshingData(true);
+    try {
+      if (refreshWebData) {
+        await refreshWebData();
+      }
+    } finally {
+      setTimeout(() => setIsRefreshingData(false), 500);
+    }
+  };
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [showSheetsModal, setShowSheetsModal] = useState(false);
@@ -332,6 +347,21 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
                     <span>Session: Active</span>
                   </span>
                 )}
+              </span>
+            </button>
+          )}
+
+          {/* Manual Refresh & Last Updated Display (Web Portal) */}
+          {loginMode === 'webapp' && (
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshingData}
+              title="Click to refresh application data now (timesheets, presence, attendance)"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-mono transition-all disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-blue-400 ${isRefreshingData ? 'animate-spin' : ''}`} />
+              <span className="text-[11px] font-semibold">
+                Last updated: <span className="text-white font-mono">{lastDataUpdatedAt || 'Just now'}</span>
               </span>
             </button>
           )}

@@ -1,20 +1,44 @@
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-const GOOGLE_APPS_SCRIPT_WEBHOOK_URL =
+const DEFAULT_LIVE_APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbyKGMOWV0u5xcv_lOKBk6LXpbjrlgZiuqtCs3_HbqjekoJZdXpdfA_1kDjP7H0ulLsw3Q/exec";
 
 function jsonResponse(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
+  return new Response(JSON.stringify(sanitizeOutput(data)), {
     status,
     headers: {
       "Content-Type": "application/json",
       ...corsHeaders,
     },
   });
+}
+
+function sanitizeOutput(data: any): any {
+  if (!data || typeof data !== "object") return data;
+  if (Array.isArray(data)) return data.map(sanitizeOutput);
+  const sensitiveKeys = new Set([
+    "secret",
+    "sharedSecret",
+    "LIVE_APPS_SCRIPT_SECRET",
+    "APPS_SCRIPT_SECRET",
+    "JWT_SECRET",
+    "password",
+    "token",
+  ]);
+  const sanitized: Record<string, any> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (sensitiveKeys.has(key)) continue;
+    if (value && typeof value === "object") {
+      sanitized[key] = sanitizeOutput(value);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
 }
 
 // Handle browser CORS preflight
@@ -29,11 +53,19 @@ export async function onRequestOptions() {
 export async function onRequestPost(context: any) {
   try {
     const request = context.request;
+    const env = context.env || {};
+    const liveAppsScriptUrl =
+      env.LIVE_APPS_SCRIPT_URL ||
+      (typeof process !== "undefined" ? process.env?.LIVE_APPS_SCRIPT_URL : "") ||
+      DEFAULT_LIVE_APPS_SCRIPT_URL;
+    const liveAppsScriptSecret =
+      env.LIVE_APPS_SCRIPT_SECRET ||
+      (typeof process !== "undefined" ? process.env?.LIVE_APPS_SCRIPT_SECRET : "") ||
+      "";
 
     const body = await request.json();
-
-    const webhookUrl = body?.webhookUrl || GOOGLE_APPS_SCRIPT_WEBHOOK_URL;
-    const payload = body?.payload || body;
+    const webhookUrl = body?.webhookUrl || liveAppsScriptUrl;
+    const rawPayload = body?.payload || body;
 
     if (
       !webhookUrl ||
@@ -43,25 +75,39 @@ export async function onRequestPost(context: any) {
       return jsonResponse(
         {
           success: false,
-          error: "Invalid or missing Google Apps Script webhook URL",
+          error: "Invalid or missing LIVE_APPS_SCRIPT_URL",
         },
         400
       );
     }
 
-    console.log("Forwarding Google Sheets request to:", webhookUrl);
+    if (!liveAppsScriptSecret) {
+      return jsonResponse(
+        {
+          success: false,
+          error: "Missing required server configuration: LIVE_APPS_SCRIPT_SECRET is not set.",
+        },
+        500
+      );
+    }
+
+    // Attach secret to payload and headers for Google Apps Script verification
+    const payload =
+      typeof rawPayload === "object" && rawPayload !== null
+        ? { ...rawPayload, secret: liveAppsScriptSecret }
+        : { payload: rawPayload, secret: liveAppsScriptSecret };
 
     const googleResponse = await fetch(webhookUrl.trim(), {
       method: "POST",
       headers: {
-        "Content-Type": "text/plain;charset=utf-8",
+        "Content-Type": "application/json",
+        "X-Shared-Secret": liveAppsScriptSecret,
       },
       body: JSON.stringify(payload),
       redirect: "follow",
     });
 
     const responseText = await googleResponse.text();
-
     let googleResult: any;
 
     try {
@@ -72,31 +118,27 @@ export async function onRequestPost(context: any) {
       };
     }
 
-    console.log(
-      "Google Apps Script response:",
-      googleResponse.status,
-      googleResult
-    );
+    const sanitizedResult = sanitizeOutput(googleResult);
 
     const isSuccess =
       googleResponse.ok &&
-      (googleResult?.status === "SUCCESS" ||
-        googleResult?.success === true ||
-        googleResult?.action === "HEARTBEAT_UPDATE" ||
-        googleResult?.action === payload?.action);
+      (sanitizedResult?.status === "SUCCESS" ||
+        sanitizedResult?.success === true ||
+        sanitizedResult?.action === "HEARTBEAT_UPDATE" ||
+        sanitizedResult?.action === payload?.action);
 
     return jsonResponse(
       {
         success: isSuccess,
         status: googleResponse.status,
         appsScriptStatus:
-          googleResult?.status ||
-          (googleResult?.success ? "SUCCESS" : "UNKNOWN"),
-        action: googleResult?.action || payload?.action,
-        result: googleResult,
+          sanitizedResult?.status ||
+          (sanitizedResult?.success ? "SUCCESS" : "UNKNOWN"),
+        action: sanitizedResult?.action || payload?.action,
+        result: sanitizedResult,
         error: !isSuccess
-          ? googleResult?.message ||
-            googleResult?.error ||
+          ? sanitizedResult?.message ||
+            sanitizedResult?.error ||
             (googleResponse.ok
               ? "Apps Script returned non-success response"
               : `HTTP Error ${googleResponse.status}`)
@@ -105,8 +147,6 @@ export async function onRequestPost(context: any) {
       googleResponse.ok ? 200 : googleResponse.status
     );
   } catch (error: any) {
-    console.error("Cloudflare sync proxy error:", error);
-
     return jsonResponse(
       {
         success: false,
@@ -117,12 +157,18 @@ export async function onRequestPost(context: any) {
   }
 }
 
-// GET /api/sync-sheets?url=GOOGLE_APPS_SCRIPT_URL
+// GET /api/sync-sheets?url=LIVE_APPS_SCRIPT_URL
 export async function onRequestGet(context: any) {
   try {
     const request = context.request;
+    const env = context.env || {};
     const url = new URL(request.url);
-    const webhookUrl = url.searchParams.get("url") || GOOGLE_APPS_SCRIPT_WEBHOOK_URL;
+    const liveAppsScriptUrl =
+      env.LIVE_APPS_SCRIPT_URL ||
+      (typeof process !== "undefined" ? process.env?.LIVE_APPS_SCRIPT_URL : "") ||
+      DEFAULT_LIVE_APPS_SCRIPT_URL;
+
+    const webhookUrl = url.searchParams.get("url") || liveAppsScriptUrl;
 
     if (
       !webhookUrl ||
@@ -132,7 +178,7 @@ export async function onRequestGet(context: any) {
       return jsonResponse(
         {
           success: false,
-          error: "Invalid or missing Google Apps Script webhook URL",
+          error: "Invalid or missing LIVE_APPS_SCRIPT_URL",
         },
         400
       );
@@ -144,7 +190,6 @@ export async function onRequestGet(context: any) {
     });
 
     const responseText = await googleResponse.text();
-
     let googleResult: unknown;
 
     try {
@@ -155,10 +200,8 @@ export async function onRequestGet(context: any) {
       };
     }
 
-    return jsonResponse(googleResult, googleResponse.status);
+    return jsonResponse(sanitizeOutput(googleResult), googleResponse.status);
   } catch (error: any) {
-    console.error("Cloudflare Google Sheets GET proxy error:", error);
-
     return jsonResponse(
       {
         success: false,

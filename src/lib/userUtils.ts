@@ -3,7 +3,7 @@ import { User } from '../types';
 export const CANONICAL_EMPLOYEE_DIRECTORY: Record<string, { name: string; username: string; email: string; role: 'admin' | 'trainer' | 'agent' | 'team_lead'; designation: string }> = {
   'SUPERADMIN': { name: 'Admin', username: 'admin', email: 'admin@llc.com', role: 'admin', designation: 'Admin' },
   'LLC-0001': { name: 'Agent_Admin', username: 'agent_admin', email: 'agent_admin@llc.com', role: 'admin', designation: 'Admin' },
-  'LLC-0002': { name: 'Team_Leader1', username: 'team_leader1', email: 'team_leader1@llc.com', role: 'team_lead', designation: 'Team Leader' },
+  'LLC-0002': { name: 'Marco Polo', username: 'mpolo', email: 'marcopolo@llc.com', role: 'team_lead', designation: 'Team Leader' },
   'LLC-0003': { name: 'Pia', username: 'trainer', email: 'piaodahcam@gmail.com', role: 'trainer', designation: 'Trainer' },
   'LLC-0004': { name: 'Alexa Gabrielle Bardaje', username: 'agabr', email: 'bardajealexagabrielle@gmail.com', role: 'agent', designation: 'Agent' },
   'LLC-0005': { name: 'April Sam Dimaano', username: 'asamd', email: 'dimaanosam2@gmail.com', role: 'agent', designation: 'Agent' },
@@ -566,4 +566,75 @@ if (mergedId) idMap.set(mergedId, existingIndex);
   }
 
   return result;
+};
+
+/**
+ * Standardizes Assigned Supervisor / Team Lead column values.
+ * Returns the supervisor's full display name ONLY (e.g., "Pia", "Marco Polo").
+ * Never includes user IDs, employee codes, usernames, or designation suffixes like "(Trainer)".
+ */
+export const resolveSupervisorFullName = (
+  supervisorInput?: string | null,
+  usersRoster: User[] = []
+): string => {
+  if (!supervisorInput) return 'None / Direct Executive';
+  let raw = String(supervisorInput).trim();
+  if (!raw || raw.toLowerCase() === 'none' || raw.toLowerCase() === 'n/a' || raw.toLowerCase().includes('direct executive')) {
+    return 'None / Direct Executive';
+  }
+
+  // Strip designation suffixes in parentheses e.g. "Pia (Trainer)", "Marco Polo (Team Leader)"
+  raw = raw.replace(/\s*\([^)]*\)$/, '').trim();
+
+  if (!raw) return 'None / Direct Executive';
+
+  // 1. Try matching against provided users roster
+  if (Array.isArray(usersRoster) && usersRoster.length > 0) {
+    const rawLower = raw.toLowerCase();
+    const rawUpper = raw.toUpperCase();
+
+    const match = usersRoster.find((u) => {
+      if (!u) return false;
+      const uCode = (u.employeeCode || '').toUpperCase();
+      const uId = (u.id || '').toLowerCase();
+      const uName = (u.name || '').toLowerCase();
+      const uUsername = (u.username || '').toLowerCase();
+
+      return (
+        (uCode && uCode !== 'N/A' && (rawUpper === uCode || rawUpper.includes(uCode))) ||
+        (uId && (rawLower === uId || rawLower.includes(uId))) ||
+        (uName && (rawLower === uName || rawLower.includes(uName))) ||
+        (uUsername && (rawLower === uUsername || rawLower === `usr-${uUsername}`))
+      );
+    });
+
+    if (match && match.name) {
+      return match.name.trim();
+    }
+  }
+
+  // 2. Try matching against CANONICAL_EMPLOYEE_DIRECTORY
+  const canonical = resolveCanonicalEmployee(raw);
+  if (canonical && canonical.name) {
+    return canonical.name.trim();
+  }
+
+  // 3. Fallback check for known supervisor aliases
+  const lower = raw.toLowerCase();
+  if (lower.includes('0003') || lower.includes('pia') || lower === 'trainer') return 'Pia';
+  if (lower.includes('0002') || lower.includes('polo') || lower === 'mpolo' || lower.includes('team_leader1')) return 'Marco Polo';
+  if (lower.includes('0024') || lower === 'carl') return 'Carl';
+  if (lower.includes('0025') || lower === 'lyanne') return 'Lyanne';
+  if (lower.includes('0026') || lower === 'allen') return 'Allen';
+  if (lower.includes('0027') || lower === 'bryan') return 'Bryan';
+  if (lower.includes('0029') || lower === 'kyra') return 'Kyra';
+  if (lower.includes('0030') || lower === 'hosen') return 'Hosen';
+  if (lower.includes('0031') || lower === 'danah') return 'Danah';
+
+  // If raw is already a clean name without digits or IDs, return it
+  if (!/^usr-/i.test(raw) && !/^LLC-/i.test(raw) && !/\d{3,}/.test(raw)) {
+    return raw;
+  }
+
+  return raw;
 };

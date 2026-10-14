@@ -25,6 +25,19 @@ import {
   EyeOff,
 } from 'lucide-react';
 
+function formatLastSeen(lastHeartbeatIso?: string): string {
+  if (!lastHeartbeatIso) return 'Never';
+  const hbMs = new Date(lastHeartbeatIso).getTime();
+  if (isNaN(hbMs) || hbMs <= 0) return 'Never';
+  const diffSec = Math.floor((Date.now() - hbMs) / 1000);
+  if (diffSec < 60) return 'Just now';
+  const mins = Math.floor(diffSec / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return `${hours}h ${remMins}m ago`;
+}
+
 interface LiveTrackingTableProps {
   title?: string;
   description?: string;
@@ -115,10 +128,10 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
         return false;
       });
 
-      // Calculate if active based on recent heartbeat (< 5 mins)
+      // Calculate if active based on recent heartbeat (< 12 mins per Rule 4)
       const lastHeartbeatMs = presence?.lastHeartbeat ? new Date(presence.lastHeartbeat).getTime() : 0;
       const diffMs = now - lastHeartbeatMs;
-      const isRecent = diffMs < 5 * 60 * 1000;
+      const isRecent = diffMs < 12 * 60 * 1000;
 
       // Platform check: Desktop app vs Web Portal
       const isDesktopPlatform =
@@ -662,14 +675,24 @@ export const LiveTrackingTable: React.FC<LiveTrackingTableProps> = ({
                       )}
                     </td>
 
-                    {/* Heartbeat time */}
+                    {/* Heartbeat time & Last seen */}
                     <td className="py-3 px-3 text-right">
                       {isOffline ? (
-                        <span className="text-slate-400 text-[11px]">Logged out</span>
+                        <div className="flex flex-col items-end">
+                          <span className="text-slate-400 text-[11px] font-medium">Offline</span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            Last seen: {formatLastSeen(row.presence?.lastHeartbeat)}
+                          </span>
+                        </div>
                       ) : (
-                        <span className="text-emerald-700 text-[11px] font-mono font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          Active Now
-                        </span>
+                        <div className="flex flex-col items-end">
+                          <span className="text-emerald-700 text-[11px] font-mono font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            Active Now
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono mt-0.5">
+                            Last seen: {formatLastSeen(row.presence?.lastHeartbeat)}
+                          </span>
+                        </div>
                       )}
                     </td>
                   </tr>

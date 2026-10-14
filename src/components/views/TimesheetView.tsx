@@ -42,7 +42,7 @@ import {
 import { TASK_LIST } from '../../data/initialData';
 import { TimeLog } from '../../types';
 import { UserAvatar } from '../UserAvatar';
-import { resolveCanonicalEmployee } from '../../lib/userUtils';
+import { resolveCanonicalEmployee, resolveSupervisorFullName } from '../../lib/userUtils';
 
 interface TimesheetViewProps {
   onOpenManualModal: () => void;
@@ -75,8 +75,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
 
   const isPersonalView =
     isPersonalOnly ||
-    currentUser.role === 'agent' ||
-    currentUser.role === 'team_lead';
+    currentUser.role === 'agent';
 
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
@@ -158,9 +157,47 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
   // Tab View Mode: 'daily' | 'weekly' | 'monthly'
   const [viewTab, setViewTab] = useState<ViewTabMode>('daily');
 
-  // Filters: Task and Agent Search
+  // Filters: Task, Employee, and Agent Search
   const [selectedTaskFilter, setSelectedTaskFilter] = useState<string>('ALL');
+  const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState<string>('ALL');
   const [agentSearch, setAgentSearch] = useState<string>('');
+
+  // Compute authorized employees list for selector based on user role and team assignments
+  const authorizedEmployees = useMemo(() => {
+    if (isPersonalView || currentUser.role === 'agent') {
+      return [currentUser];
+    }
+
+    if (currentUser.role === 'team_lead' || currentUser.role === 'trainer') {
+      const curId = (currentUser.id || '').toLowerCase();
+      const curCode = (currentUser.employeeCode || '').toUpperCase();
+      const curName = (currentUser.name || '').toLowerCase();
+      const curUser = (currentUser.username || '').toLowerCase();
+
+      const assigned = users.filter((u) => {
+        if (!u) return false;
+        if (u.id === currentUser.id || (u.employeeCode && curCode && u.employeeCode.toUpperCase() === curCode)) return true;
+        const sv = String(u.teamLeaderId || '').trim();
+        if (!sv) return false;
+
+        const resolvedSv = resolveSupervisorFullName(sv, users);
+        const svLower = sv.toLowerCase();
+        const svUpper = sv.toUpperCase();
+
+        return (
+          (curName && resolvedSv.toLowerCase() === curName) ||
+          (curCode && (svUpper === curCode || svUpper.includes(curCode))) ||
+          (curId && (svLower === curId || svLower.includes(curId))) ||
+          (curUser && svLower.includes(curUser))
+        );
+      });
+
+      return assigned.length > 0 ? assigned : [currentUser];
+    }
+
+    // Admins, HR, Payroll: All organization employees
+    return users;
+  }, [users, currentUser, isPersonalView]);
 
   // Daily View Filter: Single Anchor Date
   const todayStr = getManilaDateString();
@@ -466,9 +503,14 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
     }
   };
 
-  // General Filtered logs based on mode (isPersonalView or team view), period, task filter, and agent search query
+  // General Filtered logs based on mode (isPersonalView or team view), period, task filter, employee filter, and agent search query
   // Chronologically sorted from newest to oldest
   const filteredLogs = useMemo(() => {
+    // Build quick set of authorized employee identifiers for scope checking
+    const authCodeSet = new Set(authorizedEmployees.map((u) => (u.employeeCode || '').toUpperCase()).filter(Boolean));
+    const authIdSet = new Set(authorizedEmployees.map((u) => (u.id || '').toLowerCase()).filter(Boolean));
+    const authNameSet = new Set(authorizedEmployees.map((u) => (u.name || '').toLowerCase()).filter(Boolean));
+
     return allAvailableLogs
       .filter((log) => {
         // If personal view mode OR agent role, match primarily by authoritative Employee Code
@@ -504,6 +546,33 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
           const matchesUser = matchesByCode || matchesById || matchesByName || matchesCanonical;
 
           if (!matchesUser) return false;
+        } else if (currentUser.role === 'team_lead' || currentUser.role === 'trainer') {
+          // Team Leaders / Trainers: Must match assigned employees or self
+          const logEmpCode = ((log as any).employeeCode || '').trim().toUpperCase();
+          const logUId = (log.userId || '').trim().toLowerCase();
+          const logUName = (log.userName || '').trim().toLowerCase();
+
+          const isAuthorized =
+            (logEmpCode && authCodeSet.has(logEmpCode)) ||
+            (logUId && authIdSet.has(logUId)) ||
+            (logUName && authNameSet.has(logUName));
+
+          if (!isAuthorized) return false;
+        }
+
+        // Selected specific Employee dropdown filter
+        if (selectedEmployeeFilter !== 'ALL') {
+          const target = selectedEmployeeFilter.toLowerCase();
+          const logEmpCode = ((log as any).employeeCode || '').trim().toLowerCase();
+          const logUId = (log.userId || '').trim().toLowerCase();
+          const logUName = (log.userName || '').trim().toLowerCase();
+
+          const matchesSelectedEmp =
+            logEmpCode === target ||
+            logUId === target ||
+            logUName === target;
+
+          if (!matchesSelectedEmp) return false;
         }
 
         // Period filter (Daily / Weekly / Monthly) with date normalization
@@ -535,6 +604,8 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
   }, [
     allAvailableLogs,
     currentUser,
+    authorizedEmployees,
+    selectedEmployeeFilter,
     isPersonalView,
     viewTab,
     anchorDate,
@@ -1304,6 +1375,25 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({
                     <X className="w-3 h-3" />
                   </button>
                 )}
+              </div>
+            )}
+
+            {/* EMPLOYEE SELECTOR DROPDOWN (For Team Leaders, Trainers, Admins, HR) */}
+            {!isPersonalView && authorizedEmployees.length > 0 && (
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+                <User className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <select
+                  value={selectedEmployeeFilter}
+                  onChange={(e) => setSelectedEmployeeFilter(e.target.value)}
+                  className="bg-transparent text-slate-800 text-xs font-medium focus:outline-none cursor-pointer max-w-[180px] truncate"
+                >
+                  <option value="ALL">All Team Employees ({authorizedEmployees.length})</option>
+                  {authorizedEmployees.map((emp) => (
+                    <option key={emp.id || emp.employeeCode} value={emp.employeeCode || emp.id || emp.name}>
+                      {emp.name} ({emp.employeeCode || emp.role})
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
 
