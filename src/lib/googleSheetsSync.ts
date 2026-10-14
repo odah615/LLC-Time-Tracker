@@ -4264,7 +4264,8 @@ export const updatePasswordInGoogleSheets = async (
   user: { id: string; employeeCode?: string; username?: string; email?: string; name?: string },
   newPassword: string,
   webhookUrl?: string,
-  action: 'UPDATE_PASSWORD' | 'ADMIN_RESET_PASSWORD' = 'UPDATE_PASSWORD'
+  action: 'UPDATE_PASSWORD' | 'ADMIN_RESET_PASSWORD' = 'UPDATE_PASSWORD',
+  onRetry?: (attempt: number, maxAttempts: number) => void
 ): Promise<{ success: boolean; verified: boolean; message: string; error?: string }> => {
   const targetUrl = webhookUrl?.trim() || DEFAULT_WEBHOOK_URL;
   const isReset = action === 'ADMIN_RESET_PASSWORD';
@@ -4281,72 +4282,219 @@ export const updatePasswordInGoogleSheets = async (
     syncedAt: new Date().toISOString(),
   };
 
-  try {
-    const res = await fetch('/api/sync-sheets', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        webhookUrl: targetUrl,
-        payload,
-      }),
-    });
+  const maxAttempts = 4;
 
-    if (!res.ok) {
-      let errText = `HTTP ${res.status}`;
-      try {
-        const errJson = await res.json();
-        errText = errJson.error || errJson.message || errText;
-      } catch {}
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      if (attempt > 1 && onRetry) {
+        onRetry(attempt, maxAttempts);
+      }
+
+      const res = await fetch('/api/sync-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          webhookUrl: targetUrl,
+          payload,
+        }),
+      });
+
+      if (!res.ok) {
+        let errText = `HTTP ${res.status}`;
+        try {
+          const errJson = await res.json();
+          errText = errJson.error || errJson.message || errText;
+        } catch {}
+
+        if ((res.status === 503 || res.status === 429 || res.status === 524 || errText.toLowerCase().includes('busy')) && attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, attempt * 1500));
+          continue;
+        }
+
+        return {
+          success: false,
+          verified: false,
+          message: errText,
+          error: errText,
+        };
+      }
+
+      const data = await res.json();
+      const resultObj = data?.result || data;
+
+      const appsScriptStatus =
+        resultObj?.status || data?.appsScriptStatus || (data?.success ? 'SUCCESS' : 'FAILED');
+      const isStatusSuccess = appsScriptStatus === 'SUCCESS' || resultObj?.status === 'SUCCESS';
+      const isVerified =
+        resultObj?.verified === true ||
+        resultObj?.verified === 'true' ||
+        resultObj?.verified === 'TRUE' ||
+        data?.verified === true;
+
+      if (isStatusSuccess && isVerified) {
+        return {
+          success: true,
+          verified: true,
+          message: resultObj?.message || 'Password updated and verified in Employee_Directory successfully!',
+        };
+      }
+
+      const failureReason =
+        resultObj?.error ||
+        resultObj?.message ||
+        data?.error ||
+        data?.message ||
+        'Backend returned non-verified status for password update.';
+
+      const isBusy =
+        resultObj?.code === 'BUSY' ||
+        data?.code === 'BUSY' ||
+        failureReason.toLowerCase().includes('busy') ||
+        failureReason.toLowerCase().includes('timeout');
+
+      if (isBusy && attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, attempt * 1500));
+        continue;
+      }
+
       return {
         success: false,
         verified: false,
-        message: errText,
-        error: errText,
+        message: failureReason,
+        error: failureReason,
       };
-    }
-
-    const data = await res.json();
-    const resultObj = data?.result || data;
-
-    const appsScriptStatus =
-      resultObj?.status || data?.appsScriptStatus || (data?.success ? 'SUCCESS' : 'FAILED');
-    const isStatusSuccess = appsScriptStatus === 'SUCCESS' || resultObj?.status === 'SUCCESS';
-    const isVerified =
-      resultObj?.verified === true ||
-      resultObj?.verified === 'true' ||
-      resultObj?.verified === 'TRUE' ||
-      data?.verified === true;
-
-    if (isStatusSuccess && isVerified) {
+    } catch (err: any) {
+      const errorMsg = err?.message || String(err);
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, attempt * 1500));
+        continue;
+      }
       return {
-        success: true,
-        verified: true,
-        message: resultObj?.message || 'Password updated and verified in Employee_Directory successfully!',
+        success: false,
+        verified: false,
+        message: `Failed to update password: ${errorMsg}`,
+        error: errorMsg,
       };
     }
-
-    const failureReason =
-      resultObj?.error ||
-      resultObj?.message ||
-      data?.error ||
-      data?.message ||
-      'Backend returned non-verified status for password update.';
-
-    return {
-      success: false,
-      verified: false,
-      message: failureReason,
-      error: failureReason,
-    };
-  } catch (err: any) {
-    const errorMsg = err?.message || String(err);
-    return {
-      success: false,
-      verified: false,
-      message: `Failed to update password: ${errorMsg}`,
-      error: errorMsg,
-    };
   }
+
+  return {
+    success: false,
+    verified: false,
+    message: 'Server was busy. Please try again in a few moments.',
+    error: 'Server was busy. Please try again in a few moments.',
+  };
+};
+
+/**
+ * Authoritatively authenticates an employee against the Live Google Apps Script (Employee_Directory / Employee_Auth).
+ * Sends action 'AUTH_LOGIN' via the /api/sync-sheets endpoint.
+ */
+export const authenticateEmployeeWithGoogleSheets = async (
+  usernameOrCode: string,
+  password: string,
+  webhookUrl?: string
+): Promise<{
+  success: boolean;
+  valid: boolean;
+  mustChangePassword?: boolean;
+  user?: any;
+  message?: string;
+  code?: string;
+  error?: string;
+}> => {
+  const targetUrl = webhookUrl?.trim() || DEFAULT_WEBHOOK_URL;
+  const payload = {
+    action: 'AUTH_LOGIN',
+    username: usernameOrCode.trim(),
+    password: password.trim(),
+    timestamp: new Date().toISOString(),
+  };
+
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch('/api/sync-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          webhookUrl: targetUrl,
+          payload,
+        }),
+      });
+
+      if (!res.ok) {
+        let errText = `HTTP ${res.status}`;
+        try {
+          const errJson = await res.json();
+          errText = errJson.error || errJson.message || errText;
+        } catch {}
+
+        if ((res.status === 503 || res.status === 429 || errText.toLowerCase().includes('busy')) && attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, attempt * 1500));
+          continue;
+        }
+
+        return {
+          success: false,
+          valid: false,
+          message: errText,
+          error: errText,
+        };
+      }
+
+      const data = await res.json();
+      const resultObj = data?.result || data;
+
+      if (resultObj?.status === 'SUCCESS' || resultObj?.valid === true || resultObj?.success === true) {
+        return {
+          success: true,
+          valid: true,
+          mustChangePassword: resultObj?.mustChangePassword === true || resultObj?.mustChangePassword === 'true' || resultObj?.mustChangePassword === 'YES',
+          user: resultObj?.user,
+          message: resultObj?.message || 'Authentication successful',
+        };
+      }
+
+      const isBusy =
+        resultObj?.code === 'BUSY' ||
+        data?.code === 'BUSY' ||
+        (resultObj?.message && resultObj.message.toLowerCase().includes('busy'));
+
+      if (isBusy && attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, attempt * 1500));
+        continue;
+      }
+
+      return {
+        success: false,
+        valid: false,
+        code: resultObj?.code || data?.code || 'INVALID_CREDENTIALS',
+        message: resultObj?.message || data?.message || 'Authentication failed',
+        error: resultObj?.message || data?.message || 'Authentication failed',
+      };
+    } catch (err: any) {
+      const errorMsg = err?.message || String(err);
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, attempt * 1500));
+        continue;
+      }
+      return {
+        success: false,
+        valid: false,
+        error: errorMsg,
+        message: `Network error: ${errorMsg}`,
+      };
+    }
+  }
+
+  return {
+    success: false,
+    valid: false,
+    error: 'Server was busy. Please try again.',
+    message: 'Server was busy. Please try again.',
+  };
 };
 
 export interface AgentHeartbeatPayload {

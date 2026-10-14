@@ -369,6 +369,96 @@ async function runTests() {
     }
   }
 
+  // Test 15: updatePasswordInGoogleSheets retries automatically on BUSY and succeeds
+  {
+    const originalFetch = globalThis.fetch;
+    try {
+      const { updatePasswordInGoogleSheets } = await import('../src/lib/googleSheetsSync');
+
+      let callCount = 0;
+      globalThis.fetch = (async () => {
+        callCount++;
+        if (callCount === 1) {
+          // First attempt returns BUSY
+          return new Response(
+            JSON.stringify({
+              status: 'ERROR',
+              result: {
+                status: 'ERROR',
+                code: 'BUSY',
+                message: 'Server busy, please retry.',
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        // Second attempt succeeds
+        return new Response(
+          JSON.stringify({
+            success: true,
+            result: {
+              status: 'SUCCESS',
+              verified: true,
+              message: 'Password updated and verified in Employee_Directory successfully!',
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }) as any;
+
+      const retryTracker = { retried: false };
+      const user = { id: 'usr-agabr', username: 'agabr', name: 'Alexa' };
+      const res = await updatePasswordInGoogleSheets(user, 'Pass123!', undefined, 'UPDATE_PASSWORD', () => {
+        retryTracker.retried = true;
+      });
+
+      assert(callCount === 2, 'Retried after BUSY response');
+      assert(retryTracker.retried === true, 'Triggered retry callback');
+      assert(res.success === true, 'Succeeded on retry');
+      assert(res.verified === true, 'Verified on retry');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  // Test 16: authenticateEmployeeWithGoogleSheets authenticates live employee with personal password
+  {
+    const originalFetch = globalThis.fetch;
+    try {
+      const { authenticateEmployeeWithGoogleSheets } = await import('../src/lib/googleSheetsSync');
+
+      globalThis.fetch = (async (url: any, init?: any) => {
+        const bodyObj = JSON.parse(init.body);
+        if (bodyObj?.payload?.action === 'AUTH_LOGIN') {
+          return new Response(
+            JSON.stringify({
+              status: 'SUCCESS',
+              valid: true,
+              mustChangePassword: false,
+              user: {
+                id: 'LLC-0003',
+                username: 'trainer',
+                name: 'Pia',
+                role: 'trainer',
+                designation: 'Trainer',
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        return new Response(JSON.stringify({ error: 'Failed' }), { status: 500 });
+      }) as any;
+
+      const authRes = await authenticateEmployeeWithGoogleSheets('trainer', 'MyPersonalPass2026!');
+      assert(authRes.success === true, 'Live authentication succeeded');
+      assert(authRes.valid === true, 'Live credentials valid');
+      assert(authRes.mustChangePassword === false, 'mustChangePassword recognized as false for personal password');
+      assert(authRes.user?.role === 'trainer', 'Trainer role returned correctly');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
   console.log(`\n--- TEST SUMMARY: ${passed} PASSED, ${failed} FAILED ---`);
   if (failed > 0) {
     process.exit(1);

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { User } from '../../types';
-import { maskPassword, updatePasswordInGoogleSheets } from '../../lib/googleSheetsSync';
+import { maskPassword, updatePasswordInGoogleSheets, authenticateEmployeeWithGoogleSheets } from '../../lib/googleSheetsSync';
 import { downloadWordDocInstructions } from '../../lib/docGenerator';
 import { downloadDesktopSoftwarePackage } from '../../lib/desktopDownloader';
 import { resolveCanonicalEmployee } from '../../lib/userUtils';
@@ -74,8 +74,10 @@ export const LoginView: React.FC = () => {
   const [showConfirmPass, setShowConfirmPass] = useState<boolean>(false);
   const [firstTimeError, setFirstTimeError] = useState<string>('');
   const [isSavingPassword, setIsSavingPassword] = useState<boolean>(false);
+  const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
+  const [retryNotice, setRetryNotice] = useState<string>('');
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -94,6 +96,7 @@ export const LoginView: React.FC = () => {
     const cleanUsernameQuery = query.replace(/^@/, '').trim();
     const alphaNumericQuery = query.replace(/[^a-z0-9]/g, '');
     const digitsOnlyQuery = query.replace(/\D/g, '');
+    const inputPass = password.trim();
 
     // 1. Gather all available user records from memory & localStorage
     const authUsers = (() => {
@@ -230,72 +233,148 @@ export const LoginView: React.FC = () => {
       }
     }
 
-    if (!foundUser) {
-      setErrorMsg(`No employee account found matching "${cleanCode}". Please enter your assigned Username (e.g. agabr) or Employee Code (e.g. LLC-0004).`);
-      return;
-    }
-
     const isRootAdmin =
-      foundUser.employeeCode?.toLowerCase() === 'superadmin' ||
-      foundUser.id === 'usr-superadmin-red' ||
-      foundUser.id === 'usr-superadmin-root' ||
-      foundUser.email?.toLowerCase() === 'admin@llc.com' ||
-      foundUser.role === 'admin';
-
-    const inputPass = password.trim();
-    let isValidPassword = false;
-
-    if (isRootAdmin) {
-      const userPass = (foundUser.password || '').trim();
-      isValidPassword =
-        (userPass !== '' && inputPass === userPass) ||
-        inputPass === 'AdminpassW0rd123!' ||
-        inputPass === 'AdminpassWord123!' ||
-        (userPass === 'Password123!' && inputPass === 'Password123!') ||
-        inputPass === 'SUPERADMIN2026';
-    } else {
-      const userPass = (foundUser.password || '').trim();
-      if (userPass && userPass !== 'Password123!') {
-        // User has a custom password set: only accept input matching userPass
-        isValidPassword = inputPass === userPass;
-      } else {
-        // User is still on default password: accept userPass or 'Password123!'
-        isValidPassword =
-          (userPass !== '' && inputPass === userPass) ||
-          inputPass === 'Password123!';
-      }
-    }
-
-    if (!isValidPassword) {
-      if (isRootAdmin) {
-        setErrorMsg('Incorrect password. Please enter the Root Admin password.');
-      } else {
-        setErrorMsg('Incorrect password. Default password for new accounts is "Password123!". If you forgot your password, contact your Team Lead.');
-      }
-      return;
-    }
-
-    // Check if user is logging in with default password or must change password
-    const isDefaultPasswordUsed = inputPass === 'Password123!' || (foundUser.password || '').trim() === 'Password123!';
-    const forceChangeRequired =
-      !isRootAdmin &&
-      (foundUser.mustChangePassword === true || (foundUser.mustChangePassword !== false && isDefaultPasswordUsed));
-
-    if (forceChangeRequired) {
-      setPendingPasswordChangeUser(foundUser);
-      setNewUniquePassword('');
-      setConfirmUniquePassword('');
-      setFirstTimeError('');
-      return;
-    }
+      foundUser &&
+      (foundUser.employeeCode?.toLowerCase() === 'superadmin' ||
+        foundUser.id === 'usr-superadmin-red' ||
+        foundUser.id === 'usr-superadmin-root' ||
+        foundUser.email?.toLowerCase() === 'admin@llc.com' ||
+        foundUser.role === 'admin');
 
     const resolvedMode: 'webapp' | 'software' = isSoftwareEnv ? 'software' : 'webapp';
-    login(foundUser, resolvedMode);
+
+    // Check emergency root admin override password
+    if (isRootAdmin && (inputPass === 'AdminpassW0rd123!' || inputPass === 'AdminpassWord123!' || inputPass === 'SUPERADMIN2026')) {
+      login(foundUser!, resolvedMode);
+      return;
+    }
+
+    setIsAuthenticating(true);
+
+    try {
+      // 5. Authoritatively authenticate against the Live Google Apps Script (Employee_Directory / Employee_Auth)
+      const liveAuth = await authenticateEmployeeWithGoogleSheets(cleanCode, inputPass);
+
+      if (liveAuth.success && liveAuth.valid) {
+        // Authenticated successfully against Live Google Apps Script!
+        const serverUser = liveAuth.user || {};
+        const effectiveUser: User = {
+          ...(foundUser || {
+            id: serverUser.id || `usr-${cleanCode}`,
+            name: serverUser.name || cleanCode,
+            email: serverUser.email || '',
+            role: serverUser.role || 'agent',
+            designation: serverUser.designation || 'Agent',
+            username: serverUser.username || cleanCode,
+            employeeCode: serverUser.employeeCode || cleanCode,
+            department: serverUser.department || 'Operations',
+            monthlyRate: serverUser.monthlyRate || 0,
+            hourlyRate: serverUser.hourlyRate || 0,
+            geoTimezone: 'Asia/Manila',
+            geoCity: 'Manila, Philippines',
+            teamId: 'management',
+            status: 'active',
+            joinDate: serverUser.joinDate || new Date().toISOString().slice(0, 10),
+            avatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250`,
+          }),
+          ...serverUser,
+          password: inputPass,
+          mustChangePassword: liveAuth.mustChangePassword === true,
+        };
+
+        // Cache updated user with verified personal password locally so future sessions remember it
+        try {
+          const cached = localStorage.getItem('trackpulse_users');
+          const list = cached ? JSON.parse(cached) : [];
+          const updated = Array.isArray(list) ? list.filter((u: any) => u.id !== effectiveUser.id) : [];
+          updated.push(effectiveUser);
+          localStorage.setItem('trackpulse_users', JSON.stringify(updated));
+        } catch {}
+
+        setUsers((prev) => [...prev.filter((u) => u.id !== effectiveUser.id), effectiveUser]);
+
+        // Check if user must change password (e.g. first login with Password123!)
+        if (liveAuth.mustChangePassword === true) {
+          setPendingPasswordChangeUser(effectiveUser);
+          setNewUniquePassword('');
+          setConfirmUniquePassword('');
+          setFirstTimeError('');
+          setIsAuthenticating(false);
+          return;
+        }
+
+        // Successfully authenticated with personal password! Log in!
+        setIsAuthenticating(false);
+        login(effectiveUser, resolvedMode);
+        return;
+      }
+
+      // If live auth returned invalid credentials or user not found
+      if (liveAuth.code === 'INVALID_CREDENTIALS') {
+        setIsAuthenticating(false);
+        setErrorMsg('Incorrect password. Default password for new accounts is "Password123!". If you previously changed your password, please use your personal password. If you forgot your password, contact your Team Lead.');
+        return;
+      }
+
+      if (liveAuth.code === 'USER_NOT_FOUND' && !foundUser) {
+        setIsAuthenticating(false);
+        setErrorMsg(`No employee account found matching "${cleanCode}". Please verify your username or employee code.`);
+        return;
+      }
+
+      // If live auth could not reach server or returned a network error, gracefully evaluate against local state
+      if (foundUser) {
+        const userPass = (foundUser.password || '').trim();
+        const isValidLocal =
+          (userPass !== '' && inputPass === userPass) ||
+          inputPass === 'Password123!';
+
+        if (isValidLocal) {
+          const isDefaultPasswordUsed = inputPass === 'Password123!' || userPass === 'Password123!';
+          const forceChangeRequired =
+            !isRootAdmin &&
+            (foundUser.mustChangePassword === true || (foundUser.mustChangePassword !== false && isDefaultPasswordUsed));
+
+          if (forceChangeRequired) {
+            setPendingPasswordChangeUser(foundUser);
+            setNewUniquePassword('');
+            setConfirmUniquePassword('');
+            setFirstTimeError('');
+            setIsAuthenticating(false);
+            return;
+          }
+
+          setIsAuthenticating(false);
+          login(foundUser, resolvedMode);
+          return;
+        }
+      }
+
+      setIsAuthenticating(false);
+      setErrorMsg(liveAuth.message || 'Authentication failed. Please verify your username and password.');
+    } catch (err: any) {
+      setIsAuthenticating(false);
+      // Fallback to local check if offline
+      if (foundUser) {
+        const userPass = (foundUser.password || '').trim();
+        if ((userPass && inputPass === userPass) || inputPass === 'Password123!') {
+          const isDefaultPasswordUsed = inputPass === 'Password123!';
+          if (!isRootAdmin && (foundUser.mustChangePassword || isDefaultPasswordUsed)) {
+            setPendingPasswordChangeUser(foundUser);
+            return;
+          }
+          login(foundUser, resolvedMode);
+          return;
+        }
+      }
+      setErrorMsg(err?.message || 'Authentication failed. Please check your credentials.');
+    }
   };
 
   const handleSaveUniquePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setFirstTimeError('');
+    setRetryNotice('');
 
     if (!pendingPasswordChangeUser) return;
 
@@ -320,10 +399,15 @@ export const LoginView: React.FC = () => {
     setIsSavingPassword(true);
 
     try {
-      // 1. Dispatch UPDATE_PASSWORD to Live Google Apps Script endpoint & require status === "SUCCESS" AND verified === true
+      // 1. Dispatch UPDATE_PASSWORD to Live Google Apps Script endpoint with automatic retry if server is busy
       const updateResult = await updatePasswordInGoogleSheets(
         pendingPasswordChangeUser,
-        trimmed
+        trimmed,
+        undefined,
+        'UPDATE_PASSWORD',
+        (attempt, max) => {
+          setRetryNotice(`Server is busy processing requests, retrying securely... (attempt ${attempt}/${max})`);
+        }
       );
 
       if (!updateResult.success || !updateResult.verified) {
@@ -331,6 +415,7 @@ export const LoginView: React.FC = () => {
           updateResult.message || updateResult.error || 'Password update could not be verified by server. Please try again.'
         );
         setIsSavingPassword(false);
+        setRetryNotice('');
         return; // DO NOT proceed or clear state unless backend confirms status === "SUCCESS" and verified === true
       }
 
@@ -339,6 +424,19 @@ export const LoginView: React.FC = () => {
         password: trimmed,
         mustChangePassword: false,
       });
+
+      // Update persistent user cache
+      try {
+        const cached = localStorage.getItem('trackpulse_users');
+        const list = cached ? JSON.parse(cached) : [];
+        const updated = Array.isArray(list) ? list.filter((u: any) => u.id !== pendingPasswordChangeUser.id) : [];
+        updated.push({
+          ...pendingPasswordChangeUser,
+          password: trimmed,
+          mustChangePassword: false,
+        });
+        localStorage.setItem('trackpulse_users', JSON.stringify(updated));
+      } catch {}
 
       addAuditLog({
         actorId: pendingPasswordChangeUser.id,
@@ -358,6 +456,7 @@ export const LoginView: React.FC = () => {
 
       setPendingPasswordChangeUser(null);
       setIsSavingPassword(false);
+      setRetryNotice('');
 
       // 3. Complete login smoothly
       const resolvedMode: 'webapp' | 'software' = isSoftwareEnv ? 'software' : 'webapp';
@@ -365,6 +464,7 @@ export const LoginView: React.FC = () => {
     } catch (err: any) {
       setFirstTimeError(err?.message || 'An unexpected error occurred while updating your password.');
       setIsSavingPassword(false);
+      setRetryNotice('');
     }
   };
 
@@ -423,8 +523,8 @@ export const LoginView: React.FC = () => {
         )}
 
         {/* Login Form Box */}
-        <div className="w-full max-w-xl bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl relative">
-          <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-800">
+        <div className="w-full max-w-md bg-slate-900/90 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-2xl backdrop-blur-xl relative">
+          <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-slate-800">
             <div>
               <div className="flex items-center gap-2 mb-1">
                 {isSoftwareEnv ? (
@@ -439,22 +539,22 @@ export const LoginView: React.FC = () => {
                   </span>
                 )}
               </div>
-              <h2 className="text-xl font-extrabold text-white tracking-tight">
+              <h2 className="text-lg sm:text-xl font-extrabold text-white tracking-tight">
                 {isSoftwareEnv ? 'Sign In to LLC Desktop Tracker' : 'Sign In to LLC Website Dashboard'}
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
                 {isSoftwareEnv
-                  ? 'Desktop Client: Sign in to clock in, pick your task, and track live activity & shifts.'
-                  : 'Website Portal: Sign in to view live dashboards, team logs, timesheets, and reports.'}
+                  ? 'Desktop Client: Sign in to clock in, pick your task, and track live activity.'
+                  : 'Website Portal: Sign in to view live dashboards, team logs, and timesheets.'}
               </p>
             </div>
           </div>
 
           {sessionExpiredReason === 'inactivity_10min' && (
-            <div className="mb-5 p-3.5 rounded-xl bg-amber-950/80 border border-amber-600/80 text-amber-200 text-xs font-medium flex items-center justify-between gap-2.5">
-              <div className="flex items-center gap-2.5">
+            <div className="mb-4 p-3 rounded-xl bg-amber-950/80 border border-amber-600/80 text-amber-200 text-xs font-medium flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Your Web Portal session expired after <strong>10 minutes of inactivity</strong>. Please sign in again to continue.</span>
+                <span>Session expired after <strong>10m of inactivity</strong>. Please sign in again.</span>
               </div>
               <button
                 type="button"
@@ -467,13 +567,10 @@ export const LoginView: React.FC = () => {
           )}
 
           {sessionExpiredReason === 'inactivity_30min_software' && (
-            <div className="mb-5 p-3.5 rounded-xl bg-amber-950/80 border border-amber-600/80 text-amber-200 text-xs font-medium flex items-center justify-between gap-2.5">
-              <div className="flex items-center gap-2.5">
+            <div className="mb-4 p-3 rounded-xl bg-amber-950/80 border border-amber-600/80 text-amber-200 text-xs font-medium flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-                <div>
-                  <strong className="block text-white">Shift Safely Saved & Automatically Logged Out</strong>
-                  <span>Your desktop tracker was automatically stopped and signed out after <strong>30 minutes of inactivity</strong> and no response to the verification prompt. Log in to resume work.</span>
-                </div>
+                <span>Desktop stopped after <strong>30m inactivity</strong>. Log in to resume.</span>
               </div>
               <button
                 type="button"
@@ -486,13 +583,10 @@ export const LoginView: React.FC = () => {
           )}
 
           {sessionExpiredReason === 'offline_30min' && (
-            <div className="mb-5 p-3.5 rounded-xl bg-rose-950/80 border border-rose-600/80 text-rose-200 text-xs font-medium flex items-center justify-between gap-2.5">
-              <div className="flex items-center gap-2.5">
+            <div className="mb-4 p-3 rounded-xl bg-rose-950/80 border border-rose-600/80 text-rose-200 text-xs font-medium flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
                 <WifiOff className="w-4 h-4 text-rose-400 shrink-0" />
-                <div>
-                  <strong className="block text-white">Shift Safely Saved & Session Ended</strong>
-                  <span>Your tracking session was automatically stopped and safely saved after remaining disconnected from the internet for <strong>30 minutes</strong>. Once your internet connection is restored, please log back in to resume your shift.</span>
-                </div>
+                <span>Tracking stopped after <strong>30m offline</strong>. Log back in to resume shift.</span>
               </div>
               <button
                 type="button"
@@ -505,20 +599,20 @@ export const LoginView: React.FC = () => {
           )}
 
           {errorMsg && (
-            <div className="mb-5 p-3.5 rounded-xl bg-red-950/80 border border-red-700/80 text-red-200 text-xs font-medium flex items-center gap-2.5">
+            <div className="mb-4 p-3 rounded-xl bg-red-950/80 border border-red-700/80 text-red-200 text-xs font-medium flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
               <span>{errorMsg}</span>
             </div>
           )}
 
-          <form onSubmit={handleLoginSubmit} className="space-y-5">
+          <form onSubmit={handleLoginSubmit} className="space-y-4">
             {/* Username or Employee Code Field */}
             <div>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-bold text-slate-300">
                   Username or Employee Code
                 </label>
-                <span className="text-[10px] text-slate-400 font-mono">e.g. jdavid or 0001</span>
+                <span className="text-[10px] text-slate-400 font-mono">e.g. jdavid or LLC-0004</span>
               </div>
               <div className="relative">
                 <input
@@ -528,8 +622,8 @@ export const LoginView: React.FC = () => {
                     setEmployeeCodeInput(e.target.value);
                     setErrorMsg('');
                   }}
-                  placeholder="Enter your Username (e.g. jdavid) or Employee Code..."
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl py-3 pl-4 pr-10 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-mono"
+                  placeholder="Enter Username or Employee Code..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2.5 pl-3.5 pr-9 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-mono"
                   required
                 />
                 <IdCard className="w-4 h-4 text-slate-500 absolute right-3 top-1/2 -translate-y-1/2" />
@@ -538,7 +632,7 @@ export const LoginView: React.FC = () => {
 
             {/* Password Field */}
             <div>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-bold text-slate-300">Account Password</label>
               </div>
               <div className="relative">
@@ -549,8 +643,8 @@ export const LoginView: React.FC = () => {
                     setPassword(e.target.value);
                     setErrorMsg('');
                   }}
-                  placeholder="Enter your account password..."
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl py-3 pl-4 pr-10 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 font-mono transition-all"
+                  placeholder="Enter your password..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl py-2.5 pl-3.5 pr-9 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 font-mono transition-all"
                   required
                 />
                 <button
@@ -566,18 +660,25 @@ export const LoginView: React.FC = () => {
             {/* Submit Action Button */}
             <button
               type="submit"
-              className={`w-full py-3.5 px-6 rounded-xl font-extrabold text-xs sm:text-sm text-white shadow-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              disabled={isAuthenticating}
+              className={`w-full py-3 px-5 rounded-xl font-extrabold text-xs sm:text-sm text-white shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 ${
                 isSoftwareEnv
                   ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-emerald-700/30'
                   : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
               }`}
             >
               <span>
-                {isSoftwareEnv
+                {isAuthenticating
+                  ? 'Authenticating with Live Database...'
+                  : isSoftwareEnv
                   ? 'Sign In to Time Tracker'
                   : 'Sign In to LLC Web Portal'}
               </span>
-              <ArrowRight className="w-4 h-4" />
+              {isAuthenticating ? (
+                <Clock className="w-4 h-4 animate-spin" />
+              ) : (
+                <ArrowRight className="w-4 h-4" />
+              )}
             </button>
           </form>
 
@@ -828,92 +929,82 @@ export const LoginView: React.FC = () => {
       )}
       {/* First-Time Login / Password Reset Force Change Modal */}
       {pendingPasswordChangeUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 text-slate-800">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-3 sm:p-4 text-slate-800 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm sm:max-w-md w-full p-4 sm:p-5 shadow-2xl space-y-3 my-auto max-h-[92vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
             {/* Header */}
-            <div className="flex items-start justify-between pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-lg shadow-indigo-500/25 shrink-0">
-                  <ShieldCheck className="w-6 h-6" />
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-500/20 shrink-0">
+                  <ShieldCheck className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-slate-900 text-lg leading-tight">
+                  <h3 className="font-extrabold text-slate-900 text-sm sm:text-base leading-tight">
                     Set Your Unique Password
                   </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    First-Time Login & Security Protection Setup
+                  <p className="text-[11px] text-slate-500">
+                    Replace default password to secure account
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => setPendingPasswordChangeUser(null)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+                type="button"
+                onClick={() => {
+                  setPendingPasswordChangeUser(null);
+                  setRetryNotice('');
+                  setFirstTimeError('');
+                }}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors"
                 title="Cancel"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* User Profile Overview */}
-            <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-slate-900 text-sm truncate">
-                    {pendingPasswordChangeUser.name}
-                  </h4>
-                  <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-lg">
-                    #{pendingPasswordChangeUser.employeeCode}
+            <div className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl flex items-center justify-between text-xs">
+              <div className="min-w-0 pr-2">
+                <div className="font-bold text-slate-900 text-xs truncate">
+                  {pendingPasswordChangeUser.name}{' '}
+                  <span className="font-normal text-slate-500">
+                    (@{pendingPasswordChangeUser.username || pendingPasswordChangeUser.employeeCode})
                   </span>
                 </div>
-                <div className="text-xs text-slate-500 truncate">{pendingPasswordChangeUser.email}</div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[10px] uppercase font-bold text-slate-700 bg-slate-200 px-2 py-0.5 rounded">
-                    {pendingPasswordChangeUser.designation}
-                  </span>
-                  <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded font-semibold">
-                    Default "Password123!" Detected
-                  </span>
+                <div className="text-[10px] text-slate-500 truncate">
+                  {pendingPasswordChangeUser.designation} • {pendingPasswordChangeUser.email || 'LLC Operations'}
                 </div>
               </div>
+              <span className="font-mono text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md shrink-0">
+                #{pendingPasswordChangeUser.employeeCode}
+              </span>
             </div>
 
-            {/* Explanatory Policy Banner */}
-            <div className="p-3.5 bg-indigo-50/70 border border-indigo-200/80 rounded-2xl text-xs space-y-2 text-indigo-950">
-              <div className="font-bold flex items-center gap-1.5 text-indigo-900">
-                <KeyRound className="w-4 h-4 text-indigo-600" />
-                <span>Security Notice: Custom Password Required</span>
-              </div>
-              <p className="text-[11px] leading-relaxed text-indigo-900/90">
-                To protect your shift tracking data, payroll, and timesheets, all employees must replace the default <strong>"Password123!"</strong> credential with their own unique password before entering the system.
+            {/* Compact Policy Notice */}
+            <div className="p-2.5 bg-indigo-50/70 border border-indigo-200/80 rounded-xl text-[11px] text-indigo-950 flex items-start gap-2">
+              <KeyRound className="w-3.5 h-3.5 text-indigo-600 shrink-0 mt-0.5" />
+              <p className="leading-snug text-indigo-900/90 text-[11px]">
+                To protect timesheets and payroll, replace default <strong>"Password123!"</strong> with your personal unique password.
               </p>
-              <div className="p-2.5 bg-white/90 border border-indigo-200/60 rounded-xl space-y-1 text-[11px]">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-600 flex items-center gap-1">
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" /> Database & Google Sheets Masking:
-                  </span>
-                  <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    {newUniquePassword ? maskPassword(newUniquePassword) : 'pass*****'}
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-500 leading-tight">
-                  Your password is automatically encrypted in central storage (only the first 4 characters appear, followed by asterisks).
-                </p>
-              </div>
             </div>
 
-            {/* Error Message */}
+            {/* Retry Notice / Error Message */}
+            {retryNotice && !firstTimeError && (
+              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0 animate-spin" />
+                <span>{retryNotice}</span>
+              </div>
+            )}
             {firstTimeError && (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-[11px] font-semibold flex items-center gap-2">
+                <AlertCircle className="w-3.5 h-3.5 text-red-600 shrink-0" />
                 <span>{firstTimeError}</span>
               </div>
             )}
 
             {/* Form */}
-            <form onSubmit={handleSaveUniquePassword} className="space-y-4">
+            <form onSubmit={handleSaveUniquePassword} className="space-y-2.5">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Create New Unique Password
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  New Unique Password
                 </label>
                 <div className="relative">
                   <input
@@ -923,23 +1014,23 @@ export const LoginView: React.FC = () => {
                       setNewUniquePassword(e.target.value);
                       setFirstTimeError('');
                     }}
-                    placeholder="Enter your new secret password (min 6 characters)..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 pr-11 text-xs font-mono font-medium focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-900"
+                    placeholder="Min 6 characters..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 pr-9 text-xs font-mono font-medium focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-900"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowNewPass(!showNewPass)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >
-                    {showNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {showNewPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  Confirm New Password
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Confirm Password
                 </label>
                 <div className="relative">
                   <input
@@ -949,43 +1040,47 @@ export const LoginView: React.FC = () => {
                       setConfirmUniquePassword(e.target.value);
                       setFirstTimeError('');
                     }}
-                    placeholder="Re-type your new password to confirm..."
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 pr-11 text-xs font-mono font-medium focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-900"
+                    placeholder="Re-type password..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 pr-9 text-xs font-mono font-medium focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-slate-900"
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPass(!showConfirmPass)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >
-                    {showConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {showConfirmPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
               </div>
 
               {/* Forgot Password Recovery Hint */}
-              <div className="p-3 bg-amber-50/80 border border-amber-200/80 rounded-xl text-[11px] text-amber-900 flex items-start gap-2">
-                <HelpCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="p-2 bg-amber-50/70 border border-amber-200/70 rounded-lg text-[10px] text-amber-900 flex items-start gap-1.5">
+                <HelpCircle className="w-3 h-3 text-amber-600 shrink-0 mt-0.5" />
                 <span>
-                  <strong>Forgot your password later?</strong> Inform your Team Lead. Your Team Lead will request the Main Admin to reset your account back to <em>"Password123!"</em>, and you will be prompted again to set a new unique password.
+                  <strong>Tip:</strong> If forgotten later, Team Leads can request an Admin reset back to <em>"Password123!"</em>.
                 </span>
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-100">
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setPendingPasswordChangeUser(null)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
+                  onClick={() => {
+                    setPendingPasswordChangeUser(null);
+                    setRetryNotice('');
+                    setFirstTimeError('');
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition-colors"
                 >
-                  Cancel & Back to Login
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingPassword || !newUniquePassword.trim()}
-                  className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-500/25 flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm shadow-indigo-500/25 flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
                 >
-                  <Check className="w-4 h-4" />
-                  <span>{isSavingPassword ? 'Saving Password...' : 'Save Password & Sign In'}</span>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>{isSavingPassword ? (retryNotice ? 'Retrying...' : 'Saving...') : 'Save & Sign In'}</span>
                 </button>
               </div>
             </form>

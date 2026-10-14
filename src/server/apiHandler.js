@@ -281,7 +281,7 @@ export async function forwardToLiveAppsScript(incomingPayload, options = {}, cus
   }
 
   const { url, secret } = validation;
-  const timeoutMs = options.timeoutMs || 8000;
+  const timeoutMs = options.timeoutMs || 25000;
 
   // Clean and prepare forwarding payload with shared secret
   const basePayload =
@@ -292,66 +292,90 @@ export async function forwardToLiveAppsScript(incomingPayload, options = {}, cus
   // Always attach the server-configured LIVE_APPS_SCRIPT_SECRET
   basePayload.secret = secret;
 
-  try {
-    safeLog('info', 'Forwarding request to Live Apps Script endpoint', {
-      action: basePayload.action,
-      destination: url,
-    }, customEnv);
+  const maxAttempts = (basePayload.action === 'UPDATE_PASSWORD' || basePayload.action === 'ADMIN_RESET_PASSWORD' || basePayload.action === 'AUTH_LOGIN') ? 3 : 1;
 
-    const fetchResponse = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shared-Secret': secret,
-      },
-      body: JSON.stringify(basePayload),
-      redirect: 'follow',
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-
-    const text = await fetchResponse.text();
-    let googleResult;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      googleResult = JSON.parse(text);
-    } catch {
-      googleResult = { response: text };
+      safeLog('info', `Forwarding request to Live Apps Script endpoint (attempt ${attempt}/${maxAttempts})`, {
+        action: basePayload.action,
+        destination: url,
+      }, customEnv);
+
+      const fetchResponse = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shared-Secret': secret,
+        },
+        body: JSON.stringify(basePayload),
+        redirect: 'follow',
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      const text = await fetchResponse.text();
+      let googleResult;
+      try {
+        googleResult = JSON.parse(text);
+      } catch {
+        googleResult = { response: text };
+      }
+
+      // Strip any sensitive credentials that might be mirrored back
+      const sanitizedResult = sanitizeOutput(googleResult);
+
+      // If Google Apps Script returned BUSY / concurrency lock error, retry after backoff
+      if (sanitizedResult?.code === 'BUSY' || sanitizedResult?.message?.includes('Server busy') || fetchResponse.status === 503) {
+        if (attempt < maxAttempts) {
+          safeLog('warn', `Apps Script reported BUSY on attempt ${attempt}. Retrying in ${attempt * 1500}ms...`, {}, customEnv);
+          await new Promise((r) => setTimeout(r, attempt * 1500));
+          continue;
+        }
+      }
+
+      const isSuccess =
+        fetchResponse.ok &&
+        (sanitizedResult?.status === 'SUCCESS' ||
+          sanitizedResult?.success === true ||
+          sanitizedResult?.action === 'HEARTBEAT_UPDATE' ||
+          sanitizedResult?.action === basePayload?.action);
+
+      return {
+        success: isSuccess,
+        status: fetchResponse.ok ? 200 : fetchResponse.status,
+        appsScriptStatus:
+          sanitizedResult?.status ||
+          (sanitizedResult?.success ? 'SUCCESS' : 'UNKNOWN'),
+        action: sanitizedResult?.action || basePayload?.action,
+        result: sanitizedResult,
+        error: !isSuccess
+          ? sanitizedResult?.message ||
+            sanitizedResult?.error ||
+            (fetchResponse.ok
+              ? 'Apps Script returned non-success response'
+              : `HTTP Error ${fetchResponse.status}`)
+          : undefined,
+      };
+    } catch (err) {
+      const errorMsg = err?.message || String(err);
+      if (attempt < maxAttempts) {
+        safeLog('warn', `Apps Script connection error on attempt ${attempt} (${errorMsg}). Retrying...`, {}, customEnv);
+        await new Promise((r) => setTimeout(r, attempt * 1500));
+        continue;
+      }
+      safeLog('error', 'Failed to communicate with Live Apps Script after retries', { error: errorMsg }, customEnv);
+      return {
+        success: false,
+        status: 500,
+        error: `Live Apps Script connection failed: ${errorMsg}`,
+      };
     }
-
-    // Strip any sensitive credentials that might be mirrored back
-    const sanitizedResult = sanitizeOutput(googleResult);
-
-    const isSuccess =
-      fetchResponse.ok &&
-      (sanitizedResult?.status === 'SUCCESS' ||
-        sanitizedResult?.success === true ||
-        sanitizedResult?.action === 'HEARTBEAT_UPDATE' ||
-        sanitizedResult?.action === basePayload?.action);
-
-    return {
-      success: isSuccess,
-      status: fetchResponse.ok ? 200 : fetchResponse.status,
-      appsScriptStatus:
-        sanitizedResult?.status ||
-        (sanitizedResult?.success ? 'SUCCESS' : 'UNKNOWN'),
-      action: sanitizedResult?.action || basePayload?.action,
-      result: sanitizedResult,
-      error: !isSuccess
-        ? sanitizedResult?.message ||
-          sanitizedResult?.error ||
-          (fetchResponse.ok
-            ? 'Apps Script returned non-success response'
-            : `HTTP Error ${fetchResponse.status}`)
-        : undefined,
-    };
-  } catch (err) {
-    const errorMsg = err?.message || String(err);
-    safeLog('error', 'Failed to communicate with Live Apps Script', { error: errorMsg }, customEnv);
-    return {
-      success: false,
-      status: 500,
-      error: `Live Apps Script connection failed: ${errorMsg}`,
-    };
   }
+
+  return {
+    success: false,
+    status: 500,
+    error: 'Live Apps Script connection failed after retries',
+  };
 }
 
 /**

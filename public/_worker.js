@@ -103,51 +103,76 @@ async function handleSyncSheetsPost(request, env = {}) {
         ? { ...rawPayload, secret: liveAppsScriptSecret }
         : { payload: rawPayload, secret: liveAppsScriptSecret };
 
-    const googleResponse = await fetch(webhookUrl.trim(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shared-Secret": liveAppsScriptSecret,
-      },
-      body: JSON.stringify(payload),
-      redirect: "follow",
-    });
+    const maxAttempts = (payload.action === 'UPDATE_PASSWORD' || payload.action === 'ADMIN_RESET_PASSWORD' || payload.action === 'AUTH_LOGIN') ? 3 : 1;
 
-    const responseText = await googleResponse.text();
-    let googleResult;
-    try {
-      googleResult = JSON.parse(responseText);
-    } catch {
-      googleResult = { response: responseText };
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const googleResponse = await fetch(webhookUrl.trim(), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shared-Secret": liveAppsScriptSecret,
+          },
+          body: JSON.stringify(payload),
+          redirect: "follow",
+        });
+
+        const responseText = await googleResponse.text();
+        let googleResult;
+        try {
+          googleResult = JSON.parse(responseText);
+        } catch {
+          googleResult = { response: responseText };
+        }
+
+        const sanitizedResult = sanitizeOutput(googleResult);
+
+        // If Apps script reports BUSY, wait and retry
+        if ((sanitizedResult?.code === 'BUSY' || sanitizedResult?.message?.includes('Server busy') || googleResponse.status === 503) && attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, attempt * 1500));
+          continue;
+        }
+
+        const isSuccess =
+          googleResponse.ok &&
+          (sanitizedResult?.status === "SUCCESS" ||
+            sanitizedResult?.success === true ||
+            sanitizedResult?.action === "HEARTBEAT_UPDATE" ||
+            sanitizedResult?.action === payload?.action);
+
+        return jsonResponse(
+          {
+            success: isSuccess,
+            status: googleResponse.status,
+            appsScriptStatus:
+              sanitizedResult?.status ||
+              (sanitizedResult?.success ? "SUCCESS" : "UNKNOWN"),
+            action: sanitizedResult?.action || payload?.action,
+            result: sanitizedResult,
+            error: !isSuccess
+              ? sanitizedResult?.message ||
+                sanitizedResult?.error ||
+                (googleResponse.ok
+                  ? "Apps Script returned non-success response"
+                  : `HTTP Error ${googleResponse.status}`)
+              : undefined,
+          },
+          googleResponse.ok ? 200 : googleResponse.status
+        );
+      } catch (err) {
+        if (attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, attempt * 1500));
+          continue;
+        }
+        return jsonResponse(
+          {
+            success: false,
+            error: err?.message || String(err),
+          },
+          500
+        );
+      }
     }
-
-    const sanitizedResult = sanitizeOutput(googleResult);
-    const isSuccess =
-      googleResponse.ok &&
-      (sanitizedResult?.status === "SUCCESS" ||
-        sanitizedResult?.success === true ||
-        sanitizedResult?.action === "HEARTBEAT_UPDATE" ||
-        sanitizedResult?.action === payload?.action);
-
-    return jsonResponse(
-      {
-        success: isSuccess,
-        status: googleResponse.status,
-        appsScriptStatus:
-          sanitizedResult?.status ||
-          (sanitizedResult?.success ? "SUCCESS" : "UNKNOWN"),
-        action: sanitizedResult?.action || payload?.action,
-        result: sanitizedResult,
-        error: !isSuccess
-          ? sanitizedResult?.message ||
-            sanitizedResult?.error ||
-            (googleResponse.ok
-              ? "Apps Script returned non-success response"
-              : `HTTP Error ${googleResponse.status}`)
-          : undefined,
-      },
-      googleResponse.ok ? 200 : googleResponse.status
-    );
   } catch (error) {
     return jsonResponse(
       {
