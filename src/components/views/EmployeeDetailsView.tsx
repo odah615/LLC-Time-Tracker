@@ -41,6 +41,7 @@ import {
   Link2,
   Code,
   Copy,
+  RotateCcw,
 } from 'lucide-react';
 import { User, UserRole, PasswordResetRequest } from '../../types';
 import { UserAvatar } from '../UserAvatar';
@@ -76,6 +77,7 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [supervisorFilter, setSupervisorFilter] = useState<string>('all');
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
   const [isPullingSheets, setIsPullingSheets] = useState(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
@@ -163,14 +165,27 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
+  // Extract supervisor / team lead options
+  const supervisors = useMemo(() => {
+    const set = new Set<string>();
+    users.forEach((u) => {
+      if (u.teamLeaderId) set.add(u.teamLeaderId);
+      if (u.assignedSupervisor) set.add(u.assignedSupervisor);
+    });
+    return Array.from(set).filter(Boolean);
+  }, [users]);
+
   // Filtered employees
   const filteredUsers = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
     return users.filter((u) => {
       const matchesSearch =
-        u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.employeeCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.designation.toLowerCase().includes(searchTerm.toLowerCase());
+        !term ||
+        u.name.toLowerCase().includes(term) ||
+        (u.username && u.username.toLowerCase().includes(term)) ||
+        u.email.toLowerCase().includes(term) ||
+        u.employeeCode.toLowerCase().includes(term) ||
+        u.designation.toLowerCase().includes(term);
 
       const matchesRole = roleFilter === 'all' || u.role === roleFilter;
       const matchesDept = departmentFilter === 'all' || u.department === departmentFilter;
@@ -179,9 +194,14 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
         (statusFilter === 'active' && (u.status === 'active' || !u.status)) ||
         (statusFilter === 'inactive' && u.status === 'inactive');
 
-      return matchesSearch && matchesRole && matchesDept && matchesStatus;
+      const matchesSupervisor =
+        supervisorFilter === 'all' ||
+        u.teamLeaderId === supervisorFilter ||
+        u.assignedSupervisor === supervisorFilter;
+
+      return matchesSearch && matchesRole && matchesDept && matchesStatus && matchesSupervisor;
     });
-  }, [users, searchTerm, roleFilter, departmentFilter, statusFilter]);
+  }, [users, searchTerm, roleFilter, departmentFilter, statusFilter, supervisorFilter]);
 
   const totalPages = Math.ceil(filteredUsers.length / pageSize) || 1;
   const safePage = Math.min(currentPage, totalPages);
@@ -475,35 +495,79 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
       )}
 
       {/* Filter & Search Controls */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4 text-xs">
-        {/* Search Input */}
-        <div className="relative w-full lg:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search name, email, code, or role..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl pl-9 pr-3 py-2 font-medium focus:ring-2 focus:ring-purple-500"
-          />
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col gap-3 text-xs">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+          {/* Search Input with Clear Button */}
+          <div className="relative w-full lg:w-80">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search username, name, email, code, designation..."
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full bg-slate-50 border border-slate-200 text-slate-800 rounded-xl pl-9 pr-8 py-2 font-medium focus:ring-2 focus:ring-purple-500"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  setCurrentPage(1);
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-200 transition-colors"
+                title="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Result Count & Clear Filters */}
+          <div className="flex items-center justify-between lg:justify-end gap-3 w-full lg:w-auto">
+            <div className="text-xs font-semibold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
+              Showing <span className="font-bold text-slate-900">{filteredUsers.length}</span> of <span className="font-bold text-slate-900">{users.length}</span> employees
+            </div>
+
+            {(searchTerm || roleFilter !== 'all' || departmentFilter !== 'all' || statusFilter !== 'all' || supervisorFilter !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchTerm('');
+                  setRoleFilter('all');
+                  setDepartmentFilter('all');
+                  setStatusFilter('all');
+                  setSupervisorFilter('all');
+                  setCurrentPage(1);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Clear Filters</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Dropdown Filters */}
-        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+        <div className="flex flex-wrap items-center gap-2.5 pt-1 border-t border-slate-100">
           {/* Role Filter */}
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
-            <Filter className="w-3.5 h-3.5 text-slate-500" />
-            <span className="font-semibold text-slate-600">Role:</span>
+            <Filter className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span className="font-semibold text-slate-600 shrink-0">Role:</span>
             <select
               value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="bg-transparent text-slate-800 font-semibold focus:outline-none"
+              onChange={(e) => {
+                setRoleFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="bg-transparent text-slate-800 font-semibold focus:outline-none cursor-pointer"
             >
               <option value="all">All Roles</option>
-              <option value="employee">Employee</option>
               <option value="agent">Agent</option>
-              <option value="team_leader">Team Lead</option>
-              <option value="team_lead">Team Lead (Alt)</option>
+              <option value="team_lead">Team Lead</option>
               <option value="trainer">Trainer</option>
               <option value="hr">HR Specialist</option>
               <option value="payroll">Payroll Officer</option>
@@ -511,14 +575,38 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
             </select>
           </div>
 
+          {/* Supervisor / Team Lead Filter */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
+            <UserCheck className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span className="font-semibold text-slate-600 shrink-0">Supervisor:</span>
+            <select
+              value={supervisorFilter}
+              onChange={(e) => {
+                setSupervisorFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="bg-transparent text-slate-800 font-semibold focus:outline-none cursor-pointer"
+            >
+              <option value="all">All Supervisors</option>
+              {supervisors.map((sup) => (
+                <option key={sup} value={sup}>
+                  {sup}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Department Filter */}
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
-            <Building2 className="w-3.5 h-3.5 text-slate-500" />
-            <span className="font-semibold text-slate-600">Department:</span>
+            <Building2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span className="font-semibold text-slate-600 shrink-0">Department:</span>
             <select
               value={departmentFilter}
-              onChange={(e) => setDepartmentFilter(e.target.value)}
-              className="bg-transparent text-slate-800 font-semibold focus:outline-none"
+              onChange={(e) => {
+                setDepartmentFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="bg-transparent text-slate-800 font-semibold focus:outline-none cursor-pointer"
             >
               <option value="all">All Departments</option>
               {departments.map((dept) => (
@@ -531,11 +619,14 @@ export const EmployeeDetailsView: React.FC<EmployeeDetailsViewProps> = ({
 
           {/* Status Filter */}
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl">
-            <span className="font-semibold text-slate-600">Status:</span>
+            <span className="font-semibold text-slate-600 shrink-0">Status:</span>
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-transparent text-slate-800 font-semibold focus:outline-none"
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="bg-transparent text-slate-800 font-semibold focus:outline-none cursor-pointer"
             >
               <option value="all">All Statuses</option>
               <option value="active">Active Only</option>

@@ -26,6 +26,22 @@ export interface JwtVerifyResult {
   payload?: Record<string, any>;
 }
 
+export function parseCsvRows(csvText: string): string[][];
+export function fetchLiveEmployeeDirectory(customEnv?: Record<string, any>): Promise<any[]>;
+export function authenticateEmployeeAuthoritatively(
+  usernameOrCode: string,
+  inputPassword: string,
+  customEnv?: Record<string, any>
+): Promise<{
+  success: boolean;
+  valid: boolean;
+  mustChangePassword?: boolean;
+  user?: any;
+  message?: string;
+  code?: string;
+  error?: string;
+}>;
+
 export function getEnvConfig(customEnv?: Record<string, any>): EnvConfig;
 export function validateAppsScriptConfig(customEnv?: Record<string, any>): ValidationResult;
 export function validateJwtConfig(customEnv?: Record<string, any>): ValidationResult;
@@ -39,6 +55,9 @@ export function handleExpressSyncSheetsPost(req: any, res: any, customEnv?: Reco
 export function handleExpressSyncSheetsGet(req: any, res: any, customEnv?: Record<string, any>): Promise<any>;
 
 declare const _default: {
+  parseCsvRows: typeof parseCsvRows;
+  fetchLiveEmployeeDirectory: typeof fetchLiveEmployeeDirectory;
+  authenticateEmployeeAuthoritatively: typeof authenticateEmployeeAuthoritatively;
   getEnvConfig: typeof getEnvConfig;
   validateAppsScriptConfig: typeof validateAppsScriptConfig;
   validateJwtConfig: typeof validateJwtConfig;

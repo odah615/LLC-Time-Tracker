@@ -309,65 +309,31 @@ export const LoginView: React.FC = () => {
         return;
       }
 
-      // If live auth returned invalid credentials or user not found
+      // If live auth returned invalid credentials, user not found, or inactive account
       if (liveAuth.code === 'INVALID_CREDENTIALS') {
         setIsAuthenticating(false);
         setErrorMsg('Incorrect password. Default password for new accounts is "Password123!". If you previously changed your password, please use your personal password. If you forgot your password, contact your Team Lead.');
         return;
       }
 
-      if (liveAuth.code === 'USER_NOT_FOUND' && !foundUser) {
+      if (liveAuth.code === 'USER_NOT_FOUND') {
         setIsAuthenticating(false);
         setErrorMsg(`No employee account found matching "${cleanCode}". Please verify your username or employee code.`);
         return;
       }
 
-      // If live auth could not reach server or returned a network error, gracefully evaluate against local state
-      if (foundUser) {
-        const userPass = (foundUser.password || '').trim();
-        const isValidLocal =
-          (userPass !== '' && inputPass === userPass) ||
-          inputPass === 'Password123!';
-
-        if (isValidLocal) {
-          const isDefaultPasswordUsed = inputPass === 'Password123!' || userPass === 'Password123!';
-          const forceChangeRequired =
-            !isRootAdmin &&
-            (foundUser.mustChangePassword === true || (foundUser.mustChangePassword !== false && isDefaultPasswordUsed));
-
-          if (forceChangeRequired) {
-            setPendingPasswordChangeUser(foundUser);
-            setNewUniquePassword('');
-            setConfirmUniquePassword('');
-            setFirstTimeError('');
-            setIsAuthenticating(false);
-            return;
-          }
-
-          setIsAuthenticating(false);
-          login(foundUser, resolvedMode);
-          return;
-        }
+      if (liveAuth.code === 'ACCOUNT_INACTIVE') {
+        setIsAuthenticating(false);
+        setErrorMsg(liveAuth.message || 'Account is inactive. Please contact your Team Lead or HR.');
+        return;
       }
 
+      // If live auth returned an error message, display it
       setIsAuthenticating(false);
-      setErrorMsg(liveAuth.message || 'Authentication failed. Please verify your username and password.');
+      setErrorMsg(liveAuth.message || liveAuth.error || 'Authentication failed. Please verify your credentials.');
     } catch (err: any) {
       setIsAuthenticating(false);
-      // Fallback to local check if offline
-      if (foundUser) {
-        const userPass = (foundUser.password || '').trim();
-        if ((userPass && inputPass === userPass) || inputPass === 'Password123!') {
-          const isDefaultPasswordUsed = inputPass === 'Password123!';
-          if (!isRootAdmin && (foundUser.mustChangePassword || isDefaultPasswordUsed)) {
-            setPendingPasswordChangeUser(foundUser);
-            return;
-          }
-          login(foundUser, resolvedMode);
-          return;
-        }
-      }
-      setErrorMsg(err?.message || 'Authentication failed. Please check your credentials.');
+      setErrorMsg(err?.message || 'Authentication service unavailable. Please check your connection and retry.');
     }
   };
 
@@ -930,7 +896,7 @@ export const LoginView: React.FC = () => {
       {/* First-Time Login / Password Reset Force Change Modal */}
       {pendingPasswordChangeUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-3 sm:p-4 text-slate-800 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm sm:max-w-md w-full p-4 sm:p-5 shadow-2xl space-y-3 my-auto max-h-[92vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white border border-slate-200/90 rounded-2xl max-w-[390px] w-full p-3.5 sm:p-4 shadow-2xl space-y-2.5 my-auto max-h-[90vh] overflow-y-auto animate-in fade-in duration-150">
             {/* Header */}
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-100">
               <div className="flex items-center gap-2.5">

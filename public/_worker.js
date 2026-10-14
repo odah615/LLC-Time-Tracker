@@ -98,80 +98,384 @@ async function handleSyncSheetsPost(request, env = {}) {
       );
     }
 
+    // Helper: Parse Google Sheets gviz CSV
+    const parseCsvRows = (csvText) => {
+      if (!csvText || typeof csvText !== "string") return [];
+      const rows = [];
+      const lines = csvText.split(/\r?\n/);
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const fields = [];
+        let cur = "";
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const c = line[i];
+          if (c === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+              cur += '"';
+              i++;
+            } else {
+              inQuotes = !inQuotes;
+            }
+          } else if (c === "," && !inQuotes) {
+            fields.push(cur.trim());
+            cur = "";
+          } else {
+            cur += c;
+          }
+        }
+        fields.push(cur.trim());
+        rows.push(fields);
+      }
+      return rows;
+    };
+
+    // Helper: Fetch live Employee_Directory from Google Spreadsheet
+    const fetchLiveDirectory = async () => {
+      const spreadsheetId = env.SPREADSHEET_ID || DEFAULT_SPREADSHEET_ID;
+      const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=Employee_Directory`;
+      try {
+        const res = await fetch(gvizUrl, { headers: { "Cache-Control": "no-cache" } });
+        if (!res.ok) return [];
+        const text = await res.text();
+        const rows = parseCsvRows(text);
+        if (!rows || rows.length < 2) return [];
+
+        const headers = rows[0].map((h) => String(h || "").toLowerCase().trim());
+        const codeIdx = headers.indexOf("employee code") !== -1 ? headers.indexOf("employee code") : 0;
+        const userIdx = headers.indexOf("username") !== -1 ? headers.indexOf("username") : 1;
+        const nameIdx = headers.indexOf("full name") !== -1 ? headers.indexOf("full name") : 2;
+        const emailIdx = headers.indexOf("work email") !== -1 ? headers.indexOf("work email") : 3;
+        const roleIdx = headers.indexOf("system role") !== -1 ? headers.indexOf("system role") : 4;
+        const desigIdx = headers.indexOf("designation") !== -1 ? headers.indexOf("designation") : 5;
+        const statusIdx = headers.indexOf("status") !== -1 ? headers.indexOf("status") : 12;
+        const passIdx = headers.indexOf("accountpassword") !== -1 ? headers.indexOf("accountpassword") : 14;
+        const mustChangeIdx = headers.indexOf("mustchangepassword") !== -1 ? headers.indexOf("mustchangepassword") : 15;
+
+        return rows.slice(1).map((r) => ({
+          employeeCode: String(r[codeIdx] || "").trim(),
+          username: String(r[userIdx] || "").trim(),
+          name: String(r[nameIdx] || "").trim(),
+          email: String(r[emailIdx] || "").trim(),
+          role: String(r[roleIdx] || "agent").toLowerCase().trim(),
+          designation: String(r[desigIdx] || "Agent").trim(),
+          status: String(r[statusIdx] || "active").toLowerCase().trim(),
+          accountPassword: String(r[passIdx] || "").trim(),
+          mustChangePassword: String(r[mustChangeIdx] || "").toUpperCase().trim(),
+        })).filter((e) => e.username || e.employeeCode);
+      } catch {
+        return [];
+      }
+    };
+
+    const action = rawPayload?.action;
+
+    // Authoritative Live Authentication
+    if (action === "AUTH_LOGIN" || action === "AUTHENTICATE") {
+      const target = String(rawPayload.username || rawPayload.employeeCode || rawPayload.user || "").toLowerCase().trim();
+      const inputPass = String(rawPayload.password || "").trim();
+
+      if (!target || !inputPass) {
+        return jsonResponse({
+          success: false,
+          status: 200,
+          appsScriptStatus: "ERROR",
+          action: "AUTH_LOGIN",
+          result: {
+            success: false,
+            valid: false,
+            code: "INVALID_CREDENTIALS",
+            message: "Username and password are required.",
+          },
+        });
+      }
+
+      const directory = await fetchLiveDirectory();
+      const employee = directory.find(
+        (e) => e.username.toLowerCase() === target || e.employeeCode.toLowerCase() === target
+      );
+
+      if (!employee) {
+        return jsonResponse({
+          success: false,
+          status: 200,
+          appsScriptStatus: "ERROR",
+          action: "AUTH_LOGIN",
+          result: {
+            success: false,
+            valid: false,
+            code: "USER_NOT_FOUND",
+            message: `Account not found for "${target}".`,
+          },
+        });
+      }
+
+      if (employee.status !== "active") {
+        return jsonResponse({
+          success: false,
+          status: 200,
+          appsScriptStatus: "ERROR",
+          action: "AUTH_LOGIN",
+          result: {
+            success: false,
+            valid: false,
+            code: "ACCOUNT_INACTIVE",
+            message: "Account is inactive. Please contact your Team Lead or HR.",
+          },
+        });
+      }
+
+      const rawPass = String(employee.accountPassword || "").trim();
+      const rawMustChange = String(employee.mustChangePassword || "").toUpperCase().trim();
+      const hasPersonalPassword = rawPass !== "" && rawPass.toLowerCase() !== "password123!";
+      const expectedPassword = hasPersonalPassword ? rawPass : "Password123!";
+      const mustChange = hasPersonalPassword ? (rawMustChange === "TRUE" || rawMustChange === "YES") : true;
+
+      if (inputPass !== expectedPassword) {
+        return jsonResponse({
+          success: false,
+          status: 200,
+          appsScriptStatus: "ERROR",
+          action: "AUTH_LOGIN",
+          result: {
+            success: false,
+            valid: false,
+            code: "INVALID_CREDENTIALS",
+            message: "Incorrect password.",
+          },
+        });
+      }
+
+      return jsonResponse({
+        success: true,
+        status: 200,
+        appsScriptStatus: "SUCCESS",
+        action: "AUTH_LOGIN",
+        result: {
+          success: true,
+          valid: true,
+          mustChangePassword: mustChange,
+          user: {
+            id: employee.employeeCode || `usr-${employee.username}`,
+            employeeCode: employee.employeeCode,
+            username: employee.username,
+            name: employee.name || employee.username,
+            email: employee.email || "",
+            role: employee.role || "agent",
+            designation: employee.designation || "Agent",
+            status: "active",
+            mustChangePassword: mustChange,
+          },
+          message: mustChange
+            ? "Default password recognized. First-time password creation required."
+            : "Authentication successful.",
+        },
+      });
+    }
+
+    // Authoritative Live Password Change / Admin Reset
+    if (action === "UPDATE_PASSWORD" || action === "ADMIN_RESET_PASSWORD") {
+      const isReset = action === "ADMIN_RESET_PASSWORD" || rawPayload.mustChangePassword === true;
+      const targetIdentifier = (rawPayload.username || rawPayload.employeeCode || rawPayload.userId || "").toLowerCase().trim();
+      const newPass = rawPayload.newPassword || rawPayload.password || rawPayload.temporaryPassword || "Password123!";
+
+      const directory = await fetchLiveDirectory();
+      const matchedEmp = directory.find(
+        (e) => e.username.toLowerCase() === targetIdentifier || e.employeeCode.toLowerCase() === targetIdentifier
+      );
+      const canonicalUsername = matchedEmp?.username || targetIdentifier;
+      const canonicalCode = matchedEmp?.employeeCode || rawPayload.employeeCode || "";
+
+      // Idempotent row check: does row already match new credentials?
+      if (matchedEmp) {
+        const alreadyMatches =
+          matchedEmp.accountPassword === newPass &&
+          (isReset ? (matchedEmp.mustChangePassword === "TRUE" || matchedEmp.mustChangePassword === "YES") : (matchedEmp.mustChangePassword === "FALSE" || matchedEmp.mustChangePassword === "NO"));
+
+        if (alreadyMatches) {
+          return jsonResponse({
+            success: true,
+            status: 200,
+            appsScriptStatus: "SUCCESS",
+            action: action,
+            result: {
+              status: "SUCCESS",
+              success: true,
+              verified: true,
+              action: action,
+              username: canonicalUsername,
+              mustChangePassword: isReset,
+              message: `Password and mustChangePassword verified in Employee_Directory for @${canonicalUsername}.`,
+            },
+          });
+        }
+      }
+
+      const forwardPayload = {
+        ...rawPayload,
+        action: "UPDATE_PASSWORD",
+        username: canonicalUsername,
+        employeeCode: canonicalCode,
+        newPassword: newPass,
+        password: newPass,
+        mustChangePassword: isReset,
+        secret: liveAppsScriptSecret,
+      };
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        let writeSuccess = false;
+        try {
+          const googleResponse = await fetch(webhookUrl.trim(), {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shared-Secret": liveAppsScriptSecret,
+            },
+            body: JSON.stringify(forwardPayload),
+            redirect: "follow",
+          });
+          const responseText = await googleResponse.text();
+          let googleResult;
+          try {
+            googleResult = JSON.parse(responseText);
+          } catch {
+            googleResult = { response: responseText };
+          }
+          writeSuccess = googleResponse.ok && (googleResult?.status === "SUCCESS" || googleResult?.verified === true);
+        } catch {}
+
+        // Verify row in Employee_Directory
+        const refreshedDir = await fetchLiveDirectory();
+        const refreshedEmp = refreshedDir.find((e) => e.username.toLowerCase() === canonicalUsername.toLowerCase());
+        const isRowVerified =
+          refreshedEmp &&
+          refreshedEmp.accountPassword === newPass &&
+          (isReset ? (refreshedEmp.mustChangePassword === "TRUE" || refreshedEmp.mustChangePassword === "YES") : (refreshedEmp.mustChangePassword === "FALSE" || refreshedEmp.mustChangePassword === "NO"));
+
+        if (isRowVerified || writeSuccess) {
+          return jsonResponse({
+            success: true,
+            status: 200,
+            appsScriptStatus: "SUCCESS",
+            action: action,
+            result: {
+              status: "SUCCESS",
+              success: true,
+              verified: true,
+              action: action,
+              username: canonicalUsername,
+              mustChangePassword: isReset,
+              message: `Password updated and verified in Employee_Directory for @${canonicalUsername}.`,
+            },
+          });
+        }
+
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, 1200));
+        }
+      }
+
+      // Check once more after brief delay
+      await new Promise((r) => setTimeout(r, 1500));
+      const finalDir = await fetchLiveDirectory();
+      const finalEmp = finalDir.find((e) => e.username.toLowerCase() === canonicalUsername.toLowerCase());
+      const isFinallyVerified =
+        finalEmp &&
+        finalEmp.accountPassword === newPass &&
+        (isReset ? (finalEmp.mustChangePassword === "TRUE" || finalEmp.mustChangePassword === "YES") : (finalEmp.mustChangePassword === "FALSE" || finalEmp.mustChangePassword === "NO"));
+
+      if (isFinallyVerified) {
+        return jsonResponse({
+          success: true,
+          status: 200,
+          appsScriptStatus: "SUCCESS",
+          action: action,
+          result: {
+            status: "SUCCESS",
+            success: true,
+            verified: true,
+            action: action,
+            username: canonicalUsername,
+            mustChangePassword: isReset,
+            message: `Password updated and verified in Employee_Directory for @${canonicalUsername}.`,
+          },
+        });
+      }
+
+      return jsonResponse({
+        success: false,
+        status: 200,
+        appsScriptStatus: "ERROR",
+        action: action,
+        error: "Server busy processing password update, please retry.",
+        result: {
+          status: "ERROR",
+          code: "BUSY",
+          message: "Server busy processing password update, please retry.",
+        },
+      });
+    }
+
     const payload =
       typeof rawPayload === "object" && rawPayload !== null
         ? { ...rawPayload, secret: liveAppsScriptSecret }
         : { payload: rawPayload, secret: liveAppsScriptSecret };
 
-    const maxAttempts = (payload.action === 'UPDATE_PASSWORD' || payload.action === 'ADMIN_RESET_PASSWORD' || payload.action === 'AUTH_LOGIN') ? 3 : 1;
+    try {
+      const googleResponse = await fetch(webhookUrl.trim(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shared-Secret": liveAppsScriptSecret,
+        },
+        body: JSON.stringify(payload),
+        redirect: "follow",
+      });
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const responseText = await googleResponse.text();
+      let googleResult;
       try {
-        const googleResponse = await fetch(webhookUrl.trim(), {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Shared-Secret": liveAppsScriptSecret,
-          },
-          body: JSON.stringify(payload),
-          redirect: "follow",
-        });
-
-        const responseText = await googleResponse.text();
-        let googleResult;
-        try {
-          googleResult = JSON.parse(responseText);
-        } catch {
-          googleResult = { response: responseText };
-        }
-
-        const sanitizedResult = sanitizeOutput(googleResult);
-
-        // If Apps script reports BUSY, wait and retry
-        if ((sanitizedResult?.code === 'BUSY' || sanitizedResult?.message?.includes('Server busy') || googleResponse.status === 503) && attempt < maxAttempts) {
-          await new Promise((r) => setTimeout(r, attempt * 1500));
-          continue;
-        }
-
-        const isSuccess =
-          googleResponse.ok &&
-          (sanitizedResult?.status === "SUCCESS" ||
-            sanitizedResult?.success === true ||
-            sanitizedResult?.action === "HEARTBEAT_UPDATE" ||
-            sanitizedResult?.action === payload?.action);
-
-        return jsonResponse(
-          {
-            success: isSuccess,
-            status: googleResponse.status,
-            appsScriptStatus:
-              sanitizedResult?.status ||
-              (sanitizedResult?.success ? "SUCCESS" : "UNKNOWN"),
-            action: sanitizedResult?.action || payload?.action,
-            result: sanitizedResult,
-            error: !isSuccess
-              ? sanitizedResult?.message ||
-                sanitizedResult?.error ||
-                (googleResponse.ok
-                  ? "Apps Script returned non-success response"
-                  : `HTTP Error ${googleResponse.status}`)
-              : undefined,
-          },
-          googleResponse.ok ? 200 : googleResponse.status
-        );
-      } catch (err) {
-        if (attempt < maxAttempts) {
-          await new Promise((r) => setTimeout(r, attempt * 1500));
-          continue;
-        }
-        return jsonResponse(
-          {
-            success: false,
-            error: err?.message || String(err),
-          },
-          500
-        );
+        googleResult = JSON.parse(responseText);
+      } catch {
+        googleResult = { response: responseText };
       }
+
+      const sanitizedResult = sanitizeOutput(googleResult);
+
+      const isSuccess =
+        googleResponse.ok &&
+        (sanitizedResult?.status === "SUCCESS" ||
+          sanitizedResult?.success === true ||
+          sanitizedResult?.action === "HEARTBEAT_UPDATE" ||
+          sanitizedResult?.action === payload?.action);
+
+      return jsonResponse(
+        {
+          success: isSuccess,
+          status: googleResponse.status,
+          appsScriptStatus:
+            sanitizedResult?.status ||
+            (sanitizedResult?.success ? "SUCCESS" : "UNKNOWN"),
+          action: sanitizedResult?.action || payload?.action,
+          result: sanitizedResult,
+          error: !isSuccess
+            ? sanitizedResult?.message ||
+              sanitizedResult?.error ||
+              (googleResponse.ok
+                ? "Apps Script returned non-success response"
+                : `HTTP Error ${googleResponse.status}`)
+            : undefined,
+        },
+        googleResponse.ok ? 200 : googleResponse.status
+      );
+    } catch (err) {
+      return jsonResponse(
+        {
+          success: false,
+          error: err?.message || String(err),
+        },
+        500
+      );
     }
   } catch (error) {
     return jsonResponse(

@@ -675,6 +675,7 @@ app.post('/api/sync-sheets', async (req, res) => {
       LIVE_APPS_SCRIPT_URL: process.env.LIVE_APPS_SCRIPT_URL || req.body?.webhookUrl || bridgeState.config.webhookUrl,
       LIVE_APPS_SCRIPT_SECRET: process.env.LIVE_APPS_SCRIPT_SECRET || '',
       JWT_SECRET: process.env.JWT_SECRET || '',
+      SPREADSHEET_ID: bridgeState.config.spreadsheetId || '1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA',
     };
     return await handleExpressSyncSheetsPost(req, res, customEnv);
   } catch (err: any) {
@@ -689,6 +690,7 @@ app.get('/api/sync-sheets', async (req, res) => {
       LIVE_APPS_SCRIPT_URL: process.env.LIVE_APPS_SCRIPT_URL || (req.query?.url as string) || bridgeState.config.webhookUrl,
       LIVE_APPS_SCRIPT_SECRET: process.env.LIVE_APPS_SCRIPT_SECRET || '',
       JWT_SECRET: process.env.JWT_SECRET || '',
+      SPREADSHEET_ID: bridgeState.config.spreadsheetId || '1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA',
     };
     return await handleExpressSyncSheetsGet(req, res, customEnv);
   } catch (err: any) {

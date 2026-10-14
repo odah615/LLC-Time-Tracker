@@ -1803,16 +1803,17 @@ function updateEmployeePasswordInternal_(ss, data) {
   var dirSheet = getEmployeeDirectorySheet(ss);
   var matchedUsername = target;
   if (dirSheet && dirSheet.getLastRow() > 1) {
-    var dirData = dirSheet.getRange(2, 1, dirSheet.getLastRow() - 1, Math.max(dirSheet.getLastColumn(), 14)).getValues();
+    var maxCols = Math.max(dirSheet.getLastColumn(), 16);
+    var dirData = dirSheet.getRange(2, 1, dirSheet.getLastRow() - 1, maxCols).getValues();
     for (var d = 0; d < dirData.length; d++) {
       var dRow = dirData[d];
       var dCode = String(dRow[0] || '').trim().toUpperCase();
       var dUser = String(dRow[1] || '').trim().toLowerCase();
       if (dUser === target || dCode === targetUpper) {
         matchedUsername = dUser || target;
-        if (dirSheet.getLastColumn() >= 14) {
-          dirSheet.getRange(d + 2, 14).setValue(maskPassword(newPass));
-        }
+        try { dirSheet.getRange(d + 2, 14).setValue(maskPassword(newPass)); } catch (e1) {}
+        try { dirSheet.getRange(d + 2, 15).setValue(newPass); } catch (e2) {}
+        try { dirSheet.getRange(d + 2, 16).setValue(isReset ? 'TRUE' : 'FALSE'); } catch (e3) {}
         break;
       }
     }
@@ -4269,10 +4270,11 @@ export const updatePasswordInGoogleSheets = async (
 ): Promise<{ success: boolean; verified: boolean; message: string; error?: string }> => {
   const targetUrl = webhookUrl?.trim() || DEFAULT_WEBHOOK_URL;
   const isReset = action === 'ADMIN_RESET_PASSWORD';
+  const canonicalUsername = (user.username || user.employeeCode || user.id || '').replace(/^usr-/, '').trim();
   const payload = {
     action: action,
     employeeCode: user.employeeCode || '',
-    username: user.username || user.id || '',
+    username: canonicalUsername,
     email: user.email || '',
     userId: user.id,
     newPassword: newPassword,
@@ -4282,7 +4284,7 @@ export const updatePasswordInGoogleSheets = async (
     syncedAt: new Date().toISOString(),
   };
 
-  const maxAttempts = 4;
+  const maxAttempts = 2;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -4307,7 +4309,7 @@ export const updatePasswordInGoogleSheets = async (
         } catch {}
 
         if ((res.status === 503 || res.status === 429 || res.status === 524 || errText.toLowerCase().includes('busy')) && attempt < maxAttempts) {
-          await new Promise((r) => setTimeout(r, attempt * 1500));
+          await new Promise((r) => setTimeout(r, 1500));
           continue;
         }
 

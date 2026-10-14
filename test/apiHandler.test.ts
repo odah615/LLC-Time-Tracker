@@ -459,6 +459,87 @@ async function runTests() {
     }
   }
 
+  // Test 17: parseCsvRows handles quoted strings and commas correctly
+  {
+    const { parseCsvRows } = await import('../src/server/apiHandler.js');
+    const sampleCsv = '"Col1","Col, with comma","Col ""with quotes"""\n"Val1","Val2, part b","Val3"';
+    const parsed = parseCsvRows(sampleCsv);
+    assert(parsed.length === 2, 'parseCsvRows parses 2 rows');
+    assert(parsed[0][1] === 'Col, with comma', 'parseCsvRows preserves commas inside quotes');
+    assert(parsed[0][2] === 'Col "with quotes"', 'parseCsvRows unescapes doubled quotes');
+  }
+
+  // Test 18: authenticateEmployeeAuthoritatively accepts Password123! for new accounts without personal passwords
+  {
+    const originalFetch = globalThis.fetch;
+    try {
+      const { authenticateEmployeeAuthoritatively } = await import('../src/server/apiHandler.js');
+      const mockCsv = `"Employee Code","Username","Full Name","Work Email","System Role","Designation","Date Hired","Monthly Rate (₱)","Hourly Rate (₱)","Assigned Supervisor","Screenshot Monitored","Activity Monitored","Status","Account Password (Masked)","AccountPassword","mustChangePassword"
+"LLC-0004","agabr","Alexa Gabrielle Bardaje","bardajealexagabrielle@gmail.com","agent","Agent","2020-01-01","0","0","Pia (Trainer)","NO","NO","active","Pass********","",""`;
+
+      globalThis.fetch = (async () => {
+        return new Response(mockCsv, { status: 200 });
+      }) as any;
+
+      const res = await authenticateEmployeeAuthoritatively('agabr', 'Password123!');
+      assert(res.success === true, 'Accepts Password123! for unset password account');
+      assert(res.valid === true, 'Credentials are valid');
+      assert(res.mustChangePassword === true, 'mustChangePassword is true for initial default password');
+      assert(res.user?.username === 'agabr', 'User resolved to canonical username');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  // Test 19: authenticateEmployeeAuthoritatively accepts personal password and rejects Password123! when personal password is set
+  {
+    const originalFetch = globalThis.fetch;
+    try {
+      const { authenticateEmployeeAuthoritatively } = await import('../src/server/apiHandler.js');
+      const mockCsv = `"Employee Code","Username","Full Name","Work Email","System Role","Designation","Date Hired","Monthly Rate (₱)","Hourly Rate (₱)","Assigned Supervisor","Screenshot Monitored","Activity Monitored","Status","Account Password (Masked)","AccountPassword","mustChangePassword"
+"LLC-0028","testagent","Test Agent","testagent@llc.com","agent","Agent","2020-01-01","0","0","Pia (Trainer)","NO","NO","active","Pass********","MySecretPass2026!","FALSE"`;
+
+      globalThis.fetch = (async () => {
+        return new Response(mockCsv, { status: 200 });
+      }) as any;
+
+      const validRes = await authenticateEmployeeAuthoritatively('testagent', 'MySecretPass2026!');
+      assert(validRes.success === true, 'Accepts personal password');
+      assert(validRes.valid === true, 'Personal credentials valid');
+      assert(validRes.mustChangePassword === false, 'mustChangePassword is false for personal password');
+
+      const invalidRes = await authenticateEmployeeAuthoritatively('testagent', 'Password123!');
+      assert(invalidRes.success === false, 'Rejects old Password123! once personal password is set');
+      assert(invalidRes.code === 'INVALID_CREDENTIALS', 'Returns INVALID_CREDENTIALS code');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  // Test 20: authenticateEmployeeAuthoritatively rejects unknown usernames and inactive accounts
+  {
+    const originalFetch = globalThis.fetch;
+    try {
+      const { authenticateEmployeeAuthoritatively } = await import('../src/server/apiHandler.js');
+      const mockCsv = `"Employee Code","Username","Full Name","Work Email","System Role","Designation","Date Hired","Monthly Rate (₱)","Hourly Rate (₱)","Assigned Supervisor","Screenshot Monitored","Activity Monitored","Status","Account Password (Masked)","AccountPassword","mustChangePassword"
+"LLC-0099","inactiveuser","Inactive Person","inactive@llc.com","agent","Agent","2020-01-01","0","0","Pia","NO","NO","inactive","Pass********","Password123!","FALSE"`;
+
+      globalThis.fetch = (async () => {
+        return new Response(mockCsv, { status: 200 });
+      }) as any;
+
+      const notFoundRes = await authenticateEmployeeAuthoritatively('unknown_user_xyz', 'Password123!');
+      assert(notFoundRes.success === false, 'Rejects unknown username');
+      assert(notFoundRes.code === 'USER_NOT_FOUND', 'Returns USER_NOT_FOUND code');
+
+      const inactiveRes = await authenticateEmployeeAuthoritatively('inactiveuser', 'Password123!');
+      assert(inactiveRes.success === false, 'Rejects inactive account');
+      assert(inactiveRes.code === 'ACCOUNT_INACTIVE', 'Returns ACCOUNT_INACTIVE code');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
   console.log(`\n--- TEST SUMMARY: ${passed} PASSED, ${failed} FAILED ---`);
   if (failed > 0) {
     process.exit(1);
@@ -469,3 +550,4 @@ runTests().catch((err) => {
   console.error('Unhandled test runner error:', err);
   process.exit(1);
 });
+
