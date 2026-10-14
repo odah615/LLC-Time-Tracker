@@ -1765,6 +1765,70 @@ function authenticateEmployee_(ss, usernameOrCode, inputPassword) {
   };
 }
 
+function updateEmployeePasswordInternal_(ss, data) {
+  var identifier = data.username || data.employeeCode || data.userId || data.email || data.user;
+  var newPass = data.newPassword || data.password || data.temporaryPassword;
+  if (!identifier || !newPass) {
+    return {
+      status: 'ERROR',
+      success: false,
+      verified: false,
+      error: 'Missing canonical username or new password.'
+    };
+  }
+
+  var target = String(identifier).trim().toLowerCase();
+  var targetUpper = target.toUpperCase();
+  var isReset = data.action === 'ADMIN_RESET_PASSWORD' || data.mustChangePassword === true;
+  var mustChangeStr = isReset ? 'YES' : 'NO';
+  var mustChangeBool = isReset;
+  var passHash = hashEmployeePassword_(newPass);
+
+  var authSheet = getEmployeeAuthSheet_(ss);
+  if (authSheet && authSheet.getLastRow() > 1) {
+    var authData = authSheet.getRange(2, 1, authSheet.getLastRow() - 1, Math.max(authSheet.getLastColumn(), 8)).getValues();
+    for (var a = 0; a < authData.length; a++) {
+      var aRow = authData[a];
+      var aCode = String(aRow[0] || '').trim().toUpperCase();
+      var aUser = String(aRow[1] || '').trim().toLowerCase();
+      if (aUser === target || aCode === targetUpper) {
+        authSheet.getRange(a + 2, 4).setValue(passHash);
+        authSheet.getRange(a + 2, 5).setValue(mustChangeStr);
+        authSheet.getRange(a + 2, 8).setValue(new Date().toISOString());
+        break;
+      }
+    }
+  }
+
+  var dirSheet = getEmployeeDirectorySheet(ss);
+  var matchedUsername = target;
+  if (dirSheet && dirSheet.getLastRow() > 1) {
+    var dirData = dirSheet.getRange(2, 1, dirSheet.getLastRow() - 1, Math.max(dirSheet.getLastColumn(), 14)).getValues();
+    for (var d = 0; d < dirData.length; d++) {
+      var dRow = dirData[d];
+      var dCode = String(dRow[0] || '').trim().toUpperCase();
+      var dUser = String(dRow[1] || '').trim().toLowerCase();
+      if (dUser === target || dCode === targetUpper) {
+        matchedUsername = dUser || target;
+        if (dirSheet.getLastColumn() >= 14) {
+          dirSheet.getRange(d + 2, 14).setValue(maskPassword(newPass));
+        }
+        break;
+      }
+    }
+  }
+
+  return {
+    status: 'SUCCESS',
+    success: true,
+    verified: true,
+    action: data.action || 'UPDATE_PASSWORD',
+    username: matchedUsername,
+    mustChangePassword: mustChangeBool,
+    message: 'Password updated and verified for @' + matchedUsername + ' in Employee_Directory successfully!'
+  };
+}
+
 function resolveStaffFullName(code, username, name, id) {
   var n = (name || '').trim();
   if (n && n !== 'Unknown' && n !== 'Employee' && n !== 'Staff' && n !== 'Agent') {
@@ -2330,6 +2394,15 @@ function doPost(e) {
       var authResult = authenticateEmployee_(ss, userIdentifier, pass);
       SpreadsheetApp.flush();
       return ContentService.createTextOutput(JSON.stringify(authResult)).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ==========================================
+    // ACTION: UPDATE_PASSWORD / ADMIN_RESET_PASSWORD
+    // ==========================================
+    if (data.action === 'UPDATE_PASSWORD' || data.action === 'ADMIN_RESET_PASSWORD') {
+      var passUpdateResult = updateEmployeePasswordInternal_(ss, data);
+      SpreadsheetApp.flush();
+      return ContentService.createTextOutput(JSON.stringify(passUpdateResult)).setMimeType(ContentService.MimeType.JSON);
     }
 
     if (data.action === 'RESET_ALL') {
@@ -4190,18 +4263,21 @@ export const syncEmployeesToGoogleSheetsWebhook = async (
 export const updatePasswordInGoogleSheets = async (
   user: { id: string; employeeCode?: string; username?: string; email?: string; name?: string },
   newPassword: string,
-  webhookUrl?: string
+  webhookUrl?: string,
+  action: 'UPDATE_PASSWORD' | 'ADMIN_RESET_PASSWORD' = 'UPDATE_PASSWORD'
 ): Promise<{ success: boolean; verified: boolean; message: string; error?: string }> => {
   const targetUrl = webhookUrl?.trim() || DEFAULT_WEBHOOK_URL;
+  const isReset = action === 'ADMIN_RESET_PASSWORD';
   const payload = {
-    action: 'UPDATE_PASSWORD',
+    action: action,
     employeeCode: user.employeeCode || '',
-    username: user.username || '',
+    username: user.username || user.id || '',
     email: user.email || '',
     userId: user.id,
     newPassword: newPassword,
+    temporaryPassword: newPassword,
     password: newPassword,
-    mustChangePassword: false,
+    mustChangePassword: isReset,
     syncedAt: new Date().toISOString(),
   };
 

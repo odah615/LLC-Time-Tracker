@@ -4599,10 +4599,23 @@ setIsIdleAlertActive(false);
   // CRUD User
   const addUser = (userData: Omit<User, 'id'>) => {
     const assignedUsername = userData.username?.trim().toLowerCase() || generateUniqueUsername(userData.name, users);
+
+    // Reject duplicate username
+    const isDuplicateUsername = users.some(
+      (u) => (u.username || '').toLowerCase().trim() === assignedUsername
+    );
+    if (isDuplicateUsername && userData.username) {
+      setSaveToast(`⚠️ Cannot create employee: Username "${assignedUsername}" is already assigned to another employee.`);
+      setTimeout(() => setSaveToast(null), 5000);
+      return;
+    }
+
     const newUser: User = {
       ...userData,
       username: assignedUsername,
-      id: `usr-${Date.now()}`,
+      id: `usr-${assignedUsername}`,
+      password: userData.password || 'Password123!',
+      mustChangePassword: true,
     };
     const updatedUsers = [...users, newUser];
     setUsers(updatedUsers);
@@ -4672,9 +4685,6 @@ setIsIdleAlertActive(false);
 
     localStorage.setItem('trackpulse_users', JSON.stringify(updatedUsers));
 
-    // Strip password fields when creating new employee
-    const { password, accountPassword, passwordHash, ...cleanNewUser } = newUser as any;
-
     const getAuthHeaders = (): Record<string, string> => {
       const token = localStorage.getItem('trackpulse_token') || '';
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -4687,7 +4697,7 @@ setIsIdleAlertActive(false);
     fetch('/api/users', {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(cleanNewUser),
+      body: JSON.stringify(newUser),
     })
       .then(async (res) => {
         if (!res.ok) {
@@ -4871,7 +4881,8 @@ setIsIdleAlertActive(false);
           name: targetUser.name,
         },
         tempPass,
-        activeWebhookUrl
+        activeWebhookUrl,
+        'ADMIN_RESET_PASSWORD'
       );
 
       if (res.success && res.verified) {

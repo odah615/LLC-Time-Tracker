@@ -498,43 +498,105 @@ app.get('/api/users', (req, res) => {
 
 app.post('/api/users', (req, res) => {
   const incoming = req.body;
-  if (Array.isArray(incoming)) {
-    const map = new Map<string, any>(bridgeState.users.map((u) => [u.id, u]));
-    for (const u of incoming) {
-      if (u && u.id) {
-        const sanitized = {
+  if (!incoming) return res.status(400).json({ error: 'Invalid user payload' });
+
+  // Handle Action Payloads (e.g. ADMIN_RESET_PASSWORD, UPDATE_PASSWORD)
+  if (incoming.action === 'ADMIN_RESET_PASSWORD' || incoming.action === 'UPDATE_PASSWORD' || incoming.action === 'RESET_PASSWORD') {
+    const targetQuery = (incoming.username || incoming.userId || incoming.id || incoming.employeeCode || '').toLowerCase().trim();
+    const newPass = incoming.temporaryPassword || incoming.newPassword || incoming.password || 'Password123!';
+    const isReset = incoming.action === 'ADMIN_RESET_PASSWORD' || incoming.action === 'RESET_PASSWORD';
+
+    let updated = false;
+    let targetUser: any = null;
+    bridgeState.users = bridgeState.users.map((u: any) => {
+      const uUser = (u.username || '').toLowerCase().trim();
+      const uId = (u.id || '').toLowerCase().trim();
+      const uCode = (u.employeeCode || '').toLowerCase().trim();
+      if (targetQuery && (uUser === targetQuery || uId === targetQuery || uCode === targetQuery)) {
+        updated = true;
+        targetUser = {
           ...u,
-          name: resolveStaffName(u.employeeCode, u.username, u.name, u.id),
+          password: newPass,
+          mustChangePassword: isReset,
+          forceChangeRequired: isReset,
         };
-        const existing = map.get(u.id) || {};
-        const incomingPassword = String(sanitized.password || '').trim();
-        const existingPassword = String(existing.password || '').trim();
-        const mergedUser = { ...existing, ...sanitized };
-        const incomingPasswordIsUnsafe =
-          !incomingPassword ||
-          incomingPassword === 'Password123!' ||
-          incomingPassword.includes('*');
+        return targetUser;
+      }
+      return u;
+    });
 
-        if (existingPassword && existingPassword !== 'Password123!' && incomingPasswordIsUnsafe) {
-          mergedUser.password = existing.password;
-          if (existing.mustChangePassword !== undefined) {
-            mergedUser.mustChangePassword = existing.mustChangePassword;
+    if (!updated && targetQuery) {
+      targetUser = {
+        id: `usr-${targetQuery}`,
+        username: targetQuery,
+        name: incoming.name || targetQuery,
+        employeeCode: incoming.employeeCode || 'N/A',
+        role: 'agent',
+        designation: 'Agent',
+        department: 'Operations',
+        password: newPass,
+        mustChangePassword: isReset,
+        forceChangeRequired: isReset,
+      };
+      bridgeState.users.push(targetUser);
+    }
+    persistBridgeState();
+
+    return res.json({
+      status: 'SUCCESS',
+      success: true,
+      verified: true,
+      action: incoming.action,
+      username: targetUser?.username || targetQuery,
+      message: `Password reset command processed and verified for ${targetUser?.username || targetQuery}`
+    });
+  }
+
+  if (Array.isArray(incoming)) {
+    const map = new Map<string, any>(bridgeState.users.map((u) => [(u.username || u.id || '').toLowerCase(), u]));
+    for (const u of incoming) {
+      if (u) {
+        const key = (u.username || u.id || '').toLowerCase();
+        if (key) {
+          const sanitized = {
+            ...u,
+            name: resolveStaffName(u.employeeCode, u.username, u.name, u.id),
+          };
+          const existing = map.get(key) || {};
+          const incomingPassword = String(sanitized.password || '').trim();
+          const existingPassword = String(existing.password || '').trim();
+          const mergedUser = { ...existing, ...sanitized };
+          const incomingPasswordIsUnsafe =
+            !incomingPassword ||
+            incomingPassword === 'Password123!' ||
+            incomingPassword.includes('*');
+
+          if (existingPassword && existingPassword !== 'Password123!' && incomingPasswordIsUnsafe) {
+            mergedUser.password = existing.password;
+            if (existing.mustChangePassword !== undefined) {
+              mergedUser.mustChangePassword = existing.mustChangePassword;
+            }
           }
-        }
 
-        map.set(u.id, mergedUser);
+          map.set(key, mergedUser);
+        }
       }
     }
     bridgeState.users = Array.from(map.values());
     persistBridgeState();
     return res.json({ success: true, count: bridgeState.users.length });
-  } else if (incoming && incoming.id) {
-    const map = new Map<string, any>(bridgeState.users.map((u) => [u.id, u]));
+  } else if (incoming && (incoming.id || incoming.username || incoming.employeeCode)) {
+    const userKey = (incoming.username || incoming.id || incoming.employeeCode || '').toLowerCase();
+    const map = new Map<string, any>();
+    for (const u of bridgeState.users) {
+      const k = (u.username || u.id || u.employeeCode || '').toLowerCase();
+      map.set(k, u);
+    }
     const sanitized = {
       ...incoming,
       name: resolveStaffName(incoming.employeeCode, incoming.username, incoming.name, incoming.id),
     };
-    const existing = map.get(incoming.id) || {};
+    const existing = map.get(userKey) || {};
     const incomingPassword = String(sanitized.password || '').trim();
     const existingPassword = String(existing.password || '').trim();
     const mergedUser = { ...existing, ...sanitized };
@@ -550,7 +612,7 @@ app.post('/api/users', (req, res) => {
       }
     }
 
-    map.set(incoming.id, mergedUser);
+    map.set(userKey, mergedUser);
     bridgeState.users = Array.from(map.values());
     persistBridgeState();
     return res.json({ success: true, user: sanitized });

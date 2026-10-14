@@ -213,7 +213,6 @@ async function runTests() {
   {
     const originalFetch = globalThis.fetch;
     try {
-      // Import updatePasswordInGoogleSheets dynamically
       const { updatePasswordInGoogleSheets } = await import('../src/lib/googleSheetsSync');
 
       let capturedPayload: any = null;
@@ -244,12 +243,127 @@ async function runTests() {
         name: 'Test Admin',
       };
 
-      const res = await updatePasswordInGoogleSheets(user, 'NewAdminPass123!');
+      const res = await updatePasswordInGoogleSheets(user, 'NewAdminPass123!', undefined, 'ADMIN_RESET_PASSWORD');
       assert(res.success === true, 'Password reset succeeded');
       assert(res.verified === true, 'Password reset was verified in Employee_Directory');
-      assert(capturedPayload?.action === 'UPDATE_PASSWORD', 'Action is UPDATE_PASSWORD');
+      assert(capturedPayload?.action === 'ADMIN_RESET_PASSWORD', 'Action is ADMIN_RESET_PASSWORD');
       assert(capturedPayload?.username === 'test.admin', 'Username mapped correctly');
-      assert(capturedPayload?.newPassword === 'NewAdminPass123!', 'New password passed correctly');
+      assert(capturedPayload?.mustChangePassword === true, 'mustChangePassword set to true on Admin reset');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  // Test 11: Username resolution and initial employee creation default password & mustChangePassword flag
+  {
+    const { resolveCanonicalEmployee } = await import('../src/lib/userUtils');
+    const resolved = resolveCanonicalEmployee({ username: 'agabr' });
+    assert(resolved !== null, 'Resolves canonical employee by username');
+    assert(resolved?.username === 'agabr', 'Canonical username matches agabr');
+    assert(resolved?.code === 'LLC-0004', 'Canonical code matches LLC-0004');
+  }
+
+  // Test 12: Password change sets mustChangePassword to FALSE and preserves username
+  {
+    const originalFetch = globalThis.fetch;
+    try {
+      const { updatePasswordInGoogleSheets } = await import('../src/lib/googleSheetsSync');
+      let capturedPayload: any = null;
+
+      globalThis.fetch = (async (url: any, init?: any) => {
+        if (typeof url === 'string' && url.includes('/api/sync-sheets')) {
+          const bodyObj = JSON.parse(init.body);
+          capturedPayload = bodyObj.payload;
+          return new Response(
+            JSON.stringify({
+              success: true,
+              result: {
+                status: 'SUCCESS',
+                verified: true,
+                username: 'agabr',
+                mustChangePassword: false,
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        return new Response(JSON.stringify({ error: 'Failed' }), { status: 500 });
+      }) as any;
+
+      const user = { id: 'usr-agabr', employeeCode: 'LLC-0004', username: 'agabr', name: 'Alexa Gabrielle Bardaje' };
+      const res = await updatePasswordInGoogleSheets(user, 'MyNewUniquePass2026!');
+      assert(res.success === true && res.verified === true, 'Password change verified');
+      assert(capturedPayload?.username === 'agabr', 'Username agabr preserved in password payload');
+      assert(capturedPayload?.mustChangePassword === false, 'mustChangePassword set to false on password update');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  // Test 13: Heartbeat payload preserves username across tracking sessions
+  {
+    const originalFetch = globalThis.fetch;
+    try {
+      const { syncAgentHeartbeatToSheets } = await import('../src/lib/googleSheetsSync');
+      let capturedPresence: any = null;
+
+      globalThis.fetch = (async (url: any, init?: any) => {
+        if (typeof url === 'string' && url.includes('/api/sync-sheets')) {
+          const bodyObj = JSON.parse(init.body);
+          capturedPresence = bodyObj.payload?.presence;
+          return new Response(
+            JSON.stringify({
+              success: true,
+              result: { status: 'SUCCESS', action: 'HEARTBEAT_UPDATE' },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        return new Response(JSON.stringify({ error: 'Failed' }), { status: 500 });
+      }) as any;
+
+      const heartbeatData = {
+        userId: 'usr-agabr',
+        username: 'agabr',
+        employeeCode: 'LLC-0004',
+        userName: 'Alexa Gabrielle Bardaje',
+        isTracking: true,
+        currentTask: 'Task Switching Test',
+        elapsedSeconds: 120,
+      };
+
+      const hbRes = await syncAgentHeartbeatToSheets('https://script.google.com/test', heartbeatData);
+      assert(hbRes.success === true, 'Heartbeat sync succeeded');
+      assert(capturedPresence?.username === 'agabr', 'Heartbeat presence payload includes exact username');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  // Test 14: Failed spreadsheet write is not reported as success
+  {
+    const originalFetch = globalThis.fetch;
+    try {
+      const { updatePasswordInGoogleSheets } = await import('../src/lib/googleSheetsSync');
+
+      globalThis.fetch = (async () => {
+        return new Response(
+          JSON.stringify({
+            success: false,
+            result: {
+              status: 'ERROR',
+              verified: false,
+              message: 'Spreadsheet cell write lock failure',
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }) as any;
+
+      const user = { id: 'usr-agabr', username: 'agabr', name: 'Alexa' };
+      const res = await updatePasswordInGoogleSheets(user, 'Pass123!');
+      assert(res.success === false, 'Rejects failed write properly without reporting fake success');
+      assert(res.verified === false, 'Verification flag is false on failed write');
     } finally {
       globalThis.fetch = originalFetch;
     }

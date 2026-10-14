@@ -39,7 +39,7 @@ export interface User {
   teamId?: string;
   joinDate: string;
   employeeCode: string;
-  username?: string; // Formatted unique username: e.g. first initial + first 4 letters of last name (or 5+ if duplicate)
+  username: string; // Formatted unique username: e.g. first initial + first 4 letters of last name (or 5+ if duplicate)
   department: string;
   status?: 'active' | 'inactive';
   teamLeaderId?: string; // ID of assigned Team Leader or Trainer
@@ -82,6 +82,7 @@ export interface TimeLog {
   loginTime?: string; // Application login timestamp (separate from task startTime)
   userId: string;
   employeeCode?: string;
+  username?: string;
   userName: string;
   userAvatar: string;
   designation: Designation;
@@ -246,6 +247,7 @@ export interface UserPresence {
   role: UserRole;
   designation: Designation;
   employeeCode: string;
+  username?: string;
   department: string;
   teamLeaderId?: string;
   isOnline: boolean;

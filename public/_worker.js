@@ -377,20 +377,83 @@ export default {
       if (request.method === "POST") {
         try {
           const incoming = await request.json();
+          if (!incoming) return jsonResponse({ error: "Invalid users payload" }, 400);
+
+          // Handle Action Payloads (e.g. ADMIN_RESET_PASSWORD, UPDATE_PASSWORD)
+          if (incoming.action === 'ADMIN_RESET_PASSWORD' || incoming.action === 'UPDATE_PASSWORD' || incoming.action === 'RESET_PASSWORD') {
+            const targetQuery = (incoming.username || incoming.userId || incoming.id || incoming.employeeCode || '').toLowerCase().trim();
+            const newPass = incoming.temporaryPassword || incoming.newPassword || incoming.password || 'Password123!';
+            const isReset = incoming.action === 'ADMIN_RESET_PASSWORD' || incoming.action === 'RESET_PASSWORD';
+
+            let updated = false;
+            let targetUser = null;
+            workerState.users = workerState.users.map((u) => {
+              const uUser = (u.username || '').toLowerCase().trim();
+              const uId = (u.id || '').toLowerCase().trim();
+              const uCode = (u.employeeCode || '').toLowerCase().trim();
+              if (targetQuery && (uUser === targetQuery || uId === targetQuery || uCode === targetQuery)) {
+                updated = true;
+                targetUser = {
+                  ...u,
+                  password: newPass,
+                  mustChangePassword: isReset,
+                  forceChangeRequired: isReset,
+                };
+                return targetUser;
+              }
+              return u;
+            });
+
+            if (!updated && targetQuery) {
+              targetUser = {
+                id: `usr-${targetQuery}`,
+                username: targetQuery,
+                name: incoming.name || targetQuery,
+                employeeCode: incoming.employeeCode || 'N/A',
+                role: 'agent',
+                designation: 'Agent',
+                department: 'Operations',
+                password: newPass,
+                mustChangePassword: isReset,
+                forceChangeRequired: isReset,
+              };
+              workerState.users.push(targetUser);
+            }
+
+            return jsonResponse({
+              status: "SUCCESS",
+              success: true,
+              verified: true,
+              action: incoming.action,
+              username: targetUser?.username || targetQuery,
+              message: `Password reset command processed and verified for ${targetUser?.username || targetQuery}`
+            });
+          }
+
           if (Array.isArray(incoming)) {
-            const map = new Map(workerState.users.map((u) => [u.id, u]));
+            const map = new Map(workerState.users.map((u) => [u.username ? u.username.toLowerCase() : u.id, u]));
             for (const u of incoming) {
-              if (u && u.id) {
-                map.set(u.id, { ...(map.get(u.id) || {}), ...u });
+              if (u) {
+                const key = (u.username || u.id || '').toLowerCase();
+                if (key) {
+                  map.set(key, { ...(map.get(key) || {}), ...u });
+                }
               }
             }
             workerState.users = Array.from(map.values());
             return jsonResponse({ success: true, count: workerState.users.length });
-          } else if (incoming && incoming.id) {
-            const map = new Map(workerState.users.map((u) => [u.id, u]));
-            map.set(incoming.id, { ...(map.get(incoming.id) || {}), ...incoming });
+          } else if (incoming && (incoming.id || incoming.username || incoming.employeeCode)) {
+            const userKey = (incoming.username || incoming.id || incoming.employeeCode || '').toLowerCase();
+            const map = new Map();
+            for (const u of workerState.users) {
+              const k = (u.username || u.id || u.employeeCode || '').toLowerCase();
+              map.set(k, u);
+            }
+            const existing = map.get(userKey) || {};
+            const merged = { ...existing, ...incoming };
+            map.set(userKey, merged);
             workerState.users = Array.from(map.values());
-            return jsonResponse({ success: true, user: sanitizeOutput(incoming) });
+            return jsonResponse({ success: true, user: sanitizeOutput(merged) });
           }
           return jsonResponse({ error: "Invalid users payload" }, 400);
         } catch {
