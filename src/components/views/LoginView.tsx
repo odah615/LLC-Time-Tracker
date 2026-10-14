@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { User } from '../../types';
-import { maskPassword } from '../../lib/googleSheetsSync';
+import { maskPassword, updatePasswordInGoogleSheets } from '../../lib/googleSheetsSync';
 import { downloadWordDocInstructions } from '../../lib/docGenerator';
 import { downloadDesktopSoftwarePackage } from '../../lib/desktopDownloader';
 import { resolveCanonicalEmployee } from '../../lib/userUtils';
@@ -251,14 +251,19 @@ export const LoginView: React.FC = () => {
         (userPass !== '' && inputPass === userPass) ||
         inputPass === 'AdminpassW0rd123!' ||
         inputPass === 'AdminpassWord123!' ||
-        inputPass === 'Password123!' ||
+        (userPass === 'Password123!' && inputPass === 'Password123!') ||
         inputPass === 'SUPERADMIN2026';
     } else {
       const userPass = (foundUser.password || '').trim();
-      isValidPassword =
-        (userPass !== '' && inputPass === userPass) ||
-        inputPass === 'Password123!' ||
-        inputPass === 'SUPERADMIN2026';
+      if (userPass && userPass !== 'Password123!') {
+        // User has a custom password set: only accept input matching userPass
+        isValidPassword = inputPass === userPass;
+      } else {
+        // User is still on default password: accept userPass or 'Password123!'
+        isValidPassword =
+          (userPass !== '' && inputPass === userPass) ||
+          inputPass === 'Password123!';
+      }
     }
 
     if (!isValidPassword) {
@@ -288,7 +293,7 @@ export const LoginView: React.FC = () => {
     login(foundUser, resolvedMode);
   };
 
-  const handleSaveUniquePassword = (e: React.FormEvent) => {
+  const handleSaveUniquePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setFirstTimeError('');
 
@@ -314,34 +319,53 @@ export const LoginView: React.FC = () => {
 
     setIsSavingPassword(true);
 
-    // Update user record with new unique password & clear change requirement
-    updateUser(pendingPasswordChangeUser.id, {
-      password: trimmed,
-      mustChangePassword: false,
-    });
+    try {
+      // 1. Dispatch UPDATE_PASSWORD to Live Google Apps Script endpoint & require status === "SUCCESS" AND verified === true
+      const updateResult = await updatePasswordInGoogleSheets(
+        pendingPasswordChangeUser,
+        trimmed
+      );
 
-    addAuditLog({
-      actorId: pendingPasswordChangeUser.id,
-      actorName: pendingPasswordChangeUser.name,
-      actorRole: pendingPasswordChangeUser.role,
-      category: 'Security',
-      targetEmployeeId: pendingPasswordChangeUser.id,
-      targetEmployeeName: pendingPasswordChangeUser.name,
-      details: `Employee ${pendingPasswordChangeUser.name} (#${pendingPasswordChangeUser.employeeCode}) set their initial unique password upon first login. Masked in database & Google Sheets (${maskPassword(trimmed)}).`,
-    });
+      if (!updateResult.success || !updateResult.verified) {
+        setFirstTimeError(
+          updateResult.message || updateResult.error || 'Password update could not be verified by server. Please try again.'
+        );
+        setIsSavingPassword(false);
+        return; // DO NOT proceed or clear state unless backend confirms status === "SUCCESS" and verified === true
+      }
 
-    const updatedUserObj: User = {
-      ...pendingPasswordChangeUser,
-      password: trimmed,
-      mustChangePassword: false,
-    };
+      // 2. Server confirmed update & verification in Employee_Directory!
+      updateUser(pendingPasswordChangeUser.id, {
+        password: trimmed,
+        mustChangePassword: false,
+      });
 
-    setPendingPasswordChangeUser(null);
-    setIsSavingPassword(false);
+      addAuditLog({
+        actorId: pendingPasswordChangeUser.id,
+        actorName: pendingPasswordChangeUser.name,
+        actorRole: pendingPasswordChangeUser.role,
+        category: 'Security',
+        targetEmployeeId: pendingPasswordChangeUser.id,
+        targetEmployeeName: pendingPasswordChangeUser.name,
+        details: `Employee ${pendingPasswordChangeUser.name} (#${pendingPasswordChangeUser.employeeCode}) successfully set and verified their initial unique password upon first login in Employee_Directory.`,
+      });
 
-    // Complete login smoothly
-    const resolvedMode: 'webapp' | 'software' = isSoftwareEnv ? 'software' : 'webapp';
-    login(updatedUserObj, resolvedMode);
+      const updatedUserObj: User = {
+        ...pendingPasswordChangeUser,
+        password: trimmed,
+        mustChangePassword: false,
+      };
+
+      setPendingPasswordChangeUser(null);
+      setIsSavingPassword(false);
+
+      // 3. Complete login smoothly
+      const resolvedMode: 'webapp' | 'software' = isSoftwareEnv ? 'software' : 'webapp';
+      login(updatedUserObj, resolvedMode);
+    } catch (err: any) {
+      setFirstTimeError(err?.message || 'An unexpected error occurred while updating your password.');
+      setIsSavingPassword(false);
+    }
   };
 
   const handleSimulateDownload = () => {

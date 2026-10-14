@@ -4182,6 +4182,97 @@ export const syncEmployeesToGoogleSheetsWebhook = async (
   }
 };
 
+/**
+ * Updates an employee's password in Google Sheets (Employee_Directory).
+ * Sends action 'UPDATE_PASSWORD' via the /api/sync-sheets endpoint to Live Apps Script.
+ * Requires the response to confirm status === "SUCCESS" AND verified === true.
+ */
+export const updatePasswordInGoogleSheets = async (
+  user: { id: string; employeeCode?: string; username?: string; email?: string; name?: string },
+  newPassword: string,
+  webhookUrl?: string
+): Promise<{ success: boolean; verified: boolean; message: string; error?: string }> => {
+  const targetUrl = webhookUrl?.trim() || DEFAULT_WEBHOOK_URL;
+  const payload = {
+    action: 'UPDATE_PASSWORD',
+    employeeCode: user.employeeCode || '',
+    username: user.username || '',
+    email: user.email || '',
+    userId: user.id,
+    newPassword: newPassword,
+    password: newPassword,
+    mustChangePassword: false,
+    syncedAt: new Date().toISOString(),
+  };
+
+  try {
+    const res = await fetch('/api/sync-sheets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        webhookUrl: targetUrl,
+        payload,
+      }),
+    });
+
+    if (!res.ok) {
+      let errText = `HTTP ${res.status}`;
+      try {
+        const errJson = await res.json();
+        errText = errJson.error || errJson.message || errText;
+      } catch {}
+      return {
+        success: false,
+        verified: false,
+        message: errText,
+        error: errText,
+      };
+    }
+
+    const data = await res.json();
+    const resultObj = data?.result || data;
+
+    const appsScriptStatus =
+      resultObj?.status || data?.appsScriptStatus || (data?.success ? 'SUCCESS' : 'FAILED');
+    const isStatusSuccess = appsScriptStatus === 'SUCCESS' || resultObj?.status === 'SUCCESS';
+    const isVerified =
+      resultObj?.verified === true ||
+      resultObj?.verified === 'true' ||
+      resultObj?.verified === 'TRUE' ||
+      data?.verified === true;
+
+    if (isStatusSuccess && isVerified) {
+      return {
+        success: true,
+        verified: true,
+        message: resultObj?.message || 'Password updated and verified in Employee_Directory successfully!',
+      };
+    }
+
+    const failureReason =
+      resultObj?.error ||
+      resultObj?.message ||
+      data?.error ||
+      data?.message ||
+      'Backend returned non-verified status for password update.';
+
+    return {
+      success: false,
+      verified: false,
+      message: failureReason,
+      error: failureReason,
+    };
+  } catch (err: any) {
+    const errorMsg = err?.message || String(err);
+    return {
+      success: false,
+      verified: false,
+      message: `Failed to update password: ${errorMsg}`,
+      error: errorMsg,
+    };
+  }
+};
+
 export interface AgentHeartbeatPayload {
   userId: string;
   employeeCode?: string;
