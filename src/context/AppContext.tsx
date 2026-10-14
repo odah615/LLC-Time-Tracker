@@ -2731,25 +2731,20 @@ setIsIdleAlertActive(false);
     localStorage.removeItem('trackpulse_auth');
     localStorage.removeItem('trackpulse_current_user');
     localStorage.removeItem('trackpulse_login_session_id');
-    // FIX 2: Only clean up desktop tracking session if logging out from the actual desktop/software tracker
-    if (loginMode === 'software' || isDesktopApp) {
+    // Only clean up desktop tracking session if logging out from the actual desktop/software tracker
+    if (loginMode === 'software' || isDesktopDockView) {
       localStorage.removeItem('trackpulse_active_tracking');
     }
   };
 
   // WebApp Inactivity Auto-Logout Effect:
-  // - 0 to 5 minutes inactive: Normal working state
-  // - 5 to 10 minutes inactive: Triggers countdown warning (5:00 down to 0:00)
-  // - At 10 minutes inactive: Automatic logout on webapp (Desktop Software is exempt)
-  // - Persistent across tabs, background throttling, and closed browser intervals
   useEffect(() => {
-    const isElectron = typeof window !== 'undefined' && (
-      (window as any).isElectronApp === true ||
-      window.navigator.userAgent.includes('Electron')
-    );
-    if (!isAuthenticated || isElectron || isTracking) return;
+    if (!isAuthenticated || isTracking) return;
 
-    const performWebInactivityLogout = () => {
+    const isDesktopSession = loginMode === 'software' || isDesktopDockView;
+    const sessionTimeoutSec = isDesktopSession ? 300 : WEB_SESSION_TOTAL_TIMEOUT_SECONDS; // 5m for stopped desktop, 10m for web
+
+    const performInactivityLogout = () => {
       setIsSessionWarningActive(false);
       const now = new Date();
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -2763,7 +2758,9 @@ setIsIdleAlertActive(false);
         actorName: currentUser?.name || 'Agent',
         actorRole: currentUser?.role || 'agent',
         category: 'Logout',
-        details: `Session expired: 10-minute web inactivity timeout. ${currentUser?.name || 'Agent'} automatically signed out of LLC Web Portal.`,
+        details: isDesktopSession
+          ? `Session expired: 5-minute desktop inactivity timeout while stopped. ${currentUser?.name || 'Agent'} automatically signed out.`
+          : `Session expired: 10-minute web inactivity timeout. ${currentUser?.name || 'Agent'} automatically signed out of LLC Web Portal.`,
       };
 
       setAuditLogs((prev) => {
@@ -2791,51 +2788,50 @@ setIsIdleAlertActive(false);
         setUserPresenceList((prev) => prev.map((p) => (p.userId === currentUser.id ? { ...p, ...offlineDoc } : p)));
       }
 
-      localStorage.setItem('trackpulse_session_expired_reason', 'inactivity_10min');
-      setSessionExpiredReason('inactivity_10min');
+      localStorage.setItem('trackpulse_session_expired_reason', isDesktopSession ? 'inactivity_5min_desktop' : 'inactivity_10min');
+      setSessionExpiredReason(isDesktopSession ? 'inactivity_5min_desktop' : 'inactivity_10min');
       setIsAuthenticated(false);
       localStorage.removeItem('trackpulse_auth');
     };
 
-    // Check if user was already inactive for 10+ minutes before opening/restoring the site
     const initialSavedStr = localStorage.getItem('trackpulse_last_active_timestamp');
     const initialSavedTime = initialSavedStr ? parseInt(initialSavedStr, 10) : 0;
-    if (initialSavedTime > 0 && Date.now() - initialSavedTime >= WEB_SESSION_TOTAL_TIMEOUT_SECONDS * 1000) {
-      performWebInactivityLogout();
+    if (initialSavedTime > 0 && Date.now() - initialSavedTime >= sessionTimeoutSec * 1000) {
+      performInactivityLogout();
       return;
     }
 
     const nowTimestamp = Date.now();
     lastWebActivityTimestampRef.current = initialSavedTime > 0 ? initialSavedTime : nowTimestamp;
-    setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
+    setWebSessionRemainingSeconds(sessionTimeoutSec);
     setIsSessionWarningActive(false);
     setWebSessionWarningCountdown(300);
 
-    const handleWebUserActivity = () => {
+    const handleUserActivity = () => {
       const activeNow = Date.now();
       lastWebActivityTimestampRef.current = activeNow;
       localStorage.setItem('trackpulse_last_active_timestamp', activeNow.toString());
       setIsSessionWarningActive(false);
       setWebSessionWarningCountdown(300);
-      setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
+      setWebSessionRemainingSeconds(sessionTimeoutSec);
     };
 
     const handleVisibilityOrFocus = () => {
       const savedStr = localStorage.getItem('trackpulse_last_active_timestamp');
       const savedTime = savedStr ? parseInt(savedStr, 10) : 0;
-      if (savedTime > 0 && Date.now() - savedTime >= WEB_SESSION_TOTAL_TIMEOUT_SECONDS * 1000) {
-        performWebInactivityLogout();
+      if (savedTime > 0 && Date.now() - savedTime >= sessionTimeoutSec * 1000) {
+        performInactivityLogout();
       }
     };
 
     // Attach interaction listeners to reset the timer on any user action
-    window.addEventListener('mousemove', handleWebUserActivity, { passive: true });
-    window.addEventListener('mousedown', handleWebUserActivity, { passive: true });
-    window.addEventListener('keydown', handleWebUserActivity, { passive: true });
-    window.addEventListener('touchstart', handleWebUserActivity, { passive: true });
-    window.addEventListener('scroll', handleWebUserActivity, { passive: true });
-    window.addEventListener('click', handleWebUserActivity, { passive: true });
-    window.addEventListener('wheel', handleWebUserActivity, { passive: true });
+    window.addEventListener('mousemove', handleUserActivity, { passive: true });
+    window.addEventListener('mousedown', handleUserActivity, { passive: true });
+    window.addEventListener('keydown', handleUserActivity, { passive: true });
+    window.addEventListener('touchstart', handleUserActivity, { passive: true });
+    window.addEventListener('scroll', handleUserActivity, { passive: true });
+    window.addEventListener('click', handleUserActivity, { passive: true });
+    window.addEventListener('wheel', handleUserActivity, { passive: true });
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
     window.addEventListener('focus', handleVisibilityOrFocus);
 
@@ -2845,42 +2841,43 @@ setIsIdleAlertActive(false);
         localStorage.setItem('trackpulse_last_active_timestamp', Date.now().toString());
         setIsSessionWarningActive(false);
         setWebSessionWarningCountdown(300);
-        setWebSessionRemainingSeconds(WEB_SESSION_TOTAL_TIMEOUT_SECONDS);
+        setWebSessionRemainingSeconds(sessionTimeoutSec);
         return;
       }
 
       const lastActiveTime = lastWebActivityTimestampRef.current || Date.now();
       const elapsedInactiveSeconds = Math.floor((Date.now() - lastActiveTime) / 1000);
-      const remainingTotal = Math.max(0, WEB_SESSION_TOTAL_TIMEOUT_SECONDS - elapsedInactiveSeconds);
+      const remainingTotal = Math.max(0, sessionTimeoutSec - elapsedInactiveSeconds);
       setWebSessionRemainingSeconds(remainingTotal);
 
-      // Check if user has reached 5 minutes of inactivity
-      if (elapsedInactiveSeconds >= WEB_SESSION_WARNING_THRESHOLD_SECONDS && remainingTotal > 0) {
-        setIsSessionWarningActive(true);
-        setWebSessionWarningCountdown(remainingTotal);
-      } else if (elapsedInactiveSeconds < WEB_SESSION_WARNING_THRESHOLD_SECONDS) {
-        setIsSessionWarningActive(false);
-        setWebSessionWarningCountdown(300);
+      if (!isDesktopSession) {
+        if (elapsedInactiveSeconds >= WEB_SESSION_WARNING_THRESHOLD_SECONDS && remainingTotal > 0) {
+          setIsSessionWarningActive(true);
+          setWebSessionWarningCountdown(remainingTotal);
+        } else if (elapsedInactiveSeconds < WEB_SESSION_WARNING_THRESHOLD_SECONDS) {
+          setIsSessionWarningActive(false);
+          setWebSessionWarningCountdown(300);
+        }
       }
 
       if (remainingTotal <= 0) {
-        performWebInactivityLogout();
+        performInactivityLogout();
       }
     }, 1000);
 
     return () => {
       clearInterval(intervalId);
-      window.removeEventListener('mousemove', handleWebUserActivity);
-      window.removeEventListener('mousedown', handleWebUserActivity);
-      window.removeEventListener('keydown', handleWebUserActivity);
-      window.removeEventListener('touchstart', handleWebUserActivity);
-      window.removeEventListener('scroll', handleWebUserActivity);
-      window.removeEventListener('click', handleWebUserActivity);
-      window.removeEventListener('wheel', handleWebUserActivity);
+      window.removeEventListener('mousemove', handleUserActivity);
+      window.removeEventListener('mousedown', handleUserActivity);
+      window.removeEventListener('keydown', handleUserActivity);
+      window.removeEventListener('touchstart', handleUserActivity);
+      window.removeEventListener('scroll', handleUserActivity);
+      window.removeEventListener('click', handleUserActivity);
+      window.removeEventListener('wheel', handleUserActivity);
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       window.removeEventListener('focus', handleVisibilityOrFocus);
     };
-  }, [isAuthenticated, loginMode, isTracking, currentUser, users, timeLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, triggerAutoSync]);
+  }, [isAuthenticated, loginMode, isDesktopDockView, isTracking, currentUser, users, timeLogs, payrollRecords, dailyAttendanceLogs, idleLogs, leaveRequests, triggerAutoSync]);
 
   // Live Activity Hardware & Window Focus Detection
   const [currentMouseActivity, setCurrentMouseActivity] = useState(0);
