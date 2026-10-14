@@ -380,8 +380,6 @@ export const LoginView: React.FC = () => {
         setFirstTimeError(
           updateResult.message || updateResult.error || 'Password update could not be verified by server. Please try again.'
         );
-        setIsSavingPassword(false);
-        setRetryNotice('');
         return; // DO NOT proceed or clear state unless backend confirms status === "SUCCESS" and verified === true
       }
 
@@ -421,14 +419,13 @@ export const LoginView: React.FC = () => {
       };
 
       setPendingPasswordChangeUser(null);
-      setIsSavingPassword(false);
-      setRetryNotice('');
 
       // 3. Complete login smoothly
       const resolvedMode: 'webapp' | 'software' = isSoftwareEnv ? 'software' : 'webapp';
       login(updatedUserObj, resolvedMode);
     } catch (err: any) {
       setFirstTimeError(err?.message || 'An unexpected error occurred while updating your password.');
+    } finally {
       setIsSavingPassword(false);
       setRetryNotice('');
     }

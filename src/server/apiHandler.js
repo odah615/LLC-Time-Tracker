@@ -292,7 +292,7 @@ export async function forwardToLiveAppsScript(incomingPayload, options = {}, cus
   // Always attach the server-configured LIVE_APPS_SCRIPT_SECRET
   basePayload.secret = secret;
 
-  const maxAttempts = (basePayload.action === 'UPDATE_PASSWORD' || basePayload.action === 'ADMIN_RESET_PASSWORD' || basePayload.action === 'AUTH_LOGIN') ? 3 : 1;
+  const maxAttempts = typeof options.maxAttempts === 'number' ? options.maxAttempts : 1;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
