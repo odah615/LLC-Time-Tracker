@@ -39,6 +39,10 @@ import {
   ShieldCheck,
   KeyRound,
   Lock,
+  Search,
+  Filter,
+  RotateCcw,
+  X,
 } from 'lucide-react';
 import {
   BarChart,
@@ -115,9 +119,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [agentsStaffPage, setAgentsStaffPage] = useState(1);
   const agentsStaffPageSize = 5;
 
-  // Pagination state for Employee Directory
+  // Pagination & Filter state for Employee Directory
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [supervisorFilter, setSupervisorFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   // Helper date formatter DD/MM/YYYY
   const formatDateDDMMYYYY = (dateStr: string) => {
@@ -435,13 +443,50 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     return Array.from(depts);
   }, [operationalStaffUsers]);
 
+  // Filter & Search calculations for Employee Directory
+  const filteredUsers = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return visibleUsers.filter((u) => {
+      const matchesSearch =
+        !term ||
+        u.name.toLowerCase().includes(term) ||
+        (u.username && u.username.toLowerCase().includes(term)) ||
+        u.email.toLowerCase().includes(term) ||
+        u.employeeCode.toLowerCase().includes(term) ||
+        u.designation.toLowerCase().includes(term);
+
+      const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'active' && (u.status === 'active' || !u.status)) ||
+        (statusFilter === 'inactive' && u.status === 'inactive');
+
+      const matchesSupervisor =
+        supervisorFilter === 'all' ||
+        u.teamLeaderId === supervisorFilter ||
+        u.assignedSupervisor === supervisorFilter ||
+        u.assignedTeamLeadName === supervisorFilter;
+
+      return matchesSearch && matchesRole && matchesStatus && matchesSupervisor;
+    });
+  }, [visibleUsers, searchTerm, roleFilter, statusFilter, supervisorFilter]);
+
+  const supervisorsList = useMemo(() => {
+    const set = new Set<string>();
+    visibleUsers.forEach((u) => {
+      if (u.assignedTeamLeadName) set.add(u.assignedTeamLeadName);
+      if (u.assignedSupervisor) set.add(u.assignedSupervisor);
+    });
+    return Array.from(set).filter(Boolean);
+  }, [visibleUsers]);
+
   // Pagination calculations for Employee Directory
-  const totalPages = Math.ceil(visibleUsers.length / pageSize) || 1;
+  const totalPages = Math.ceil(filteredUsers.length / pageSize) || 1;
   const safePage = Math.min(currentPage, totalPages);
   const paginatedUsers = useMemo(() => {
     const start = (safePage - 1) * pageSize;
-    return visibleUsers.slice(start, start + pageSize);
-  }, [visibleUsers, safePage, pageSize]);
+    return filteredUsers.slice(start, start + pageSize);
+  }, [filteredUsers, safePage, pageSize]);
 
   return (
     <div id="admin-dashboard-view" className="space-y-6">
@@ -867,6 +912,128 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           >
             <Plus className="w-4 h-4" /> Add Employee
           </button>
+        </div>
+
+        {/* Compact Search & Filter Toolbar */}
+        <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3 space-y-2.5 text-xs">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+            {/* Clearable Search Input */}
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search username, name, email, employee code..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full bg-white border border-slate-200 text-slate-900 font-medium rounded-lg pl-8 pr-8 py-1.5 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setCurrentPage(1);
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded-full hover:bg-slate-100 transition-colors"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Matching Employees Count & Clear Filters */}
+            <div className="flex items-center justify-between sm:justify-end gap-2.5">
+              <span className="text-xs font-semibold text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                Showing <strong className="text-slate-900">{filteredUsers.length}</strong> of <strong className="text-slate-900">{visibleUsers.length}</strong> employees
+              </span>
+
+              {(searchTerm || roleFilter !== 'all' || supervisorFilter !== 'all' || statusFilter !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setRoleFilter('all');
+                    setSupervisorFilter('all');
+                    setStatusFilter('all');
+                    setCurrentPage(1);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer shrink-0"
+                >
+                  <RotateCcw className="w-3 h-3 text-slate-500" />
+                  <span>Clear Filters</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Filter Select Dropdowns */}
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200/60">
+            {/* Role Filter */}
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+              <Filter className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="font-semibold text-slate-500 text-[11px]">Role:</span>
+              <select
+                value={roleFilter}
+                onChange={(e) => {
+                  setRoleFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="bg-transparent text-slate-900 font-bold text-xs focus:outline-none cursor-pointer"
+              >
+                <option value="all">All Roles</option>
+                <option value="agent">Agent</option>
+                <option value="team_lead">Team Leader</option>
+                <option value="trainer">Trainer</option>
+                <option value="va_admin">VA Admin</option>
+                <option value="admin">Main Admin</option>
+              </select>
+            </div>
+
+            {/* Supervisor Filter */}
+            {supervisorsList.length > 0 && (
+              <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+                <UserCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span className="font-semibold text-slate-500 text-[11px]">Supervisor:</span>
+                <select
+                  value={supervisorFilter}
+                  onChange={(e) => {
+                    setSupervisorFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="bg-transparent text-slate-900 font-bold text-xs focus:outline-none cursor-pointer"
+                >
+                  <option value="all">All Supervisors</option>
+                  {supervisorsList.map((sup) => (
+                    <option key={sup} value={sup}>
+                      {sup}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Account Status Filter */}
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+              <Activity className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="font-semibold text-slate-500 text-[11px]">Status:</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="bg-transparent text-slate-900 font-bold text-xs focus:outline-none cursor-pointer"
+              >
+                <option value="all">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
