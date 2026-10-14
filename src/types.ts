@@ -101,6 +101,8 @@ export interface TimeLog {
   isLate?: boolean;
   lateReason?: string;
   notes?: string;
+  isSynced?: boolean;
+  syncedToSheet?: boolean;
 }
 
 export interface ScreenshotLog {

@@ -39,6 +39,16 @@ import {
 } from '../lib/googleSheetsSync';
 import { playInactivityChime, playUrgentPulse } from '../lib/soundAlerts';
 import {
+  safeSetItem,
+  safeGetItem,
+  safeRemoveItem,
+  persistTimeLogsLocally,
+  loadTimeLogsFromStorage,
+  persistScreenshotsLocally,
+  persistAuditLogsLocally,
+  persistAttendanceLocally,
+} from '../lib/storageDb';
+import {
   INITIAL_USERS,
   INITIAL_TIME_LOGS,
   INITIAL_SCREENSHOTS,
@@ -536,9 +546,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [timeLogs, setTimeLogs] = useState<TimeLog[]>(() => {
-    const saved = localStorage.getItem('trackpulse_timelogs');
+    const saved = safeGetItem('trackpulse_timelogs');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Hydrate full historical time logs from IndexedDB on application startup
+  useEffect(() => {
+    loadTimeLogsFromStorage().then((loaded) => {
+      if (Array.isArray(loaded) && loaded.length > 0) {
+        setTimeLogs((prev) => {
+          const map = new Map<string, TimeLog>();
+          prev.forEach((l) => map.set(l.id, l));
+          loaded.forEach((l) => {
+            const existing = map.get(l.id);
+            if (!existing || (l.durationSeconds || 0) > (existing.durationSeconds || 0)) {
+              map.set(l.id, l);
+            }
+          });
+          return Array.from(map.values());
+        });
+      }
+    }).catch(() => {});
+  }, []);
 
   const [screenshots, setScreenshots] = useState<ScreenshotLog[]>(() => {
     const saved = localStorage.getItem('trackpulse_screenshots');
@@ -1326,7 +1355,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const merged = Array.from(map.values());
         try {
-          localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
+          persistTimeLogsLocally(merged);
         } catch {}
         if (!isQuotaExhaustedGlobal) {
           safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: merged }).catch(() => {});
@@ -1535,7 +1564,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setTimeLogs((prev) => {
       const merged = [newLog, ...prev];
-      localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
+      persistTimeLogsLocally(merged);
       safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: merged }).catch(() => {});
       fetch('/api/timelogs', {
         method: 'POST',
@@ -1609,7 +1638,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return l;
       });
-      localStorage.setItem('trackpulse_timelogs', JSON.stringify(updated));
+      persistTimeLogsLocally(updated);
       safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updated }).catch(() => {});
       fetch('/api/timelogs', {
         method: 'POST',
@@ -1738,7 +1767,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const tB = new Date(b.date + ' ' + (b.startTime || '00:00')).getTime();
                 return tB - tA;
               });
-              localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
+              persistTimeLogsLocally(merged);
               return merged;
             });
           }
@@ -1752,7 +1781,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const remoteAudit: AuditLog[] = snapshot.data().data;
           if (Array.isArray(remoteAudit)) {
             setAuditLogs(remoteAudit);
-            localStorage.setItem('trackpulse_auditlogs', JSON.stringify(remoteAudit));
+            persistAuditLogsLocally(remoteAudit);
           }
         }
       }, (err) => handleSnapshotError('auditlogs', err));
@@ -2046,7 +2075,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
               if (hasChanges) {
                 const merged = Array.from(map.values());
-                localStorage.setItem('trackpulse_timelogs', JSON.stringify(merged));
+                persistTimeLogsLocally(merged);
                 return merged;
               }
               return prev;
@@ -2169,49 +2198,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => clearInterval(interval);
   }, [isAuthenticated]);
 
-  // Save changes to localStorage
+  // Save changes safely to IndexedDB and localStorage
   useEffect(() => {
-    localStorage.setItem('trackpulse_users', JSON.stringify(users));
+    safeSetItem('trackpulse_users', JSON.stringify(users));
   }, [users]);
 
   useEffect(() => {
-    localStorage.setItem('trackpulse_timelogs', JSON.stringify(timeLogs));
+    persistTimeLogsLocally(timeLogs);
   }, [timeLogs]);
 
   useEffect(() => {
-    localStorage.setItem('trackpulse_screenshots', JSON.stringify(screenshots));
+    persistScreenshotsLocally(screenshots);
   }, [screenshots]);
 
   useEffect(() => {
-    localStorage.setItem('trackpulse_idlelogs', JSON.stringify(idleLogs));
+    safeSetItem('trackpulse_idlelogs', JSON.stringify(idleLogs));
   }, [idleLogs]);
 
   useEffect(() => {
-    localStorage.setItem('trackpulse_leaverequests', JSON.stringify(leaveRequests));
+    safeSetItem('trackpulse_leaverequests', JSON.stringify(leaveRequests));
   }, [leaveRequests]);
 
   useEffect(() => {
-    localStorage.setItem('trackpulse_manualrequests', JSON.stringify(manualTimeRequests));
+    safeSetItem('trackpulse_manualrequests', JSON.stringify(manualTimeRequests));
   }, [manualTimeRequests]);
 
   useEffect(() => {
-    localStorage.setItem('trackpulse_payroll', JSON.stringify(payrollRecords));
+    safeSetItem('trackpulse_payroll', JSON.stringify(payrollRecords));
   }, [payrollRecords]);
 
   useEffect(() => {
-    localStorage.setItem('trackpulse_attendance', JSON.stringify(dailyAttendanceLogs));
+    persistAttendanceLocally(dailyAttendanceLogs);
   }, [dailyAttendanceLogs]);
 
   useEffect(() => {
-    localStorage.setItem('trackpulse_presence', JSON.stringify(userPresenceList));
+    safeSetItem('trackpulse_presence', JSON.stringify(userPresenceList));
   }, [userPresenceList]);
 
   useEffect(() => {
-    localStorage.setItem('trackpulse_worldclocks', JSON.stringify(worldClocks));
+    safeSetItem('trackpulse_worldclocks', JSON.stringify(worldClocks));
   }, [worldClocks]);
 
   useEffect(() => {
-    localStorage.setItem('trackpulse_auditlogs', JSON.stringify(auditLogs));
+    persistAuditLogsLocally(auditLogs);
   }, [auditLogs]);
 
   const addAuditLog = useCallback(
@@ -4085,8 +4114,8 @@ setIsIdleAlertActive(false);
 
     const updatedLogs = [newLog, ...timeLogs];
     const updatedScreenshots = [newScreenshot, ...screenshots];
-    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
-    localStorage.setItem('trackpulse_screenshots', JSON.stringify(updatedScreenshots));
+    persistTimeLogsLocally(updatedLogs);
+    persistScreenshotsLocally(updatedScreenshots);
 
     // Instantly sync to Central Bridge across desktop & web clients
     fetch('/api/timelogs', {
@@ -4488,7 +4517,7 @@ setIsIdleAlertActive(false);
 
     const updatedLogs = [newLog, ...timeLogs];
     setTimeLogs(updatedLogs);
-    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+    persistTimeLogsLocally(updatedLogs);
 
     // Save to Central Bridge & Firestore
     safeSetDoc(doc(db, 'timelogs', newLog.id), newLog).catch(() => {});
@@ -4974,7 +5003,7 @@ setIsIdleAlertActive(false);
     const newLog: TimeLog = { ...logData, id: `log-${Date.now()}` };
     const updatedLogs = [newLog, ...timeLogs];
     setTimeLogs(updatedLogs);
-    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+    persistTimeLogsLocally(updatedLogs);
 
     // Instantly sync to Central Bridge across desktop & web clients
     fetch('/api/timelogs', {
@@ -5010,7 +5039,7 @@ setIsIdleAlertActive(false);
     const targetLog = timeLogs.find((l) => l.id === id);
     const updatedLogs = timeLogs.map((l) => (l.id === id ? { ...l, ...data } : l));
     setTimeLogs(updatedLogs);
-    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+    persistTimeLogsLocally(updatedLogs);
     safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
       console.warn('TimeLog update sync error:', err)
     );
@@ -5035,7 +5064,7 @@ setIsIdleAlertActive(false);
     const targetLog = timeLogs.find((l) => l.id === id);
     const updatedLogs = timeLogs.filter((l) => l.id !== id);
     setTimeLogs(updatedLogs);
-    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+    persistTimeLogsLocally(updatedLogs);
     safeDeleteDoc(doc(db, 'timelogs', id)).catch(() => {});
     safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
       console.warn('TimeLog delete sync error:', err)
@@ -5064,7 +5093,7 @@ setIsIdleAlertActive(false);
 
     const updatedRequests = manualTimeRequests.map((r) => (r.id === id ? { ...r, status: 'approved' as const } : r));
     setManualTimeRequests(updatedRequests);
-    localStorage.setItem('trackpulse_manualrequests', JSON.stringify(updatedRequests));
+    safeSetItem('trackpulse_manualrequests', JSON.stringify(updatedRequests));
     safeSetDoc(doc(db, 'system_state', 'manualrequests'), { data: updatedRequests }).catch((err) =>
       console.warn('Manual time approve sync error:', err)
     );
@@ -5093,7 +5122,7 @@ setIsIdleAlertActive(false);
     };
     const updatedLogs = [newLog, ...timeLogs];
     setTimeLogs(updatedLogs);
-    localStorage.setItem('trackpulse_timelogs', JSON.stringify(updatedLogs));
+    persistTimeLogsLocally(updatedLogs);
     safeSetDoc(doc(db, 'system_state', 'timelogs'), { data: updatedLogs }).catch((err) =>
       console.warn('Manual time to timelog sync error:', err)
     );
