@@ -1,21 +1,15 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { DESIGNATION_LIST, TASK_LIST } from '../data/initialData';
 import { getManilaDateString } from '../lib/dateUtils';
 import {
   Play,
   Pause,
   Square,
   Monitor,
-  MousePointer,
-  Keyboard,
   Layers,
   Sparkles,
-  Minimize2,
-  Maximize2,
   Clock,
   Briefcase,
-  Activity,
   Check,
   AlertTriangle,
   RotateCcw,
@@ -23,9 +17,8 @@ import {
   WifiOff,
   RefreshCw,
   ShieldAlert,
-  EyeOff,
+  Shield,
 } from 'lucide-react';
-import { motion } from 'motion/react';
 
 interface DesktopTrackerWidgetProps {
   isFullPage?: boolean;
@@ -39,30 +32,22 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
     currentDesignation,
     currentTask,
     elapsedSeconds,
-    currentMouseActivity,
-    currentKeyboardActivity,
-    currentActiveApp,
-    currentIdleThresholdMinutes,
-    currentInactivitySeconds,
+    timeLogs,
     sessionIdleDeductionSeconds,
     isIdleAlertActive,
     dismissIdleAlert,
-    simulateIdleEvent,
     dailyAttendanceLogs,
     startTracking,
     pauseTracking,
     resumeTracking,
     stopTracking,
-    selectDesignation,
     selectTaskWithPrompt,
     formatDuration,
     isDesktopDockView,
-    setIsDesktopDockView,
     isOffline,
     offlineSecondsRemaining,
     offlineStatusStage,
     retryConnection,
-    designationList,
     getTasksForDesignation,
     isDualMonitorMode,
     toggleDualMonitorMode,
@@ -75,14 +60,18 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
   const offlineSecs = offlineSecondsRemaining % 60;
   const offlineFormatted = `${offlineMins}m ${offlineSecs.toString().padStart(2, '0')}s`;
 
-  const availableTasks = getTasksForDesignation(currentDesignation);
+  // Always use authenticated employee's profile designation for task options
+  const userDesignation = currentUser.designation || currentDesignation || 'Agent';
+  const availableTasks = getTasksForDesignation(userDesignation);
 
-  // Compute today's total extension / deductions for current user
+  // Compute today's total tracked time authoritatively
   const todayStr = getManilaDateString();
-  const todayAttendance = dailyAttendanceLogs.find(
-    (a) => a.userId === currentUser.id && a.date === todayStr
-  );
-  const todayExtensionMins = todayAttendance?.requiredExtensionMinutes || Math.round(sessionIdleDeductionSeconds / 60);
+  const todayTrackedSec = useMemo(() => {
+    const finishedToday = timeLogs
+      .filter((l) => l.userId === currentUser.id && (l.date === todayStr || (l.startTime && l.startTime.startsWith(todayStr))))
+      .reduce((acc, l) => acc + Math.max(0, Number(l.durationSeconds) || 0), 0);
+    return finishedToday + (isTracking ? elapsedSeconds : 0);
+  }, [timeLogs, currentUser.id, todayStr, isTracking, elapsedSeconds]);
 
   return (
     <div
@@ -93,7 +82,7 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
           : 'bg-white border border-slate-200 rounded-2xl p-6 text-slate-800 shadow-sm w-full'
       }`}
     >
-      {/* Top Header Bar (App Title & Version) */}
+      {/* Top Header Bar */}
       <div className={`flex items-center justify-between ${isFloatingDock ? 'bg-[#0F172A] p-4 text-white' : 'pb-4 mb-4 border-b border-slate-200'}`}>
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold shadow-sm">
@@ -131,19 +120,6 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
             <Monitor className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Dual Monitor:</span>
             <span className="font-bold">{isDualMonitorMode ? 'ON' : 'OFF'}</span>
-          </button>
-
-          {/* Dock / Undock view toggle */}
-          <button
-            onClick={() => setIsDesktopDockView(!isDesktopDockView)}
-            className={`p-1.5 rounded-lg text-xs flex items-center gap-1 transition-all ${
-              isFloatingDock
-                ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200'
-            }`}
-            title={isDesktopDockView ? 'Expand to Dashboard View' : 'Dock as Floating Desktop Widget'}
-          >
-            {isDesktopDockView ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
           </button>
         </div>
       </div>
@@ -253,37 +229,24 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
       )}
 
       <div className={isFloatingDock ? 'p-4 space-y-4' : 'space-y-5'}>
-        {/* Step Setup: Designation & Task Selection */}
+        {/* Designation (Locked to Profile) & Task Selection */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Step 1: Designation */}
+          {/* Step 1: Designation (Locked to Profile) */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                 <Briefcase className="w-3.5 h-3.5 text-blue-600" />
-                <span>Select Designation</span>
+                <span>Designation</span>
               </label>
-              {currentUser.role === 'agent' ? (
-                <span className="text-[10px] text-slate-500 font-medium bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                  Locked to Profile
-                </span>
-              ) : (
-                <span className="text-[10px] text-blue-700 font-medium bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
-                  Admin/Lead Override
-                </span>
-              )}
+              <span className="text-[10px] text-slate-600 font-medium bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 flex items-center gap-1">
+                <Shield className="w-3 h-3 text-slate-500" />
+                Locked to Profile
+              </span>
             </div>
-            <select
-              value={currentDesignation}
-              onChange={(e) => selectDesignation(e.target.value as any)}
-              disabled={currentUser.role === 'agent'}
-              className="w-full bg-slate-50 border border-slate-200 text-slate-800 text-xs rounded-xl px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-semibold disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed disabled:border-slate-200"
-            >
-              {designationList.map((desig) => (
-                <option key={desig} value={desig}>
-                  {desig}
-                </option>
-              ))}
-            </select>
+            <div className="w-full bg-slate-100 border border-slate-200 text-slate-800 text-xs rounded-xl px-3 py-2 font-bold flex items-center justify-between cursor-not-allowed">
+              <span className="truncate">{userDesignation}</span>
+              <span className="text-[10px] font-mono font-normal text-slate-500 shrink-0 ml-2">Read-Only</span>
+            </div>
           </div>
 
           {/* Step 2: Task */}
@@ -309,7 +272,7 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
         {/* Quick Task Switcher Chips */}
         <div>
           <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-            <span className="font-semibold text-slate-700">Quick Task Switcher ({currentDesignation}):</span>
+            <span className="font-semibold text-slate-700">Quick Task Switcher ({userDesignation}):</span>
             {isTracking && (
               <span className="text-[11px] text-amber-600 font-medium flex items-center gap-1 animate-pulse">
                 <Sparkles className="w-3 h-3" /> Click any task to switch
@@ -363,7 +326,7 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
               <div className="text-xs text-slate-500 mt-1 flex items-center gap-2">
                 <span>Task: <strong className="text-blue-600 font-semibold">{currentTask}</strong></span>
                 <span>•</span>
-                <span>Role: <strong className="text-slate-700 font-semibold">{currentDesignation}</strong></span>
+                <span>Role: <strong className="text-slate-700 font-semibold">{userDesignation}</strong></span>
               </div>
             </div>
 
@@ -406,99 +369,61 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
           </div>
         </div>
 
-        {/* Live Input & Activity Monitoring */}
+        {/* Today's Summary Panel */}
         <div className="bg-slate-50/80 rounded-xl p-4 border border-slate-200">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-700 mb-3">
             <span className="flex items-center gap-1.5">
-              <Activity className="w-4 h-4 text-blue-600" /> Input Activity Meter
+              <Clock className="w-4 h-4 text-blue-600" /> Today's Summary
             </span>
-            {currentUser.activityMonitored ? (
-              <span className="text-[10px] text-emerald-600 font-mono font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                Surveillance Active
-              </span>
-            ) : (
-              <span className="text-[10px] text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
-                <EyeOff className="w-3 h-3 text-slate-400" /> Monitoring OFF
-              </span>
-            )}
+            <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+              {todayStr}
+            </span>
           </div>
 
-          {currentUser.activityMonitored ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Keyboard Meter */}
-              <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-                <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                  <span className="flex items-center gap-1">
-                    <Keyboard className="w-3.5 h-3.5 text-blue-600" /> Keyboard
-                  </span>
-                  <span className="font-mono font-bold text-blue-600">{isTracking ? currentKeyboardActivity : 0}%</span>
-                </div>
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <motion.div
-                    className="h-full bg-blue-600"
-                    animate={{ width: `${isTracking ? currentKeyboardActivity : 0}%` }}
-                    transition={{ duration: 0.5 }}
-                  />
-                </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Today's Total Tracked Time */}
+            <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div className="text-xs text-slate-500 font-medium mb-1">
+                Today's Total Tracked Time
               </div>
-
-              {/* Mouse Meter */}
-              <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-                <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                  <span className="flex items-center gap-1">
-                    <MousePointer className="w-3.5 h-3.5 text-emerald-600" /> Mouse
-                  </span>
-                  <span className="font-mono font-bold text-emerald-600">{isTracking ? currentMouseActivity : 0}%</span>
-                </div>
-                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <motion.div
-                    className="h-full bg-emerald-500"
-                    animate={{ width: `${isTracking ? currentMouseActivity : 0}%` }}
-                    transition={{ duration: 0.5 }}
-                  />
-                </div>
-              </div>
-
-              {/* Active Application */}
-              <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-                <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                  <span className="flex items-center gap-1">
-                    <Monitor className="w-3.5 h-3.5 text-amber-600" /> Active Window
-                  </span>
-                  <span className="text-[10px] text-amber-600 font-mono">App Focus</span>
-                </div>
-                <div className="text-xs font-bold text-slate-800 truncate" title={currentActiveApp}>
-                  {isTracking ? currentActiveApp : 'No Active App'}
-                </div>
+              <div className="font-mono text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+                {formatDuration(todayTrackedSec)}
               </div>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Active Application */}
-              <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
-                <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                  <span className="flex items-center gap-1">
-                    <Monitor className="w-3.5 h-3.5 text-amber-600" /> Active Window
-                  </span>
-                  <span className="text-[10px] text-amber-600 font-mono">App Focus</span>
-                </div>
-                <div className="text-xs font-bold text-slate-800 truncate" title={currentActiveApp}>
-                  {isTracking ? currentActiveApp : 'No Active App'}
-                </div>
-              </div>
 
-              {/* Activity Monitoring Status */}
-              <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex flex-col justify-center">
-                <div className="text-xs font-medium text-slate-600 flex items-center gap-1.5">
-                  <EyeOff className="w-4 h-4 text-slate-400" />
-                  <span>Activity Surveillance Status:</span>
-                </div>
-                <div className="text-[11px] text-slate-500 mt-1">
-                  Keyboard & mouse tracking is currently <strong>disabled</strong> for your account.
-                </div>
+            {/* Current Tracking State */}
+            <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div className="text-xs text-slate-500 font-medium mb-1">
+                Current Tracking State
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    isTracking && !isPaused
+                      ? 'bg-emerald-500 animate-ping'
+                      : isTracking && isPaused
+                      ? 'bg-amber-500'
+                      : 'bg-slate-400'
+                  }`}
+                />
+                <span
+                  className={`font-extrabold text-sm ${
+                    isTracking && !isPaused
+                      ? 'text-emerald-600'
+                      : isTracking && isPaused
+                      ? 'text-amber-600'
+                      : 'text-slate-600'
+                  }`}
+                >
+                  {isTracking && !isPaused
+                    ? 'Tracking'
+                    : isTracking && isPaused
+                    ? 'On Break'
+                    : 'Standby'}
+                </span>
               </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
