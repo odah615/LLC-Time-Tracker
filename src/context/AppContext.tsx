@@ -21,7 +21,7 @@ import { doc, setDoc, deleteDoc, onSnapshot, collection, getDoc, disableNetwork,
 import { db } from '../lib/firebase';
 import { getManilaDateString, getManilaTimeString, formatLogStartTime, formatLogEndTime, formatLastUpdatedTime, formatLastSeen } from '../lib/dateUtils';
 import { getJitteredPollInterval } from '../lib/fetchUtils';
-import { generateUniqueUsername, deduplicateUsers, resolveCanonicalEmployee } from '../lib/userUtils';
+import { generateUniqueUsername, deduplicateUsers, resolveCanonicalEmployee, isPlaceholderName } from '../lib/userUtils';
 import {
   syncDataToGoogleSheetsWebhook,
   syncEmployeesToGoogleSheetsWebhook,
@@ -380,14 +380,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let norm = normalizeSuperAdmin(rawUser);
       const canon = resolveCanonicalEmployee(norm);
       if (canon) {
+        const isCustomName = Boolean(
+          norm.name &&
+          norm.name.trim() !== '' &&
+          !isPlaceholderName(norm.name, norm.username, norm.employeeCode) &&
+          norm.name.trim().toLowerCase() !== 'unknown' &&
+          norm.name.trim().toLowerCase() !== 'employee' &&
+          norm.name.trim().toLowerCase() !== 'staff' &&
+          norm.name.trim().toLowerCase() !== 'agent'
+        );
+        const isCustomUser = Boolean(
+          norm.username &&
+          norm.username.trim() !== '' &&
+          norm.username.trim().toLowerCase() !== 'agent' &&
+          norm.username.trim().toLowerCase() !== 'employee'
+        );
+        const isCustomEmail = Boolean(
+          norm.email &&
+          norm.email.trim() !== '' &&
+          !norm.email.includes('example.com')
+        );
+
         norm = {
           ...norm,
-          name: canon.name, // Guaranteed full employee name
-          username: canon.username, // Guaranteed username
-          employeeCode: canon.code,
-          email: canon.email || norm.email,
-          role: canon.role || norm.role,
-          designation: canon.designation || norm.designation,
+          name: isCustomName ? norm.name.trim() : canon.name,
+          username: isCustomUser ? norm.username.trim().toLowerCase() : canon.username,
+          employeeCode: canon.code || norm.employeeCode,
+          email: isCustomEmail ? norm.email.trim().toLowerCase() : (canon.email || norm.email),
+          role: norm.role || canon.role,
+          designation: norm.designation || canon.designation,
         };
       }
       if (!norm.username || norm.username.trim() === '') {

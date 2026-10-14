@@ -195,9 +195,44 @@ export const resolveCanonicalEmployee = (input?: {
     'bulosan': 'LLC-0053',
   };
 
+  const buildResult = (matchedCode: string, info: { name: string; username: string; email: string; role: 'admin' | 'trainer' | 'agent' | 'team_lead'; designation: string }) => {
+    if (typeof input === 'object' && input !== null) {
+      const isCustomName = Boolean(
+        input.name &&
+        input.name.trim() !== '' &&
+        !isPlaceholderName(input.name, input.username, input.employeeCode) &&
+        input.name.trim().toLowerCase() !== 'unknown' &&
+        input.name.trim().toLowerCase() !== 'employee' &&
+        input.name.trim().toLowerCase() !== 'staff' &&
+        input.name.trim().toLowerCase() !== 'agent'
+      );
+      const isCustomUser = Boolean(
+        input.username &&
+        input.username.trim() !== '' &&
+        input.username.trim().toLowerCase() !== 'agent' &&
+        input.username.trim().toLowerCase() !== 'employee'
+      );
+      const isCustomEmail = Boolean(
+        input.email &&
+        input.email.trim() !== '' &&
+        !input.email.includes('example.com')
+      );
+
+      return {
+        code: matchedCode,
+        name: isCustomName ? input.name!.trim() : info.name,
+        username: isCustomUser ? input.username!.trim().toLowerCase() : info.username,
+        email: isCustomEmail ? input.email!.trim().toLowerCase() : info.email,
+        role: (input as any).role || info.role,
+        designation: (input as any).designation || info.designation,
+      };
+    }
+    return { code: matchedCode, ...info };
+  };
+
   const aliasTarget = ALIAS_MAP[rawUser] || ALIAS_MAP[rawCode.toLowerCase()] || ALIAS_MAP[rawEmail.split('@')[0]];
   if (aliasTarget && CANONICAL_EMPLOYEE_DIRECTORY[aliasTarget]) {
-    return { code: aliasTarget, ...CANONICAL_EMPLOYEE_DIRECTORY[aliasTarget] };
+    return buildResult(aliasTarget, CANONICAL_EMPLOYEE_DIRECTORY[aliasTarget]);
   }
 
   for (const [code, info] of Object.entries(CANONICAL_EMPLOYEE_DIRECTORY)) {
@@ -209,7 +244,7 @@ export const resolveCanonicalEmployee = (input?: {
     const idMatch = rawId && (rawId.includes(code.toLowerCase()) || rawId.includes(info.username.toLowerCase()));
 
     if (codeMatch || userMatch || nameMatch || emailMatch || idMatch) {
-      return { code, ...info };
+      return buildResult(code, info);
     }
   }
 
@@ -220,7 +255,7 @@ export const resolveCanonicalEmployee = (input?: {
     const nameParts = nameLower.split(/\s+/);
     for (const tok of rawTokens) {
       if (tok.length >= 4 && (nameLower.includes(tok) || nameParts.some((p) => p === tok || p.startsWith(tok) || tok.startsWith(p)))) {
-        return { code, ...info };
+        return buildResult(code, info);
       }
     }
   }
@@ -416,14 +451,35 @@ export const deduplicateUsers = (rawUsers: User[]): User[] => {
     const canonical = resolveCanonicalEmployee(u);
     let effectiveUser: User = { ...u };
     if (canonical) {
+      const isCustomName = Boolean(
+        u.name &&
+        u.name.trim() !== '' &&
+        !isPlaceholderName(u.name, u.username, u.employeeCode) &&
+        u.name.trim().toLowerCase() !== 'unknown' &&
+        u.name.trim().toLowerCase() !== 'employee' &&
+        u.name.trim().toLowerCase() !== 'staff' &&
+        u.name.trim().toLowerCase() !== 'agent'
+      );
+      const isCustomUser = Boolean(
+        u.username &&
+        u.username.trim() !== '' &&
+        u.username.trim().toLowerCase() !== 'agent' &&
+        u.username.trim().toLowerCase() !== 'employee'
+      );
+      const isCustomEmail = Boolean(
+        u.email &&
+        u.email.trim() !== '' &&
+        !u.email.includes('example.com')
+      );
+
       effectiveUser = {
         ...effectiveUser,
-        name: canonical.name, // Guaranteed full employee name (e.g. Alexa Gabrielle Bardaje)
-        username: canonical.username, // Guaranteed username (e.g. agabr)
-        employeeCode: canonical.code, // Guaranteed code (e.g. LLC-0004)
-        email: canonical.email || effectiveUser.email,
-        role: canonical.role || effectiveUser.role,
-        designation: canonical.designation || effectiveUser.designation || 'Agent',
+        name: isCustomName ? u.name.trim() : canonical.name,
+        username: isCustomUser ? u.username.trim().toLowerCase() : canonical.username,
+        employeeCode: canonical.code || effectiveUser.employeeCode,
+        email: isCustomEmail ? u.email.trim().toLowerCase() : (canonical.email || effectiveUser.email),
+        role: u.role || canonical.role || effectiveUser.role,
+        designation: u.designation || canonical.designation || effectiveUser.designation || 'Agent',
       };
     }
 
@@ -453,36 +509,56 @@ export const deduplicateUsers = (rawUsers: User[]): User[] => {
     if (existingIndex >= 0) {
       const existing = result[existingIndex];
       const existingCanon = resolveCanonicalEmployee(existing);
-      const chosenName = canonical?.name || existingCanon?.name || (effectiveUser.name && effectiveUser.name !== effectiveUser.username ? effectiveUser.name : existing.name);
-      const chosenUsername = canonical?.username || existingCanon?.username || effectiveUser.username || existing.username;
+      const isExistingCustomName = Boolean(
+        existing.name &&
+        existing.name.trim() !== '' &&
+        !isPlaceholderName(existing.name, existing.username, existing.employeeCode) &&
+        existing.name.trim().toLowerCase() !== 'unknown' &&
+        existing.name.trim().toLowerCase() !== 'employee'
+      );
+      const isEffectiveCustomName = Boolean(
+        effectiveUser.name &&
+        effectiveUser.name.trim() !== '' &&
+        !isPlaceholderName(effectiveUser.name, effectiveUser.username, effectiveUser.employeeCode) &&
+        effectiveUser.name.trim().toLowerCase() !== 'unknown' &&
+        effectiveUser.name.trim().toLowerCase() !== 'employee'
+      );
+
+      const chosenName = isEffectiveCustomName
+        ? effectiveUser.name.trim()
+        : (isExistingCustomName
+            ? existing.name.trim()
+            : (canonical?.name || existingCanon?.name || effectiveUser.username || existing.username));
+
+      const chosenUsername = effectiveUser.username || existing.username || canonical?.username || existingCanon?.username;
       const chosenCode = canonical?.code || existingCanon?.code || effectiveUser.employeeCode || existing.employeeCode;
 
       // Preserve the authoritative credential state when merging duplicates.
-// A real existing password must never be replaced by Password123!,
-// and an existing mustChangePassword=false must never be turned back on
-// just because a duplicate/imported record has the default state.
-const existingHasRealPassword =
-  !!existing.password &&
-  existing.password.trim() !== '' &&
-  existing.password !== 'Password123!';
+      // A real existing password must never be replaced by Password123!,
+      // and an existing mustChangePassword=false must never be turned back on
+      // just because a duplicate/imported record has the default state.
+      const existingHasRealPassword =
+        !!existing.password &&
+        existing.password.trim() !== '' &&
+        existing.password !== 'Password123!';
 
-const incomingHasRealPassword =
-  !!effectiveUser.password &&
-  effectiveUser.password.trim() !== '' &&
-  effectiveUser.password !== 'Password123!';
+      const incomingHasRealPassword =
+        !!effectiveUser.password &&
+        effectiveUser.password.trim() !== '' &&
+        effectiveUser.password !== 'Password123!';
 
-const merged: User = {
-  ...existing,
-  ...effectiveUser,
+      const merged: User = {
+        ...existing,
+        ...effectiveUser,
 
-  // Canonical identity
-  name: chosenName,
-  employeeCode: chosenCode,
-  username: chosenUsername,
-  email: canonical?.email || existing.email || effectiveUser.email,
+        // Canonical identity
+        name: chosenName,
+        employeeCode: chosenCode,
+        username: chosenUsername,
+        email: (isEffectiveCustomName ? effectiveUser.email : existing.email) || canonical?.email || effectiveUser.email,
 
-  // Preserve authoritative role/profile information
-  role:
+        // Preserve authoritative role/profile information
+        role:
     existing.role && existing.role !== 'agent'
       ? existing.role
       : (effectiveUser.role || 'agent'),
