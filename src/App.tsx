@@ -20,6 +20,7 @@ import { ManualTimeModal } from './components/modals/ManualTimeModal';
 import { LeaveModal } from './components/modals/LeaveModal';
 import { EmployeeCrudModal } from './components/modals/EmployeeCrudModal';
 import { OfflineBanner } from './components/OfflineBanner';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { User } from './types';
 import { Shield, Clock, Heart, Globe, Laptop, LogOut, Maximize2, Sparkles, ExternalLink, RefreshCw, CheckCircle2, ArrowUpCircle } from 'lucide-react';
 
@@ -57,8 +58,8 @@ const MainAppContent: React.FC = () => {
     ? window.location.origin.replace('ais-dev-', 'ais-pre-')
     : 'https://ais-pre-liozj4uigw5okmp2bspkg2-388952805706.asia-southeast1.run.app';
 
-  // If not authenticated, render Login Page
-  if (!isAuthenticated) {
+  // If not authenticated or missing valid user, safely render Login Page
+  if (!isAuthenticated || !currentUser) {
     return <LoginView />;
   }
 
@@ -301,8 +302,10 @@ const MainAppContent: React.FC = () => {
 
 export default function App() {
   return (
-    <AppProvider>
-      <MainAppContent />
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <MainAppContent />
+      </AppProvider>
+    </ErrorBoundary>
   );
 }

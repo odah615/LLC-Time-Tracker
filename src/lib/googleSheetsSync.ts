@@ -3587,6 +3587,31 @@ export const fetchEmployeesFromGoogleSheets = async (
     if (u.username) userMap.set(u.username.toLowerCase().trim(), u);
   });
 
+  // Merge locally stored custom passwords so background syncs never overwrite changed passwords
+  try {
+    const cachedUsersStr = typeof window !== 'undefined' ? localStorage.getItem('trackpulse_users') : null;
+    if (cachedUsersStr) {
+      const cachedList = JSON.parse(cachedUsersStr);
+      if (Array.isArray(cachedList)) {
+        cachedList.forEach((u) => {
+          if (!u || !u.id) return;
+          const codeKey = u.employeeCode ? u.employeeCode.toUpperCase().trim() : null;
+          const existing = (codeKey ? userMap.get(codeKey) : null) || userMap.get(u.id);
+          // If cached user has a custom password, preserve it over default
+          if (existing) {
+            if (u.password && u.password !== 'Password123!' && existing.password === 'Password123!') {
+              existing.password = u.password;
+              existing.mustChangePassword = u.mustChangePassword ?? false;
+            }
+          } else {
+            userMap.set(u.id, u);
+            if (codeKey) userMap.set(codeKey, u);
+          }
+        });
+      }
+    }
+  } catch (e) {}
+
   const importedList: User[] = [];
 
   // Method 1: Try Webhook GET (returns clean JSON array of employees)

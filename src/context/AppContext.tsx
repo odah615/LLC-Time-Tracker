@@ -515,17 +515,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    if (typeof window !== 'undefined') {
-      const isExpired = localStorage.getItem('trackpulse_session_expired_reason') === 'inactivity_10min';
-      if (!isExpired) {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('user') || urlParams.get('userId')) {
-          return true;
-        }
-      }
-    }
-
-    return isAuth && hasUser;
+    return Boolean(isAuth && hasUser);
   });
   const [loginMode, setLoginMode] = useState<'webapp' | 'software'>(() => {
     if (typeof window !== 'undefined') {

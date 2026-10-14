@@ -1,15 +1,27 @@
 // Cloudflare Pages Advanced Mode Worker
-// Routes /api/sync-sheets directly to Google Apps Script proxy
-// and delegates all other requests to static assets (env.ASSETS).
+// Centralized API routing and static asset serving for production deployment.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-User-Id, X-Employee-Code, X-User-Role, X-Shared-Secret",
 };
 
+const DEFAULT_SPREADSHEET_ID = "1h8ssmDEcV-PMGlkpOzfQCtlRpnoT0CBQQveT3e4wPfA";
 const DEFAULT_LIVE_APPS_SCRIPT_URL =
   "https://script.google.com/macros/s/AKfycbyKGMOWV0u5xcv_lOKBk6LXpbjrlgZiuqtCs3_HbqjekoJZdXpdfA_1kDjP7H0ulLsw3Q/exec";
+
+// In-worker ephemeral cache for edge persistence across requests
+const workerState = {
+  presence: {},
+  timelogs: [],
+  users: [],
+  attendance: [],
+  auditlogs: [],
+  config: {
+    spreadsheetId: DEFAULT_SPREADSHEET_ID,
+  },
+};
 
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(sanitizeOutput(data)), {
@@ -31,7 +43,11 @@ function sanitizeOutput(data) {
     "APPS_SCRIPT_SECRET",
     "JWT_SECRET",
     "password",
+    "newPassword",
+    "currentPassword",
     "token",
+    "authToken",
+    "accessToken",
   ]);
   const sanitized = {};
   for (const [key, value] of Object.entries(data)) {
@@ -45,9 +61,13 @@ function sanitizeOutput(data) {
   return sanitized;
 }
 
+// ----------------------------------------------------
+// Google Sheets Proxy Handlers
+// ----------------------------------------------------
 async function handleSyncSheetsPost(request, env = {}) {
   try {
-    const liveAppsScriptUrl = env.LIVE_APPS_SCRIPT_URL || DEFAULT_LIVE_APPS_SCRIPT_URL;
+    const liveAppsScriptUrl =
+      env.LIVE_APPS_SCRIPT_URL || DEFAULT_LIVE_APPS_SCRIPT_URL;
     const liveAppsScriptSecret = env.LIVE_APPS_SCRIPT_SECRET || "";
 
     const body = await request.json();
@@ -97,12 +117,11 @@ async function handleSyncSheetsPost(request, env = {}) {
     let googleResult;
     try {
       googleResult = JSON.parse(responseText);
-    } catch (e) {
+    } catch {
       googleResult = { response: responseText };
     }
 
     const sanitizedResult = sanitizeOutput(googleResult);
-
     const isSuccess =
       googleResponse.ok &&
       (sanitizedResult?.status === "SUCCESS" ||
@@ -142,7 +161,8 @@ async function handleSyncSheetsPost(request, env = {}) {
 
 async function handleSyncSheetsGet(request, env = {}) {
   try {
-    const liveAppsScriptUrl = env.LIVE_APPS_SCRIPT_URL || DEFAULT_LIVE_APPS_SCRIPT_URL;
+    const liveAppsScriptUrl =
+      env.LIVE_APPS_SCRIPT_URL || DEFAULT_LIVE_APPS_SCRIPT_URL;
     const url = new URL(request.url);
     const webhookUrl = url.searchParams.get("url") || liveAppsScriptUrl;
 
@@ -169,7 +189,7 @@ async function handleSyncSheetsGet(request, env = {}) {
     let googleResult;
     try {
       googleResult = JSON.parse(responseText);
-    } catch (e) {
+    } catch {
       googleResult = { response: responseText };
     }
 
@@ -185,35 +205,260 @@ async function handleSyncSheetsGet(request, env = {}) {
   }
 }
 
+// ----------------------------------------------------
+// Main Cloudflare Pages Advanced Mode Fetch Handler
+// ----------------------------------------------------
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/api/sync-sheets") {
-      if (request.method === "OPTIONS") {
-        return new Response(null, {
-          status: 204,
-          headers: corsHeaders,
+    // Handle CORS preflight
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: corsHeaders,
+      });
+    }
+
+    // ----------------------------------------------------
+    // API ROUTING
+    // ----------------------------------------------------
+
+    // 1. Health Check
+    if (url.pathname === "/api/health") {
+      return jsonResponse({
+        status: "ok",
+        serverTime: new Date().toISOString(),
+        environment: "cloudflare-pages",
+        onlineUsers: Object.values(workerState.presence).filter((p) => p?.isOnline).length,
+        trackingUsers: Object.values(workerState.presence).filter((p) => p?.isOnline && p?.isTracking).length,
+        timelogsCount: workerState.timelogs.length,
+      });
+    }
+
+    // 2. Config Endpoint (Safe - never exposes secrets)
+    if (url.pathname === "/api/config") {
+      const liveAppsScriptUrl =
+        env.LIVE_APPS_SCRIPT_URL || DEFAULT_LIVE_APPS_SCRIPT_URL;
+      if (request.method === "GET") {
+        return jsonResponse({
+          webhookUrl: liveAppsScriptUrl,
+          spreadsheetId: workerState.config.spreadsheetId || DEFAULT_SPREADSHEET_ID,
+          isConfigured: !!(env.LIVE_APPS_SCRIPT_URL && env.LIVE_APPS_SCRIPT_SECRET),
         });
       }
+      if (request.method === "POST") {
+        try {
+          const body = await request.json();
+          const cleanBody = sanitizeOutput(body);
+          workerState.config = { ...workerState.config, ...cleanBody };
+          return jsonResponse({
+            success: true,
+            config: {
+              webhookUrl: liveAppsScriptUrl,
+              spreadsheetId: workerState.config.spreadsheetId || DEFAULT_SPREADSHEET_ID,
+              isConfigured: !!(env.LIVE_APPS_SCRIPT_URL && env.LIVE_APPS_SCRIPT_SECRET),
+            },
+          });
+        } catch {
+          return jsonResponse({ success: false, error: "Invalid JSON" }, 400);
+        }
+      }
+    }
+
+    // 3. Google Sheets Proxy
+    if (url.pathname === "/api/sync-sheets") {
       if (request.method === "POST") {
         return handleSyncSheetsPost(request, env);
       }
       if (request.method === "GET") {
         return handleSyncSheetsGet(request, env);
       }
-      return new Response(JSON.stringify({ error: "Method not allowed" }), {
-        status: 405,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      });
+      return jsonResponse({ error: "Method not allowed" }, 405);
     }
 
-    // Delegate static assets and SPA routing to Pages Asset server
-    const assetResponse = await env.ASSETS.fetch(request);
-    if (assetResponse.status === 404 && request.method === "GET" && !url.pathname.startsWith("/api/")) {
-      const indexRequest = new Request(new URL("/index.html", request.url), request);
-      return env.ASSETS.fetch(indexRequest);
+    // 4. Presence Endpoints
+    if (url.pathname === "/api/presence") {
+      if (request.method === "GET") {
+        return jsonResponse(Object.values(workerState.presence));
+      }
+      if (request.method === "POST") {
+        try {
+          const p = await request.json();
+          if (!p || !p.userId) {
+            return jsonResponse({ error: "Missing userId" }, 400);
+          }
+          workerState.presence[p.userId] = {
+            ...(workerState.presence[p.userId] || {}),
+            ...p,
+            lastHeartbeat: p.lastHeartbeat || new Date().toISOString(),
+          };
+          return jsonResponse({ success: true, presence: workerState.presence[p.userId] });
+        } catch {
+          return jsonResponse({ error: "Invalid payload" }, 400);
+        }
+      }
     }
-    return assetResponse;
+
+    if (url.pathname === "/api/presence/batch" && request.method === "POST") {
+      try {
+        const list = await request.json();
+        if (Array.isArray(list)) {
+          for (const p of list) {
+            if (p && p.userId) {
+              workerState.presence[p.userId] = {
+                ...(workerState.presence[p.userId] || {}),
+                ...p,
+                lastHeartbeat: p.lastHeartbeat || new Date().toISOString(),
+              };
+            }
+          }
+        }
+        return jsonResponse({ success: true, count: Object.keys(workerState.presence).length });
+      } catch {
+        return jsonResponse({ error: "Invalid batch payload" }, 400);
+      }
+    }
+
+    // 5. Timelogs Endpoints
+    if (url.pathname === "/api/timelogs") {
+      if (request.method === "GET") {
+        const reqUserId = (url.searchParams.get("userId") || request.headers.get("x-user-id") || "").trim();
+        const reqEmpCode = (url.searchParams.get("employeeCode") || request.headers.get("x-employee-code") || "").trim().toUpperCase();
+        const reqRole = (url.searchParams.get("role") || request.headers.get("x-user-role") || "").trim().toLowerCase();
+
+        if (!reqUserId && !reqEmpCode && !reqRole) {
+          return jsonResponse(workerState.timelogs);
+        }
+        if (["admin", "superadmin", "hr", "payroll", "va_admin"].includes(reqRole)) {
+          return jsonResponse(workerState.timelogs);
+        }
+
+        // Return user's own logs
+        const filtered = workerState.timelogs.filter((l) => {
+          if (!l) return false;
+          const lCode = String(l.employeeCode || "").trim().toUpperCase();
+          const lId = String(l.userId || "").trim().toLowerCase();
+          return (reqEmpCode && lCode === reqEmpCode) || (reqUserId && lId === reqUserId.toLowerCase());
+        });
+        return jsonResponse(filtered);
+      }
+
+      if (request.method === "POST") {
+        try {
+          const incoming = await request.json();
+          if (Array.isArray(incoming)) {
+            const map = new Map(workerState.timelogs.map((l) => [l.id, l]));
+            for (const log of incoming) {
+              if (log && log.id) {
+                map.set(log.id, { ...(map.get(log.id) || {}), ...log });
+              }
+            }
+            workerState.timelogs = Array.from(map.values());
+            return jsonResponse({ success: true, count: workerState.timelogs.length });
+          } else if (incoming && incoming.id) {
+            const map = new Map(workerState.timelogs.map((l) => [l.id, l]));
+            map.set(incoming.id, { ...(map.get(incoming.id) || {}), ...incoming });
+            workerState.timelogs = Array.from(map.values());
+            return jsonResponse({ success: true, log: incoming });
+          }
+          return jsonResponse({ error: "Invalid timelog payload" }, 400);
+        } catch {
+          return jsonResponse({ error: "Invalid JSON" }, 400);
+        }
+      }
+    }
+
+    // 6. Users Endpoints
+    if (url.pathname === "/api/users") {
+      if (request.method === "GET") {
+        return jsonResponse(workerState.users);
+      }
+      if (request.method === "POST") {
+        try {
+          const incoming = await request.json();
+          if (Array.isArray(incoming)) {
+            const map = new Map(workerState.users.map((u) => [u.id, u]));
+            for (const u of incoming) {
+              if (u && u.id) {
+                map.set(u.id, { ...(map.get(u.id) || {}), ...u });
+              }
+            }
+            workerState.users = Array.from(map.values());
+            return jsonResponse({ success: true, count: workerState.users.length });
+          } else if (incoming && incoming.id) {
+            const map = new Map(workerState.users.map((u) => [u.id, u]));
+            map.set(incoming.id, { ...(map.get(incoming.id) || {}), ...incoming });
+            workerState.users = Array.from(map.values());
+            return jsonResponse({ success: true, user: sanitizeOutput(incoming) });
+          }
+          return jsonResponse({ error: "Invalid users payload" }, 400);
+        } catch {
+          return jsonResponse({ error: "Invalid JSON" }, 400);
+        }
+      }
+    }
+
+    // 7. Attendance Endpoints
+    if (url.pathname === "/api/attendance") {
+      if (request.method === "GET") {
+        return jsonResponse(workerState.attendance);
+      }
+      if (request.method === "POST") {
+        try {
+          const incoming = await request.json();
+          if (incoming && incoming.id) {
+            const exists = workerState.attendance.some((a) => a.id === incoming.id);
+            if (!exists) {
+              workerState.attendance = [incoming, ...workerState.attendance].slice(0, 1000);
+            }
+            return jsonResponse({ success: true, record: incoming });
+          }
+          return jsonResponse({ error: "Invalid attendance payload" }, 400);
+        } catch {
+          return jsonResponse({ error: "Invalid JSON" }, 400);
+        }
+      }
+    }
+
+    // 8. Auditlogs Endpoints
+    if (url.pathname === "/api/auditlogs") {
+      if (request.method === "GET") {
+        return jsonResponse(workerState.auditlogs);
+      }
+      if (request.method === "POST") {
+        try {
+          const incoming = await request.json();
+          if (incoming && incoming.id) {
+            const exists = workerState.auditlogs.some((l) => l.id === incoming.id);
+            if (!exists) {
+              workerState.auditlogs = [incoming, ...workerState.auditlogs].slice(0, 1000);
+            }
+            return jsonResponse({ success: true, log: incoming });
+          }
+          return jsonResponse({ error: "Invalid auditlog payload" }, 400);
+        } catch {
+          return jsonResponse({ error: "Invalid JSON" }, 400);
+        }
+      }
+    }
+
+    // ----------------------------------------------------
+    // STATIC ASSETS & SPA ROUTING
+    // ----------------------------------------------------
+    if (env.ASSETS && typeof env.ASSETS.fetch === "function") {
+      const assetResponse = await env.ASSETS.fetch(request);
+      if (
+        assetResponse.status === 404 &&
+        request.method === "GET" &&
+        !url.pathname.startsWith("/api/")
+      ) {
+        const indexRequest = new Request(new URL("/index.html", request.url), request);
+        return env.ASSETS.fetch(indexRequest);
+      }
+      return assetResponse;
+    }
+
+    return new Response("Not Found", { status: 404 });
   },
 };
