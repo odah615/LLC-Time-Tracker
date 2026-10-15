@@ -4574,6 +4574,9 @@ setIsIdleAlertActive(false);
     setCurrentTask(targetTask);
     currentTaskSegmentStartMsRef.current = nowMs;
     currentTaskSegmentStartTimeIsoRef.current = nowIso;
+    trackingAccumulatedSecondsRef.current = 0;
+    lastActiveIntervalStartMsRef.current = isPaused ? 0 : nowMs;
+    setElapsedSeconds(0);
     setTaskSwitchPending(null);
 
     // Persist active session state
@@ -4583,8 +4586,8 @@ setIsIdleAlertActive(false);
       isPaused,
       startTimeIso,
       startMs: trackingSessionStartMsRef.current,
-      lastActiveMs: lastActiveIntervalStartMsRef.current,
-      accumulatedSec: trackingAccumulatedSecondsRef.current,
+      lastActiveMs: isPaused ? 0 : nowMs,
+      accumulatedSec: 0,
       task: targetTask,
       designation: currentDesignation || currentUser?.designation || 'Agent',
       currentTaskSegmentStartMs: nowMs,

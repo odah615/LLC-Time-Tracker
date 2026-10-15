@@ -251,14 +251,14 @@ const persistBridgeState = () => {
   }, 1000);
 };
 
-// Cleanup stale presence sessions (offline after 3 minutes without heartbeat)
+// Cleanup stale presence sessions (offline after 10 minutes without heartbeat for tracking, 5 mins for web)
 const cleanStalePresence = () => {
   const now = Date.now();
   let changed = false;
   for (const [userId, p] of Object.entries(bridgeState.presence)) {
     if (p && p.isOnline) {
       const lastHbMs = p.lastHeartbeat ? new Date(p.lastHeartbeat).getTime() : 0;
-      const timeoutMs = p.isTracking ? 180000 : 90000; // 3 mins if tracking, 90s if just idle/web
+      const timeoutMs = p.isTracking ? 600000 : 300000; // 10 mins if tracking, 5 mins if just idle/web
       if (lastHbMs > 0 && now - lastHbMs > timeoutMs) {
         bridgeState.presence[userId] = {
           ...p,

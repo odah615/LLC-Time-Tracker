@@ -34,7 +34,24 @@ export const AgentDashboardView: React.FC<AgentDashboardViewProps> = ({
   onOpenManualModal,
   onOpenLeaveModal,
 }) => {
-  const { currentUser, timeLogs, userPresenceList, isTracking, elapsedSeconds, formatDuration } = useApp();
+  const { currentUser, timeLogs, leaveRequests, userPresenceList, isTracking, elapsedSeconds, formatDuration } = useApp();
+
+  // Compute authoritative leave credits for the current user
+  const userLeaves = useMemo(() => {
+    if (!leaveRequests || !currentUser) return [];
+    return leaveRequests.filter(
+      (l) =>
+        l.userId === currentUser.id ||
+        ((l as any).employeeCode && (l as any).employeeCode === currentUser.employeeCode) ||
+        (currentUser.username && l.userName.toLowerCase() === currentUser.username.toLowerCase()) ||
+        (currentUser.name && l.userName.toLowerCase() === currentUser.name.toLowerCase())
+    );
+  }, [leaveRequests, currentUser]);
+
+  const leaveCreditVal = useMemo(() => {
+    const reqWithCredits = userLeaves.find((l) => typeof l.availableLeaveCredits === 'number');
+    return reqWithCredits ? reqWithCredits.availableLeaveCredits : undefined;
+  }, [userLeaves]);
 
   // Robust matching for current agent across userId, employeeCode, username, and name
   const agentLogs = useMemo(() => {
@@ -257,30 +274,30 @@ export const AgentDashboardView: React.FC<AgentDashboardViewProps> = ({
           </div>
         </div>
 
-        {/* Avg Activity Score */}
+        {/* Leave Credits */}
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-semibold text-slate-600">Activity Score</span>
-            <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
-              <Activity className="w-4 h-4" />
+            <span className="text-xs font-semibold text-slate-600">Leave Credits</span>
+            <div className="p-2 rounded-xl bg-purple-50 text-purple-600 border border-purple-100">
+              <FileText className="w-4 h-4" />
             </div>
           </div>
-          {currentUser.activityMonitored ? (
+          {typeof leaveCreditVal === 'number' ? (
             <>
-              <div className="text-2xl font-extrabold text-emerald-600 font-mono">
-                {Math.round((avgMouse + avgKeyboard) / 2)}%
+              <div className="text-2xl font-extrabold text-purple-700 font-mono">
+                {leaveCreditVal} {leaveCreditVal === 1 ? 'Credit' : 'Credits'}
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
-                Keyboard: {avgKeyboard}% • Mouse: {avgMouse}%
+                Available leave balance
               </p>
             </>
           ) : (
             <>
-              <div className="text-sm font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg inline-block border border-slate-200">
-                Monitoring OFF
+              <div className="text-sm font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg inline-block border border-slate-200 font-mono">
+                Unavailable
               </div>
               <p className="text-[11px] text-slate-400 mt-1">
-                Input tracking is disabled for your account
+                No leave credit record on file
               </p>
             </>
           )}

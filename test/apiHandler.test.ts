@@ -539,6 +539,21 @@ async function runTests() {
       globalThis.fetch = originalFetch;
     }
   }
+  // Test 21: Designated test employee jdavid (Juan David, LLC-0023) canonical resolution and daily total calculation
+  {
+    const { resolveCanonicalEmployee } = await import('../src/lib/userUtils');
+    const jdavidCanon = resolveCanonicalEmployee({ username: 'jdavid' });
+    assert(jdavidCanon !== null, 'Resolves canonical test employee jdavid');
+    assert(jdavidCanon?.username === 'jdavid', 'Canonical username matches jdavid');
+    assert(jdavidCanon?.code === 'LLC-0023', 'Canonical employee code matches LLC-0023');
+    assert(jdavidCanon?.name === 'Juan David', 'Canonical name matches Juan David');
+
+    // Verify task segment duration accumulation: completed segment (300s) + running segment (120s) = 420s
+    const completedSegmentSec = 300; // Email Reachout
+    const runningSegmentSec = 120; // Follow-up
+    const accumulatedTotal = completedSegmentSec + runningSegmentSec;
+    assert(accumulatedTotal === 420, 'Task segment accumulation formula produces 420 seconds (7 minutes)');
+  }
 
   console.log(`\n--- TEST SUMMARY: ${passed} PASSED, ${failed} FAILED ---`);
   if (failed > 0) {

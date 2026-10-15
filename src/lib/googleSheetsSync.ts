@@ -1897,12 +1897,12 @@ function upsertSinglePresenceRow(sheet, p) {
           matchRow = r + 2;
           existingRow = row;
         } else {
-          // Auto-sweep stale rows older than 5 minutes that are still marked as active
+          // Auto-sweep stale rows older than 12 minutes that are still marked as active
           var rowStatus = String(row[5] || '');
           var rowIso = String(row[12] || '');
           if (rowStatus.indexOf('Live Tracking') !== -1 || rowStatus.indexOf('Online') !== -1) {
             var rowTime = rowIso ? new Date(rowIso).getTime() : 0;
-            if (rowTime > 0 && (nowMs - rowTime) > 300000) {
+            if (rowTime > 0 && (nowMs - rowTime) > 720000) {
               sheet.getRange(r + 2, 6).setValue('⚪ Offline');
               sheet.getRange(r + 2, 7).setValue('Shift Concluded');
             }

@@ -32,11 +32,9 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
     currentDesignation,
     currentTask,
     elapsedSeconds,
-    timeLogs,
-    sessionIdleDeductionSeconds,
+    todayTotalSeconds,
     isIdleAlertActive,
     dismissIdleAlert,
-    dailyAttendanceLogs,
     startTracking,
     pauseTracking,
     resumeTracking,
@@ -64,14 +62,9 @@ export const DesktopTrackerWidget: React.FC<DesktopTrackerWidgetProps> = ({ isFu
   const userDesignation = currentUser.designation || currentDesignation || 'Agent';
   const availableTasks = getTasksForDesignation(userDesignation);
 
-  // Compute today's total tracked time authoritatively
+  // Compute today's total tracked time authoritatively from AppContext
   const todayStr = getManilaDateString();
-  const todayTrackedSec = useMemo(() => {
-    const finishedToday = timeLogs
-      .filter((l) => l.userId === currentUser.id && (l.date === todayStr || (l.startTime && l.startTime.startsWith(todayStr))))
-      .reduce((acc, l) => acc + Math.max(0, Number(l.durationSeconds) || 0), 0);
-    return finishedToday + (isTracking ? elapsedSeconds : 0);
-  }, [timeLogs, currentUser.id, todayStr, isTracking, elapsedSeconds]);
+  const todayTrackedSec = todayTotalSeconds;
 
   return (
     <div
